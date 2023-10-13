@@ -95,9 +95,6 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
     # do the same for the static variables
     for v in ['dem']:
         if v in data:
-            # fill in the missing values with the average
-            data[v][np.isnan(data[v])] = np.nanmean(data[v])
-
             # apply the scaling
             sdf = stats_df[stats_df.var_name == v]
             vmin = sdf.vmin.values[0]
