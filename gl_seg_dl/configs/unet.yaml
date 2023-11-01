@@ -59,3 +59,6 @@ model:
     activation: 'sigmoid'
     decoder_use_batchnorm: False
     decoder_attention_type: null
+  other:
+    external_encoder_weights: null
+#    external_encoder_weights: '../data/external/pretraining/B13_rn50_moco_0099.pth'

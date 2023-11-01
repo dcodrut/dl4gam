@@ -35,7 +35,7 @@ def test_model(settings, fold, test_per_glacier=False, checkpoint=None, dir_outl
     model_class = getattr(models, settings['model']['class'])
     model = model_class(
         input_settings=settings['model']['inputs'] if 'inputs' in settings['model'] else None,
-        training_settings=settings['model']['training_settings'] if 'training_settings' in settings['model'] else None,
+        other_settings=settings['model']['other'] if 'other' in settings['model'] else None,
         model_name=settings['model']['name'],
         model_args=settings['model']['args'],
     )

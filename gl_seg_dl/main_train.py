@@ -48,7 +48,7 @@ def train_model(settings: dict):
     model_class = getattr(models, settings['model']['class'])
     model = model_class(
         input_settings=settings['model']['inputs'] if 'inputs' in settings['model'] else None,
-        training_settings=settings['model']['training_settings'] if 'training_settings' in settings['model'] else None,
+        other_settings=settings['model']['other'] if 'other' in settings['model'] else None,
         model_args=settings['model']['args'],
         model_name=settings['model']['name']
     )
