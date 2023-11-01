@@ -241,9 +241,8 @@ class GlSegTask(pl.LightningModule):
         nc_pred['pred_b'] = (('y', 'x'), preds_acc_np >= 0.5)
         nc_pred['pred_b'].rio.write_crs(nc_pred.rio.crs, inplace=True)
 
-        rgi_id = Path(cube_fp).parent.parent.name
-        gl_num = Path(cube_fp).parent.name
-        cube_pred_fp = Path(self.outdir) / rgi_id / f'{gl_num}.nc'
+        gl_id = Path(cube_fp).parent.name
+        cube_pred_fp = Path(self.outdir) / gl_id / Path(cube_fp).name
         cube_pred_fp.parent.mkdir(parents=True, exist_ok=True)
         cube_pred_fp.unlink(missing_ok=True)
         nc_pred.to_netcdf(cube_pred_fp)

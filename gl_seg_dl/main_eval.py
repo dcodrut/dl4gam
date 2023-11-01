@@ -148,7 +148,9 @@ if __name__ == "__main__":
     print(f'inference_dir_root = {inference_dir_root}')
     assert inference_dir_root.exists()
 
-    stats_dir_root = Path(inference_dir_root.parent.parent, 'stats', inference_dir_root.name)
+    # replace the 'preds' subdirectory with 'stats'
+    p = list(inference_dir_root.parts)
+    stats_dir_root = Path(*p[:p.index('preds')]) / 'stats' / Path(*p[p.index('preds') + 1:])
 
     for fold in ('s_train', 's_valid', 's_test'):
         preds_dir = inference_dir_root / fold
