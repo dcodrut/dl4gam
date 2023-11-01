@@ -29,16 +29,18 @@ def compute_stats(fp, mask_name='mask_crt_g', exclude_bad_pixels=True, return_ra
     # extract the mask for cloudy, shadow or no-data pixels
     if exclude_bad_pixels:
         band_names = nc.band_data.attrs['long_name']
-        mask_no_data = nc.band_data.values[band_names.index('FILL_MASK')] == 0
+
         # it happens (rarely) that the data has NAs, but they are not captured in the no-data mask
         mask_na = np.isnan(nc.band_data.values[:13]).any(axis=0)
-        mask_clouds = nc.band_data.values[band_names.index('CLOUD_MASK')] == 1
-        mask_shadow = nc.band_data.values[band_names.index('SHADOW_MASK')] == 1
-        mask_exclude = (mask_no_data | mask_na | mask_clouds | mask_shadow)
+
+        # include in the nodata mask the pixels covered by clouds or shadows
+        mask_clouds_and_shadows = ~(nc.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
+        mask_no_data = nc.band_data.values[band_names.index('FILL_MASK')] == 0
+
+        mask_exclude = (mask_na | mask_no_data | mask_clouds_and_shadows)
     else:
         mask_exclude = np.zeros_like(mask)
     mask[mask_exclude] = False
-    mask.sum()
     preds[mask_exclude] = False
 
     dx = nc.rio.resolution()[0]
@@ -54,7 +56,11 @@ def compute_stats(fp, mask_name='mask_crt_g', exclude_bad_pixels=True, return_ra
     stats['recall'] = recall
 
     # add debris-specific stats
-    mask_debris = (nc.mask_debris_crt_g.values == 1) & mask
+    if 'mask_debris_crt_g' in nc.data_vars:
+        mask_debris = (nc.mask_debris_crt_g.values == 1) & mask
+    else:
+        mask_debris = np.zeros_like(mask)
+
     area_debris = np.sum(mask_debris) * f_area
     area_debris_recalled = np.sum(mask_debris & preds) * f_area
     recall_debris = area_debris_recalled / area_debris if area_debris > 0 else np.nan

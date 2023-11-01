@@ -34,18 +34,22 @@ def extract_inputs(ds, fp, input_settings):
         mask_no_data |= mask_na
 
     # include in the nodata mask the pixels covered by clouds or shadows
-    mask_clouds = ds.band_data.values[band_names.index('CLOUD_MASK')] == 1
-    mask_shadow = ds.band_data.values[band_names.index('SHADOW_MASK')] == 1
-    mask_no_data |= (mask_clouds | mask_shadow)
+    mask_clouds_and_shadows = ~(ds.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
+    mask_no_data |= mask_clouds_and_shadows
 
     data = {
         's2_bands': s2_bands,
         'mask_no_data': mask_no_data,
         'mask_crt_g': ds.mask_crt_g.values == 1,
         'mask_all_g': ds.mask_all_g_id.values != -1,
-        'mask_debris_crt_g': ds.mask_debris_crt_g.values == 1,
         'fp': str(fp),
     }
+
+    # add the debris mask if exists; otherwise assume no debris (s.t. the evaluation scores don't fail; should fix this)
+    if 'mask_debris_crt_g' in ds.data_vars:
+        data['mask_debris_crt_g'] = (ds.mask_debris_crt_g.values == 1)
+    else:
+        data['mask_debris_crt_g'] = np.zeros_like(ds.mask_crt_g.values)
 
     if input_settings['elevation']:
         dem = ds.dem.values.astype(np.float32)
