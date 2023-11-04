@@ -1,6 +1,11 @@
 import pandas as pd
 import numpy as np
 import xarray as xr
+from pathlib import Path
+import json
+
+from .data_prep import add_glacier_masks
+import config as C
 
 
 def compute_normalization_stats(fp):
@@ -70,3 +75,66 @@ def aggregate_normalization_stats(df):
     df_stats_agg = pd.DataFrame(stats_agg)
 
     return df_stats_agg
+
+
+def compute_cloud_stats(gl_sdf):
+    assert len(gl_sdf) == 1, 'Expecting a dataframe with a single entry.'
+    row = gl_sdf.iloc[0]
+    fp = Path(row.fp_img)
+    stats = {'fp_img': str(fp)}
+    nc = xr.open_dataset(fp)
+
+    # keep only the mask bands
+    band_names = list(nc.band_data.attrs['long_name'])
+    idx_bands_to_keep = [band_names.index(b) for b in band_names if 'MASK' in b]
+    band_names = [band_names[i] for i in idx_bands_to_keep]
+    nc = nc.isel(band=idx_bands_to_keep)
+
+    # read the metadata from the same directory
+    with open(fp.with_suffix('.json'), 'r') as f:
+        metadata = json.load(f)
+
+    # get the glacier ID
+    entry_id_i = row.entry_id_i
+    s2_data = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=C.S2.PATCH_RADIUS * C.S2.GSD)
+
+    # get the cloud percentage for the entire image which should be automatically computed by geedim
+    # if the image comes from multiple tiles, use the one with the highest coverage
+    _fill_portion_list = [metadata['imgs_props'][k]['FILL_PORTION'] for k in metadata['imgs_props']]
+    k = list(metadata['imgs_props'].keys())[np.argmax(_fill_portion_list)]
+    cloudless_p_meta = metadata['imgs_props'][k]['CLOUDLESS_PORTION'] / 100
+    fill_p_meta = metadata['imgs_props'][k]['FILL_PORTION'] / 100
+    stats['cloud_p_meta'] = 1 - cloudless_p_meta
+    stats['fill_p_meta'] = fill_p_meta
+
+    # prepare the cloud masks, either using the provided CLOUDLESS_MASK band
+    #   or the one composed by the bands FILL_MASK | CLOUD_MASK | SHADOW_MASK
+    fill_mask = s2_data.band_data.isel(band=band_names.index('FILL_MASK')).data
+    fill_p = np.nansum(fill_mask == 1) / np.prod(fill_mask.shape)
+    cloud_mask_v1 = (s2_data.band_data.isel(band=band_names.index('CLOUDLESS_MASK')).data != 1)
+    cloud_p_v1 = np.nansum(cloud_mask_v1 == 1) / np.prod(cloud_mask_v1.shape)
+    cloud_mask = s2_data.band_data.isel(band=band_names.index('CLOUD_MASK')).data
+    shadow_mask = s2_data.band_data.isel(band=band_names.index('SHADOW_MASK')).data
+    cloud_mask_v2 = (cloud_mask == 1) | (shadow_mask == 1) | (fill_mask != 1)
+    cloud_p_v2 = np.nansum(cloud_mask_v2 == 1) / np.prod(cloud_mask_v2.shape)
+
+    # compute the glacier-level cloud percentage using the 20m buffer
+    gl_mask = (s2_data.mask_crt_g_b20.values == 1)
+    cloud_mask_v1_gl_only = ((cloud_mask_v1 == 1) & gl_mask)
+    cloud_mask_v2_gl_only = ((cloud_mask_v2 == 1) & gl_mask)
+    cloud_p_v1_gl_only = np.sum(cloud_mask_v1_gl_only) / np.sum(gl_mask)
+    cloud_p_v2_gl_only = np.sum(cloud_mask_v2_gl_only) / np.sum(gl_mask)
+
+    # get the tile-level cloud percentage
+    tile_level_cloud_p = metadata['imgs_props_extra'][k]['CLOUDY_PIXEL_PERCENTAGE'] / 100
+
+    # save and return the stats
+    stats['fill_p'] = fill_p
+    stats['cloud_p_v1'] = cloud_p_v1
+    stats['cloud_p_v2'] = cloud_p_v2
+    stats['tile_level_cloud_p'] = tile_level_cloud_p
+    stats['cloud_p_v1_gl_only'] = cloud_p_v1_gl_only
+    stats['cloud_p_v2_gl_only'] = cloud_p_v2_gl_only
+    stats['entry_id'] = row.entry_id
+
+    return stats
