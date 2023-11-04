@@ -44,11 +44,13 @@ def test_model(settings, fold, test_per_glacier=False, glacier_id_list=None, che
 
     # Task
     task_params = settings['task']
-    task = GlSegTask(model=model, task_params=task_params, outdir=Path(checkpoint).parent.parent)
+    task = GlSegTask(model=model, task_params=task_params)
     logger.info(f'Loading model from {checkpoint}')
+    device = f"cuda:{settings['trainer']['devices'][0]}" if settings['trainer']['accelerator'] == 'gpu' else 'cpu'
     if checkpoint is not None:  # allow using non-trainable models
         task.load_from_checkpoint(
             checkpoint_path=checkpoint,
+            map_location=device,
             model=model,
             task_params=task_params
         )
