@@ -1,6 +1,8 @@
 import numpy as np
+import rasterio
 import shapely
 import config as C
+import xarray as xr
 
 
 def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
@@ -47,3 +49,36 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
         nc_data_crop[k].rio.write_crs(nc_data.rio.crs, inplace=True)
 
     return nc_data_crop
+
+
+def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df):
+    row_crt_g = gl_df[gl_df.entry_id == entry_id]
+    assert len(row_crt_g) == 1
+
+    # read the raw image
+    nc = xr.open_dataset(fp_img)
+
+    # keep only the bands we need later
+    bands_to_keep = C.S2.BANDS
+    all_bands = list(nc.band_data.long_name)
+    bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
+    nc = nc.drop_isel(band=[all_bands.index(b) for b in bands_to_drop])
+    nc.band_data.attrs['long_name'] = tuple(bands_to_keep)
+    nc['band_data'] = nc.band_data.astype(np.float32)
+    nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)  # not sure why but needed for QGIS
+
+    # add the masks
+    entry_id_int = row_crt_g.iloc[0].entry_id_i
+    nc = add_glacier_masks(nc_data=nc, gl_df=gl_df, entry_id_int=entry_id_int, buffer=C.S2.PATCH_RADIUS * C.S2.GSD)
+
+    # add the DEM
+    nc_dem = xr.open_dataset(fp_dem).isel(band=0)
+    nc_dem = nc_dem.rio.reproject_match(nc, resampling=rasterio.enums.Resampling.bilinear)
+    nc['dem'] = nc_dem.band_data
+
+    # TODO: add the debris masks
+
+    # export
+    fp_out.parent.mkdir(exist_ok=True, parents=True)
+    nc.attrs['s2_fn'] = fp_img.name
+    nc.to_netcdf(fp_out)
