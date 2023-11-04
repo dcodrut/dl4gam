@@ -113,14 +113,23 @@ def data_cv_split(sdf, num_folds, valid_fraction, outlines_split_dir):
         area_cumsumf = sdf.Area.cumsum() / sdf.Area.sum()
         idx_test = (test_lims[0] <= area_cumsumf) & (area_cumsumf < test_lims[1])
         s2_df_test = sdf[idx_test]
-        s2_df_train_valid = sdf[~idx_test]
 
-        # extract the valid for train & valid fold
-        area_cumsumf = s2_df_train_valid.Area.cumsum() / s2_df_train_valid.Area.sum()
-        train_lims = (0.0, 1.0 - valid_fraction)
-        idx_train = (train_lims[0] <= area_cumsumf) & (area_cumsumf < train_lims[1])
-        s2_df_train = s2_df_train_valid[idx_train]
-        s2_df_valid = s2_df_train_valid[~idx_train]
+        # compute the size of the validation relative to the entire set
+        valid_fraction_adj = valid_fraction * ((num_folds - 1) / num_folds)
+
+        # choose the valid set s.t. it acts as a clear boundary between test and train
+        if i_split == 0:
+            test_valid_lims = (test_lims[0], test_lims[1] + valid_fraction_adj)
+        elif i_split == (num_folds - 1):
+            test_valid_lims = (test_lims[0] - valid_fraction_adj, test_lims[1])
+        else:
+            test_valid_lims = (test_lims[0] - valid_fraction_adj / 2, test_lims[1] + valid_fraction_adj / 2)
+        print(test_lims, test_valid_lims)
+        idx_test_valid = (test_valid_lims[0] <= area_cumsumf) & (area_cumsumf < test_valid_lims[1])
+        idx_valid = idx_test_valid & (~idx_test)
+        idx_train = ~idx_test_valid
+        s2_df_train = sdf[idx_train]
+        s2_df_valid = sdf[idx_valid]
 
         df_per_fold = {
             'train': s2_df_train,
