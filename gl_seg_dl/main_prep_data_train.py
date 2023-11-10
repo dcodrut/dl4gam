@@ -6,7 +6,7 @@ from utils.sampling_utils import patchify_s2_data, data_cv_split
 import config as C
 
 if __name__ == "__main__":
-    s2_outlines_fp = Path(C.S2.DIR_OUTLINES_ROOT) / 'raw' / ' c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp'
+    s2_outlines_fp = Path(C.S2.DIR_OUTLINES_ROOT) / 'raw' / 'c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp'
 
     print(f'Reading S2-based glacier outlines from {s2_outlines_fp}')
     s2_df = gpd.read_file(s2_outlines_fp)
