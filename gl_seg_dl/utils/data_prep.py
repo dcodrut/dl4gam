@@ -51,7 +51,21 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
     return nc_data_crop
 
 
-def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df):
+def add_extra_mask(nc_data, mask_name, gdf):
+    # project the outlines on the same CRS as the S2 data
+    gdf_proj = gdf.to_crs(nc_data.rio.crs)
+
+    # get all the polys that intersect the current raster (multiple glaciers can be covered)
+    tmp_raster = nc_data.band_data.isel(band=0).rio.clip(gdf_proj.geometry, drop=False).values
+    mask = (~np.isnan(tmp_raster)).astype(np.int8)
+    nc_data[mask_name] = (('y', 'x'), mask)
+    nc_data[mask_name].attrs['_FillValue'] = -1
+    nc_data[mask_name].rio.write_crs(nc_data.rio.crs, inplace=True)
+
+    return nc_data
+
+
+def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict):
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
 
@@ -67,16 +81,19 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df):
     nc['band_data'] = nc.band_data.astype(np.float32)
     nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)  # not sure why but needed for QGIS
 
-    # add the masks
+    # add the glacier masks
     entry_id_int = row_crt_g.iloc[0].entry_id_i
     nc = add_glacier_masks(nc_data=nc, gl_df=gl_df, entry_id_int=entry_id_int, buffer=C.S2.PATCH_RADIUS * C.S2.GSD)
+
+    # add the extra masks if given
+    if extra_gdf_dict is not None:
+        for k, gdf in extra_gdf_dict.items():
+            nc = add_extra_mask(nc_data=nc, mask_name=f"mask_{k}", gdf=gdf)
 
     # add the DEM
     nc_dem = xr.open_dataset(fp_dem).isel(band=0)
     nc_dem = nc_dem.rio.reproject_match(nc, resampling=rasterio.enums.Resampling.bilinear)
     nc['dem'] = nc_dem.band_data
-
-    # TODO: add the debris masks
 
     # export
     fp_out.parent.mkdir(exist_ok=True, parents=True)

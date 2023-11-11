@@ -9,7 +9,7 @@ from utils.data_prep import prep_raster
 import config as C
 
 
-def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir):
+def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, extra_shp_dict=None):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
     subdir = raw_images_dir.name
@@ -51,7 +51,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir)
         pbar=True
     )
     cloud_stats_df = pd.DataFrame.from_records(all_cloud_stats)
-    cloud_stats_df = cloud_stats_df.sort_values('entry_id')
+    cloud_stats_df = cloud_stats_df.sort_values(['entry_id', 'fp_img'])
     fp_cloud_stats.parent.mkdir(exist_ok=True)
     cloud_stats_df.to_csv(fp_cloud_stats, index=False)
     print(f"cloud stats exported to {fp_cloud_stats}")
@@ -75,6 +75,15 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir)
     gl_df_sel = gl_df_sel.merge(dem_fp_df, on='RGIId')
     fp_dem_list = list(gl_df_sel.fp_dem)
 
+    # read the extra shapefiles if given
+    if extra_shp_dict is not None:
+        extra_gdf_dict = {}
+        for k, fp in extra_shp_dict.items():
+            print(f"Reading the outlines {k} from {fp}")
+            extra_gdf_dict[k] = gpd.read_file(fp)
+    else:
+        extra_gdf_dict = None
+
     # prepare the output paths
     fp_out_list = [Path(out_rasters_dir) / x.parent.name / x.with_suffix('.nc').name for x in fp_img_list]
 
@@ -86,6 +95,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir)
         fp_out=fp_out_list,
         entry_id=list(gl_df_sel.entry_id),
         gl_df=gl_df_all,
+        extra_gdf_dict=extra_gdf_dict,
         num_cores=C.NUM_CORES,
         pbar=True
     )
@@ -93,12 +103,17 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir)
 
 if __name__ == "__main__":
     # S2 data prep
+    s2_extra_shp_dict = {
+        'debris_scherler': '../data/data_gmb/debris/scherler_2018/11_rgi60_CentralEurope_S2_DC_2015_2017_mode.shp',
+        'debris_sgi': '../data/data_gmb/glamos/inventory_sgi2016_r2020/SGI_2016_debriscover.shp',
+    }
     for subdir in [C.S2.DIR_GL_RASTERS_INV, C.S2.DIR_GL_RASTERS_2023]:
         subdir = Path(subdir).name
         settings = dict(
             raw_images_dir=f"../data/sat_data_downloader/external/download/s2/raw/{subdir}",
             dems_dir='../data/external/oggm/s2',
             fp_gl_df_all='../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp',
-            out_rasters_dir=f"../data/external/rasters/s2/{subdir}"
+            out_rasters_dir=f"../data/external/rasters/s2/{subdir}",
+            extra_shp_dict=s2_extra_shp_dict
         )
         prepare_all_rasters(**settings)
