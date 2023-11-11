@@ -165,19 +165,16 @@ def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, pa
                           if smaller than 2 * patch_radius, then patches will overlap
     :return:
     """
-    fp_list = sorted(list((Path(rasters_dir).glob('**/*.nc'))))
-    assert len(fp_list) > 0, f'No netcdf files found in {rasters_dir}'
-
     for i_split in range(1, num_folds + 1):
         for crt_fold in ['train', 'valid', 'test']:
             outlines_split_fp = Path(outlines_split_dir) / f'split_{i_split}' / f'fold_{crt_fold}.shp'
             s2_df_crt_fold = gpd.read_file(outlines_split_fp)
+            entry_id_list = list(s2_df_crt_fold.entry_id)
 
-            fp_list_crt_fold = sorted(
-                list(filter(lambda f: f.parent.name in set(s2_df_crt_fold.GLACIER_NR.astype(str)), fp_list)))
-
-            for g_fp in tqdm(fp_list_crt_fold, desc=f'split = {i_split} / {num_folds}; fold = {crt_fold}'):
-                gl_num = g_fp.parent.name
+            for entry_id in tqdm(entry_id_list, desc=f'split = {i_split} / {num_folds}; fold = {crt_fold}'):
+                fp_list = sorted(list(((Path(rasters_dir) / entry_id).glob('**/*.nc'))))
+                assert len(fp_list) == 1, f'Expected one netcdf file for entry_id = {rasters_dir} in {rasters_dir}'
+                g_fp = fp_list[0]
                 nc = xr.open_dataset(g_fp, decode_coords='all')
 
                 # get the locations of the sampled patches
@@ -191,15 +188,14 @@ def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, pa
                 )
 
                 # build the patches
-                for i in tqdm(range(len(patches_df)), desc=f'Exporting patches for glacier {gl_num}'):
+                for i in range(len(patches_df)):
                     patch_shp = patches_df.iloc[i:i + 1]
                     crt_s2_data = nc.rio.clip(patch_shp.geometry)
 
                     r = patch_shp.iloc[0]
-                    fn = f'{gl_num}_patch_{i}_xc_{r.x_center}_yc_{r.y_center}.nc'
+                    fn = f'{entry_id}_patch_{i}_xc_{r.x_center}_yc_{r.y_center}.nc'
 
-                    patch_fp = Path(patches_dir) / f'split_{i_split}' / f'fold_{crt_fold}'
-                    patch_fp /= Path(*g_fp.parts[-3:-1]) / fn
+                    patch_fp = Path(patches_dir) / f'split_{i_split}' / f'fold_{crt_fold}' / entry_id / fn
                     patch_fp.parent.mkdir(parents=True, exist_ok=True)
 
                     crt_s2_data.to_netcdf(patch_fp)
