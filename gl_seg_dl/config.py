@@ -1,4 +1,4 @@
-NUM_CORES = 8
+NUM_CORES = 16
 
 
 # ######################################################################################################################
@@ -37,3 +37,7 @@ class GLAMOS(S2):
     DIR_GL_RASTERS_INV = f'{DIR}/inv'
     DIR_GL_RASTERS_2023 = f'{DIR}/2023'
     DIRS_INFER = [DIR_GL_RASTERS_INV, DIR_GL_RASTERS_2023]  # directories on which to make glacier-wide inferences
+
+
+class INFERENCE:
+    DIRS_INFER = S2.DIRS_INFER  # directories on which to make glacier-wide inferences

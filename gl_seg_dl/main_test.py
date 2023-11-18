@@ -88,13 +88,13 @@ def test_model(settings, fold, test_per_glacier=False, glacier_id_list=None, che
         logger.info(f'results = {results}')
     else:
         dir_fp = Path(dm.rasters_dir)
-        logger.info(f'Reading the glaciers numbers based on the rasters from {dir_fp}')
+        logger.info(f'Reading the glaciers IDs based on the rasters from {dir_fp}')
         fp_list = list(dir_fp.glob('**/*.nc'))
         glacier_id_list_crt_dir = set([p.parent.name for p in fp_list])
         logger.info(f'#glaciers in the current rasters dir = {len(glacier_id_list_crt_dir)}')
 
         glacier_id_list_final = set(glacier_id_list_crt_dir) & set(glacier_id_list)
-        logger.info(f'finally, #glaciers to test on = {len(glacier_id_list_final)}')
+        logger.info(f'#glaciers to test on = {len(glacier_id_list_final)}')
 
         dl_list = dm.test_dataloaders_per_glacier(gid_list=glacier_id_list_final)
         for dl in tqdm(dl_list, desc='Testing per glacier'):
@@ -170,8 +170,7 @@ if __name__ == "__main__":
     if args.rasters_dir is not None:
         infer_dir_list = [args.rasters_dir]
     else:
-        # infer_dir_list = C.S2.DIRS_INFER
-        infer_dir_list = C.GLAMOS.DIRS_INFER
+        infer_dir_list = C.INFERENCE.DIRS_INFER
 
     # choose the glaciers for the specified fold using the given shapefile
     glacier_ids = None
@@ -180,7 +179,7 @@ if __name__ == "__main__":
         fp = Path(args.split_fp)
         assert fp.suffix in ('.csv', '.shp')
         logger.info(f"Reading the split dataframe from {fp}")
-        split_df = pd.read_csv(fp) if fp.suffix == '.csv' else gpd.read_file(fp)
+        split_df = gpd.read_file(fp, dtype={'entry_id': str})
 
         # get the split on which the current model was trained on
         split_name = f"split_{str(checkpoint_file).split('split_')[1].split('/')[0]}"
