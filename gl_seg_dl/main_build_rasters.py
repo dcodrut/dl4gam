@@ -104,10 +104,10 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
 if __name__ == "__main__":
     # S2 data prep
     s2_extra_shp_dict = {
-        'debris_scherler': '../data/data_gmb/debris/scherler_2018/11_rgi60_CentralEurope_S2_DC_2015_2017_mode.shp',
-        'debris_sgi': '../data/data_gmb/glamos/inventory_sgi2016_r2020/SGI_2016_debriscover.shp',
+        'debris_scherler_2018': '../data/data_gmb/debris/scherler_2018/11_rgi60_CentralEurope_S2_DC_2015_2017_mode.shp',
+        'debris_sgi_2016': '../data/data_gmb/glamos/inventory_sgi2016_r2020/SGI_2016_debriscover.shp',
     }
-    for subdir in [C.S2.DIR_GL_RASTERS_INV, C.S2.DIR_GL_RASTERS_2023]:
+    for subdir in [C.S2.DIR_GL_RASTERS_2023]:
         subdir = Path(subdir).name
         settings = dict(
             raw_images_dir=f"../data/sat_data_downloader/external/download/s2/raw/{subdir}",

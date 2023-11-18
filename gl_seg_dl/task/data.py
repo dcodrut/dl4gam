@@ -53,9 +53,11 @@ def extract_inputs(ds, fp, input_settings):
     if mask_debris_sgi_2016_crt_g.sum() > 0:
         data['mask_debris_crt_g'] = mask_debris_sgi_2016_crt_g
         data['mask_debris_all_g'] = mask_debris_sgi_2016_all_g
+        data['debris_source'] = 'sgi_2016'
     else:
         data['mask_debris_crt_g'] = mask_debris_sherler_2018_crt_g
         data['mask_debris_all_g'] = mask_debris_sherler_2018_all_g
+        data['debris_source'] = 'sherler_2018'
 
     if input_settings['elevation']:
         dem = ds.dem.values.astype(np.float32)
