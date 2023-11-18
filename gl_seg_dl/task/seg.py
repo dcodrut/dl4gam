@@ -8,6 +8,7 @@ from pathlib import Path
 
 # local imports
 from task import loss as losses
+from utils.postprocessing import nn_interp, hypso_interp
 
 
 class GlSegTask(pl.LightningModule):
@@ -16,12 +17,13 @@ class GlSegTask(pl.LightningModule):
 
         self.model = model
         self.loss = getattr(losses, task_params['loss']['name'])(**task_params['loss']['args'])
+        self.thr = 0.5
         self.val_metrics = tm.MetricCollection([
-            tm.Accuracy(threshold=0.5, task='binary'),
-            tm.JaccardIndex(threshold=0.5, task='binary'),
-            tm.Precision(threshold=0.5, task='binary'),
-            tm.Recall(threshold=0.5, task='binary'),
-            tm.F1Score(threshold=0.5, task='binary')
+            tm.Accuracy(threshold=self.thr, task='binary'),
+            tm.JaccardIndex(threshold=self.thr, task='binary'),
+            tm.Precision(threshold=self.thr, task='binary'),
+            tm.Recall(threshold=self.thr, task='binary'),
+            tm.F1Score(threshold=self.thr, task='binary')
         ])
         self.optimizer_settings = task_params['optimization']['optimizer']
         self.lr_scheduler_settings = task_params['optimization']['lr_schedule']
@@ -237,9 +239,32 @@ class GlSegTask(pl.LightningModule):
         # store the predictions as xarray based on the original nc
         nc_pred = nc.copy()
         nc_pred['pred'] = (('y', 'x'), preds_acc_np)
-        nc_pred['pred'].rio.write_crs(nc_pred.rio.crs, inplace=True)
-        nc_pred['pred_b'] = (('y', 'x'), preds_acc_np >= 0.5)
-        nc_pred['pred_b'].rio.write_crs(nc_pred.rio.crs, inplace=True)
+        nc_pred['pred_b'] = (('y', 'x'), preds_acc_np >= self.thr)
+
+        # fill-in the masked pixels using two different methods
+        data = nc_pred.pred.values
+        mask_to_fill = (nc.band_data.isel(band=nc.band_data.attrs['long_name'].index('CLOUDLESS_MASK')).values != 1)
+        mask_to_fill |= (nc.band_data.isel(band=nc.band_data.attrs['long_name'].index('FILL_MASK')).values != 1)
+        mask_crt_g = (nc.mask_crt_g.values == 1)
+        mask_to_fill &= mask_crt_g
+        mask_ok = (~mask_to_fill) & mask_crt_g
+
+        n_px = 30  # how many pixels to use as source for interpolation value
+        if mask_to_fill.sum() > 0 and mask_ok.sum() >= n_px:
+            # use the nearest neighbours
+            data_interp = nn_interp(data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, num_nn=n_px)
+            nc_pred['pred_i_nn'] = (('y', 'x'), data_interp)
+            nc_pred['pred_i_nn_b'] = (('y', 'x'), data_interp >= self.thr)
+
+            # use the pixels with the closest elevations
+            dem = nc_pred.dem.values
+            data_interp = hypso_interp(data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, dem=dem, num_px=n_px)
+            nc_pred['pred_i_hypso'] = (('y', 'x'), data_interp)
+            nc_pred['pred_i_hypso_b'] = (('y', 'x'), data_interp >= self.thr)
+
+        # add the CRS to the new data arrays
+        for c in [_c for _c in nc_pred.data_vars if 'pred' in _c]:
+            nc_pred[c].rio.write_crs(nc_pred.rio.crs, inplace=True)
 
         gl_id = Path(cube_fp).parent.name
         cube_pred_fp = Path(self.outdir) / gl_id / Path(cube_fp).name
