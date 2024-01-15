@@ -121,7 +121,7 @@ def compute_stats(fp, mask_name='mask_crt_g', exclude_bad_pixels=True, return_ra
         stats[f'term_y_m_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(nc.y.values[idx[0]]))
 
     # save the filename of the original S2 data
-    stats['s2_fn'] = nc.attrs['s2_fn']
+    stats['fn'] = nc.attrs['fn']
 
     if not return_rasters:
         return stats
