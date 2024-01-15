@@ -173,9 +173,9 @@ def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, pa
 
             for entry_id in tqdm(entry_id_list, desc=f'split = {i_split} / {num_folds}; fold = {crt_fold}'):
                 fp_list = sorted(list(((Path(rasters_dir) / entry_id).glob('**/*.nc'))))
-                assert len(fp_list) == 1, f'Expected one netcdf file for entry_id = {rasters_dir} in {rasters_dir}'
+                assert len(fp_list) == 1, f'Expected one netcdf file for entry_id = {entry_id} in {rasters_dir}'
                 g_fp = fp_list[0]
-                nc = xr.open_dataset(g_fp, decode_coords='all')
+                nc = xr.open_dataset(g_fp, decode_coords='all').load()
 
                 # get the locations of the sampled patches
                 patches_df = get_patches_gdf(

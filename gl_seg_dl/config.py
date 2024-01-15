@@ -1,5 +1,6 @@
 NUM_CORES = 16
 
+DATASET_NAME = 'PS'
 
 class S2:
     DIR = f'../data/external/rasters/s2'
