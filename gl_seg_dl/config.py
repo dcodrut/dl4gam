@@ -1,9 +1,6 @@
 NUM_CORES = 16
 
 
-# ######################################################################################################################
-# ######################################################## S2 ##########################################################
-# ######################################################################################################################
 class S2:
     DIR = f'../data/external/rasters/s2'
     DIR_AUX_DATA = f'{DIR}/aux_data'
@@ -41,3 +38,23 @@ class GLAMOS(S2):
 
 class INFERENCE:
     DIRS_INFER = S2.DIRS_INFER  # directories on which to make glacier-wide inferences
+
+
+class PS(S2):
+    DIR = f'../data/external/rasters/ps'
+    DIR_AUX_DATA = f'{DIR}/aux_data'
+    DIR_OUTLINES_ROOT = '../data/outlines/s2'
+    DIR_OUTLINES_SPLIT = f'{DIR_OUTLINES_ROOT}/cv_split'
+    DIR_GL_RASTERS_INV = f'{DIR}/inv'
+    DIR_GL_RASTERS_2023 = f'{DIR}/2023'
+    DIRS_INFER = [DIR_GL_RASTERS_INV, DIR_GL_RASTERS_2023]  # directories on which to make glacier-wide inferences
+
+    # raw -> rasters settings
+    BANDS = ['B', 'G', 'R', 'NIR', 'cloud', 'shadow']
+    GSD = 3
+    NODATA = -9999
+
+    # patch sampling settings
+    PATCH_RADIUS = 256
+    SAMPLING_STEP = 256
+    DIR_GL_PATCHES = f'{DIR}/patches_inv_r_{PATCH_RADIUS}_s_{SAMPLING_STEP}'
