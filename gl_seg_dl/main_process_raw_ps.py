@@ -66,14 +66,15 @@ if __name__ == "__main__":
         for gid in s2_sdf_buffer.GLACIER_NR:
             gl_to_box[gid] = row.fn
     gl_to_box_df = pd.Series(gl_to_box).reset_index().rename(columns={'index': 'gl_num', 0: 'fn'})
-    print(gl_to_box_df)
+    gl_to_box_df = gl_to_box_df.sort_values('gl_num')
+    gl_to_box_df.to_csv('../data/data_gmb/data_gl_seg/external/planet/inv/gl_to_box_df.csv')
 
     # manually compose a few images which were not downloaded as composite
     if False:
         import rioxarray
         import rioxarray.merge
 
-        fp_list = list(Path('../data/data_gl_seg/external/planet/inv/raw/').glob('**/*.tif'))
+        fp_list = list(Path('../data/data_gmb/data_gl_seg/external/planet/inv/raw/').glob('**/*.tif'))
         # remove the Unusable Data Masks
         fp_list = list(filter(lambda x: 'udm2' not in x.name, fp_list))
         for suf in ['.tif', '_udm2.tif']:
@@ -109,6 +110,39 @@ if __name__ == "__main__":
     s2_df_buffer_box = s2_df_buffer.rename(columns={'GLACIER_NR': 'gl_num'}).merge(gl_to_box_df)
     print(s2_df_buffer_box)
 
+    # build a pandas dataframe with the corresponding image data for each glacier
+    # in most of the cases, there should be one single date; treat the exceptions manually
+    dates_shp_dir = Path('../data/data_gmb/data_gl_seg/external/planet/inv/dates_mixed')
+    boxes_with_mixed_dates = [
+        'boxes_2015-08-29_tile_32TLR_items_1',
+        'boxes_2015-08-29_tile_32TMS_items_14',
+        'boxes_2015-08-29_tile_32TMS_items_19',
+        'boxes_2016-09-29_tile_32TPS_items_6-10'
+    ]
+    gl_to_date = {}
+    for raw_fp in tqdm(sorted(set(s2_df_buffer_box.fp))):
+        # get all the glaciers from the current box
+        box_name = Path(str(raw_fp).split('_pss')[0]).name
+        gid_list = list(s2_df_buffer_box[s2_df_buffer_box.fn == box_name].gl_num)
+
+        # get the acquisition dates using the metadata file names
+        meta_files = list(filter(lambda s: 'composite' not in s.name, list(raw_fp.parent.glob('*_metadata.json'))))
+        dates = sorted(list(set([fp.stem[:8] for fp in meta_files])))
+
+        if box_name in boxes_with_mixed_dates:
+            _fp = dates_shp_dir / box_name / f"{dates[0]}.shp"
+            gid_list_first_date = list(gpd.read_file(_fp).GLACIER_NR)
+            assert len(set(gid_list_first_date) - set(gid_list)) == 0
+            gl_to_date.update({gid: dates[0] for gid in gid_list_first_date})
+            gl_to_date.update({gid: dates[1] for gid in set(gid_list) - set(gid_list_first_date)})
+        else:
+            assert len(dates) == 1
+            gl_to_date.update({gid: dates[0] for gid in gid_list})
+    gl_to_date_df = pd.Series(gl_to_date).reset_index().rename(columns={'index': 'GLACIER_NR', 0: 'date_ps'})
+    gl_to_date_df = gl_to_date_df.sort_values('GLACIER_NR')
+    assert len(gl_to_date_df) == len(gl_to_box_df)
+    gl_to_date_df.to_csv('../data/data_gmb/data_gl_seg/external/planet/inv/dates.csv', index=False)
+
     # cut the image for each glacier
     for box_name in tqdm(sorted(set(s2_df_buffer_box.fn))):
         raw_fp = s2_df_buffer_box[s2_df_buffer_box.fn == box_name].fp.iloc[0]
@@ -132,24 +166,15 @@ if __name__ == "__main__":
         img_planet_with_mask = img_planet_with_mask.assign_coords(band=np.arange(len(img_planet_with_mask.band)) + 1)
         img_planet_with_mask.attrs['long_name'] = ['B', 'G', 'R', 'NIR', 'cloud', 'shadow']
 
-        # keep the most frequent day from the composite as the representative one
-        meta_files = list(filter(lambda s: 'composite' not in s.name, list(raw_fp.parent.glob('*_metadata.json'))))
-        dates = [fp.stem[:8] for fp in meta_files]
-        date_most_f = max(dates, key=x.count)
-
-        # get also the time of the first image with the most frequent date
-        date_time_most_f = list(filter(lambda s: s.stem[:8] == date_most_f, meta_files))[0].name[:15]
-        if len(set(dates)) > 1:
-            print(dates, date_most_f, date_time_most_f, meta_files)
-        img_planet_with_mask.attrs['date_time_most_f'] = date_time_most_f
-
         s2_sdf_buffer_box = s2_df_buffer_box[s2_df_buffer_box.fp == raw_fp].to_crs(img_planet_with_mask.rio.crs)
         for j in tqdm(range(len(s2_sdf_buffer_box)), desc=box_name):
             r = s2_sdf_buffer_box.iloc[j]
-            fp_out = output_dir / f"{r.gl_num:04d}" / f"{date_most_f}.tif"
+            date = gl_to_date[r.gl_num]
+            fp_out = output_dir / f"{r.gl_num:04d}" / f"{date}.tif"
             if fp_out.exists():
                 continue
             img_crt_g = img_planet_with_mask.rio.clip([r.geometry])
+            img_crt_g.attrs['fn'] = date
             fp_out.parent.mkdir(parents=True, exist_ok=True)
             img_crt_g.rio.to_raster(fp_out)
 
