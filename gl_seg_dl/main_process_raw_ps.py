@@ -13,7 +13,7 @@ import config as C
 
 if __name__ == "__main__":
     input_dir = Path('../data/data_gmb/data_gl_seg/external/planet/inv/raw/')
-    output_dir = Path('../data/data_gmb/data_gl_seg/external/planet/inv/raw_processed/')
+    output_dir = Path('../data/data_gmb/data_gl_seg/external/planet/raw_processed/inv/')
 
     # prepare the glacier outlines and their buffers
     outlines_fp = '../data/data_gmb/outlines_2015/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp'

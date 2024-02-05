@@ -9,35 +9,42 @@ from tqdm import tqdm
 import itertools
 
 # local imports
-import config as C
+from config import C
 
 
-def compute_stats(fp, mask_name='mask_crt_g', exclude_bad_pixels=True, return_rasters=False):
+def compute_stats(fp, dataset_name, mask_name='mask_crt_g', exclude_bad_pixels=True, return_rasters=False):
     stats = {'fp': fp}
 
     nc = xr.open_dataset(fp)
+    # hack: assume perfect predictions when plotting only the images and not the results
+    if 'pred' not in nc.data_vars:
+        nc['pred'] = (nc.mask_crt_g == 1)
+        nc['pred_b'] = nc['pred']
 
     # get the predictions and the ground truth
     mask = (nc[mask_name].values == 1)
-
-    if 'crt_g_pred_b' in nc.data_vars:
-        # TODO fix this
-        preds = nc.crt_g_pred_b.values
-    else:
-        preds = nc.pred_b.values
+    preds = nc.pred_b.values
 
     # extract the mask for cloudy, shadow or no-data pixels
     if exclude_bad_pixels:
         band_names = nc.band_data.attrs['long_name']
+        if dataset_name[:2] == 'S2':
+            # it happens (rarely) that the data has NAs, but they are not captured in the no-data mask
+            mask_na = np.isnan(nc.band_data.values[:13]).any(axis=0)
 
-        # it happens (rarely) that the data has NAs, but they are not captured in the no-data mask
-        mask_na = np.isnan(nc.band_data.values[:13]).any(axis=0)
+            # include in the nodata mask the pixels covered by clouds or shadows
+            mask_clouds_and_shadows = ~(nc.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
+            mask_no_data = nc.band_data.values[band_names.index('FILL_MASK')] == 0
 
-        # include in the nodata mask the pixels covered by clouds or shadows
-        mask_clouds_and_shadows = ~(nc.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
-        mask_no_data = nc.band_data.values[band_names.index('FILL_MASK')] == 0
+            mask_exclude = (mask_na | mask_no_data | mask_clouds_and_shadows)
+        elif dataset_name == 'PS':
+            # do the same as for S2 (not sure if any no-data mask is available anyway)
+            mask_na = np.isnan(nc.band_data.values[:4]).any(axis=0)
 
-        mask_exclude = (mask_na | mask_no_data | mask_clouds_and_shadows)
+            # TODO (maybe): use the shadow mask
+            mask_exclude = mask_na
+        else:
+            raise NotImplementedError
     else:
         mask_exclude = np.zeros_like(mask)
     mask[mask_exclude] = False
@@ -70,7 +77,7 @@ def compute_stats(fp, mask_name='mask_crt_g', exclude_bad_pixels=True, return_ra
 
     # compute the FPs for the non-glacierized area (where predictions are made)
     mask_preds_exist = ~np.isnan(nc.pred.values)
-    mask_non_g = (nc.mask_all_g_id.values == -1) & mask_preds_exist & (~mask_exclude)
+    mask_non_g = np.isnan(nc.mask_all_g_id.values) & mask_preds_exist & (~mask_exclude)
     area_non_g = np.sum(mask_non_g) * f_area
     mask_fp = preds & mask_non_g
     area_fp = np.sum(mask_fp) * f_area
@@ -166,10 +173,11 @@ if __name__ == "__main__":
                 _compute_stats = partial(
                     compute_stats,
                     exclude_bad_pixels=exclude_bad_pixels,
-                    mask_name=mask_name
+                    mask_name=mask_name,
+                    dataset_name=C.__name__
                 )
 
-                with multiprocessing.Pool(C.S2.NUM_CORES_EVAL) as pool:
+                with multiprocessing.Pool(C.NUM_CORES_EVAL) as pool:
                     all_metrics = []
                     for metrics in tqdm(
                             pool.imap_unordered(_compute_stats, fp_list, chunksize=1), total=len(fp_list),

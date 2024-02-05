@@ -51,7 +51,7 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
 
 
 def add_extra_mask(nc_data, mask_name, gdf):
-    # project the outlines on the same CRS as the S2 data
+    # project the outlines on the same CRS as the image data
     gdf_proj = gdf.to_crs(nc_data.rio.crs)
 
     # get all the polys that intersect the current raster (multiple glaciers can be covered)
@@ -64,7 +64,7 @@ def add_extra_mask(nc_data, mask_name, gdf):
     return nc_data
 
 
-def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, consts):
+def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_to_keep, buffer_px, no_data):
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
 
@@ -72,7 +72,6 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, consts)
     nc = xr.open_dataset(fp_img)
 
     # keep only the bands we need later
-    bands_to_keep = consts.BANDS
     all_bands = list(nc.band_data.long_name)
     bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
     if len(bands_to_drop) > 0:
@@ -81,7 +80,8 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, consts)
 
     # add the glacier masks
     entry_id_int = row_crt_g.iloc[0].entry_id_i
-    buffer = consts.PATCH_RADIUS * consts.GSD
+    dx = nc.rio.resolution()[0]
+    buffer = buffer_px * dx
     nc = add_glacier_masks(nc_data=nc, gl_df=gl_df, entry_id_int=entry_id_int, buffer=buffer)
 
     # add the extra masks if given
@@ -90,14 +90,14 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, consts)
             nc = add_extra_mask(nc_data=nc, mask_name=f"mask_{k}", gdf=gdf)
 
     # convert the image data to int16
-    nc['band_data'] = nc.band_data.fillna(consts.NODATA).astype(np.int16)
-    nc['band_data'].attrs['_FillValue'] = consts.NODATA
+    nc['band_data'] = nc.band_data.fillna(no_data).astype(np.int16)
+    nc['band_data'].attrs['_FillValue'] = no_data
     nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)  # not sure why but needed for QGIS
 
     # add the DEM
     nc_dem = xr.open_dataset(fp_dem, mask_and_scale=False).isel(band=0)
     nc_dem = nc_dem.rio.reproject_match(nc, resampling=rasterio.enums.Resampling.bilinear)
-    nc_dem['band_data'].attrs['_FillValue'] = consts.NODATA
+    nc_dem['band_data'].attrs['_FillValue'] = no_data
     nc['dem'] = nc_dem.band_data
 
     # export

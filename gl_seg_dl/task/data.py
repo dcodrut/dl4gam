@@ -13,35 +13,48 @@ from utils.sampling_utils import get_patches_gdf
 
 def extract_inputs(ds, fp, input_settings):
     band_names = ds.band_data.attrs['long_name']
-    idx_bands = [band_names.index(b) for b in input_settings['s2_bands']]
-    s2_bands = ds.band_data.isel(band=idx_bands).values.astype(np.float32)
+    idx_bands = [band_names.index(b) for b in input_settings['bands']]
+    band_data = ds.band_data.isel(band=idx_bands).values.astype(np.float32)
 
-    # extract the provided nodata mask
-    mask_no_data = ds.band_data.values[band_names.index('FILL_MASK')] == 0
+    dataset_name = input_settings['dataset_name']
+    data_source = dataset_name[:2]
+
+    # extract the provided nodata mask if exists
+    if data_source == 'S2':
+        mask_no_data = ds.band_data.values[band_names.index('FILL_MASK')] == 0
+    elif data_source == 'PS':
+        mask_no_data = np.zeros_like(ds.band_data.isel(band=0).values).astype(bool)
+    else:
+        raise NotImplementedError
 
     # include to the nodata mask any NaN pixel
     # (it happened once that a few pixels were missing only from the last band but the mask did not include them)
-    mask_na_per_band = np.isnan(s2_bands)
+    mask_na_per_band = np.isnan(band_data)
     if mask_na_per_band.sum() > 0:
         idx_na = np.where(mask_na_per_band)
 
         # fill in the gaps with the average
-        avg_per_band = np.nansum(np.nansum(s2_bands, axis=-1), axis=-1) / np.prod(s2_bands.shape[-2:])
-        s2_bands[idx_na[0], idx_na[1], idx_na[2]] = avg_per_band[idx_na[0]]
+        avg_per_band = np.nansum(np.nansum(band_data, axis=-1), axis=-1) / np.prod(band_data.shape[-2:])
+        band_data[idx_na[0], idx_na[1], idx_na[2]] = avg_per_band[idx_na[0]]
 
         # make sure that these pixels are masked in mask_no_data too
         mask_na = mask_na_per_band.any(axis=0)
         mask_no_data |= mask_na
 
     # include in the nodata mask the pixels covered by clouds or shadows
-    mask_clouds_and_shadows = ~(ds.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
-    mask_no_data |= mask_clouds_and_shadows
+    if data_source == 'S2':
+        mask_clouds_and_shadows = ~(ds.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
+        # mask_no_data |= mask_clouds_and_shadows
+    elif data_source == 'PS':
+        # use only the shadow mask (the clouds one seems to be on most of the time for the ice areas...)
+        mask_shadows = (ds.band_data.values[band_names.index('shadow')] == 1)
+        mask_no_data |= mask_shadows
 
     data = {
-        's2_bands': s2_bands,
+        'band_data': band_data,
         'mask_no_data': mask_no_data,
         'mask_crt_g': ds.mask_crt_g.values == 1,
-        'mask_all_g': ds.mask_all_g_id.values != -1,
+        'mask_all_g': ~np.isnan(ds.mask_all_g_id.values),
         'fp': str(fp),
     }
 
@@ -70,15 +83,15 @@ def extract_inputs(ds, fp, input_settings):
 
 def standardize_inputs(data, stats_df, scale_each_band):
     band_data_sdf = stats_df[stats_df.var_name.apply(lambda s: 'band' in s)]
-    mu = band_data_sdf.mu.values[:len(data['s2_bands'])]
-    stddev = band_data_sdf.stddev.values[:len(data['s2_bands'])]
+    mu = band_data_sdf.mu.values[:len(data['band_data'])]
+    stddev = band_data_sdf.stddev.values[:len(data['band_data'])]
 
     if not scale_each_band:
         mu[:] = mu.mean()
         stddev[:] = stddev.mean()
 
-    data['s2_bands'] -= mu[:, None, None]
-    data['s2_bands'] /= stddev[:, None, None]
+    data['band_data'] -= mu[:, None, None]
+    data['band_data'] /= stddev[:, None, None]
 
     # do the same for the static variables
     for v in ['dem']:
@@ -94,15 +107,15 @@ def standardize_inputs(data, stats_df, scale_each_band):
 
 def minmax_scale_inputs(data, stats_df, scale_each_band):
     band_data_sdf = stats_df[stats_df.var_name.apply(lambda s: 'band' in s)]
-    vmin = band_data_sdf.vmin.values[:len(data['s2_bands'])]
-    vmax = band_data_sdf.vmax.values[:len(data['s2_bands'])]
+    vmin = band_data_sdf.vmin.values[:len(data['band_data'])]
+    vmax = band_data_sdf.vmax.values[:len(data['band_data'])]
 
     if not scale_each_band:
         vmin[:] = vmin.min()
         vmax[:] = vmax.max()
 
-    data['s2_bands'] -= vmin[:, None, None]
-    data['s2_bands'] /= (vmax[:, None, None] - vmin[:, None, None])
+    data['band_data'] -= vmin[:, None, None]
+    data['band_data'] /= (vmax[:, None, None] - vmin[:, None, None])
 
     # do the same for the static variables
     for v in ['dem']:

@@ -1,13 +1,13 @@
 data:
-  data_root_dir: '../data/external/s2_data/patches_orig_r_128_s_128/split_1'
+  data_root_dir: '../data/external/wd/s2/inv/patches/r_128_s_128/split_1'
   train_dir_name: 'fold_train'
   val_dir_name: 'fold_valid'
   test_dir_name: 'fold_test'
-  rasters_dir: '../data/s2_data/rasters'
+  rasters_dir: '../data/external/wd/s2/inv/glacier_wide'
   minmax_scale_data: False
   standardize_data: True
   scale_each_band: True
-  data_stats_fp: '../data/external/s2_data/aux_data/patches_orig_r_128_s_128/split_1/stats_train_patches_agg.csv'
+  data_stats_fp: '../data/external/wd/s2/inv/aux_data/norm_stats/r_128_s_128/split_1/stats_train_patches_agg.csv'
   train_batch_size: 16
   val_batch_size: 32
   test_batch_size: 32
@@ -35,7 +35,7 @@ task:
 
 logger:
   save_dir: '../data/external/scratch/experiments_server'
-  name: 'unet/cv/split_1'
+  name: 'unet/ps_vs_s2/s2/split_1'
 
 trainer:
   devices: [ 0 ]
@@ -50,11 +50,14 @@ model:
   class: 'SegModel'
   name: 'Unet'
   inputs:
-    s2_bands: [ 'B4', 'B3', 'B2', 'B8', 'B12']
+    dataset_name: 'S2'
+    bands: [ 'B4', 'B3', 'B2', 'B8', 'B12']
     elevation: True
   args:
+#    encoder_name: 'resnet50'
     encoder_name: 'resnet34'
     encoder_weights: 'imagenet'
+#    encoder_weights: null
     encoder_depth: 5
     activation: 'sigmoid'
     decoder_use_batchnorm: False

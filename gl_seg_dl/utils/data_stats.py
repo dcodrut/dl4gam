@@ -4,8 +4,8 @@ import xarray as xr
 from pathlib import Path
 import json
 
+# local imports
 from .data_prep import add_glacier_masks
-import config as C
 
 
 def compute_normalization_stats(fp):
@@ -77,7 +77,7 @@ def aggregate_normalization_stats(df):
     return df_stats_agg
 
 
-def compute_cloud_stats(gl_sdf):
+def compute_cloud_stats(gl_sdf, buffer_px):
     assert len(gl_sdf) == 1, 'Expecting a dataframe with a single entry.'
     row = gl_sdf.iloc[0]
     fp = Path(row.fp_img)
@@ -96,7 +96,9 @@ def compute_cloud_stats(gl_sdf):
 
     # get the glacier ID
     entry_id_i = row.entry_id_i
-    s2_data = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=C.S2.PATCH_RADIUS * C.S2.GSD)
+    dx = nc.rio.resolution()[0]
+    buffer = buffer_px * dx
+    nc = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=buffer)
 
     # get the cloud percentage for the entire image which should be automatically computed by geedim
     # if the image comes from multiple tiles, use the one with the highest coverage
@@ -109,17 +111,17 @@ def compute_cloud_stats(gl_sdf):
 
     # prepare the cloud masks, either using the provided CLOUDLESS_MASK band
     #   or the one composed by the bands FILL_MASK | CLOUD_MASK | SHADOW_MASK
-    fill_mask = s2_data.band_data.isel(band=band_names.index('FILL_MASK')).data
+    fill_mask = nc.band_data.isel(band=band_names.index('FILL_MASK')).data
     fill_p = np.nansum(fill_mask == 1) / np.prod(fill_mask.shape)
-    cloud_mask_v1 = (s2_data.band_data.isel(band=band_names.index('CLOUDLESS_MASK')).data != 1)
+    cloud_mask_v1 = (nc.band_data.isel(band=band_names.index('CLOUDLESS_MASK')).data != 1)
     cloud_p_v1 = np.nansum(cloud_mask_v1 == 1) / np.prod(cloud_mask_v1.shape)
-    cloud_mask = s2_data.band_data.isel(band=band_names.index('CLOUD_MASK')).data
-    shadow_mask = s2_data.band_data.isel(band=band_names.index('SHADOW_MASK')).data
+    cloud_mask = nc.band_data.isel(band=band_names.index('CLOUD_MASK')).data
+    shadow_mask = nc.band_data.isel(band=band_names.index('SHADOW_MASK')).data
     cloud_mask_v2 = (cloud_mask == 1) | (shadow_mask == 1) | (fill_mask != 1)
     cloud_p_v2 = np.nansum(cloud_mask_v2 == 1) / np.prod(cloud_mask_v2.shape)
 
     # compute the glacier-level cloud percentage using the 20m buffer
-    gl_mask = (s2_data.mask_crt_g_b20.values == 1)
+    gl_mask = (nc.mask_crt_g_b20.values == 1)
     cloud_mask_v1_gl_only = ((cloud_mask_v1 == 1) & gl_mask)
     cloud_mask_v2_gl_only = ((cloud_mask_v2 == 1) & gl_mask)
     cloud_p_v1_gl_only = np.sum(cloud_mask_v1_gl_only) / np.sum(gl_mask)

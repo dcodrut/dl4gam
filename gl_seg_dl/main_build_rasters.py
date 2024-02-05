@@ -1,19 +1,20 @@
 import geopandas as gpd
 import pandas as pd
 from pathlib import Path
+import functools
 
 # local imports
 from utils.data_stats import compute_cloud_stats
-from utils.general import run_in_parallel
 from utils.data_prep import prep_raster
-import config as C
+from utils.general import run_in_parallel
+from config import C
 
 
-def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, consts, extra_shp_dict=None,
-                        min_area=None, choose_least_cloudy=False):
+def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
+                        num_cores, extra_shp_dict=None, min_area=None, choose_least_cloudy=False, max_cloud_f=None,
+                        max_n_imgs_per_g=1):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
-    subdir = raw_images_dir.name
 
     print(f"Reading the glacier outlines in from {fp_gl_df_all}")
     gl_df_all = gpd.read_file(fp_gl_df_all)
@@ -40,24 +41,23 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
     print(f"#total raw images = {len(raw_fp_df)}")
 
     # add the filepaths to the selected glaciers and check the data coverage
+    gid_list = set(gl_df_sel.entry_id)
     gl_df_sel = gl_df_sel.merge(raw_fp_df, on='entry_id', how='inner')  # we allow missing images
-    _ng = len(set(gl_df_sel.entry_id))
-    _ni = len(gl_df_sel)
-    print(f'after matching: '
-          f'#raw images = {_ni}; #glaciers covered in the raw images = {_ng}; #images/glacier = {_ni / _ng:.1f}')
+    print(f"avg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+    print(f"#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} ({n / len(gid_list) * 100:.1f}%)")
 
     # compute the cloud coverage statistics for each downloaded image if needed
     if choose_least_cloudy:
-        fp_cloud_stats = raw_images_dir.parent.parent / 'cloud_stats' / f"cloud_stats_{subdir}.csv"
         all_cloud_stats = run_in_parallel(
-            fun=compute_cloud_stats,
+            fun=functools.partial(compute_cloud_stats, buffer_px=buffer_px),
             gl_sdf=[gl_df_sel[i:i + 1] for i in range(len(gl_df_sel))],
-            num_cores=C.NUM_CORES,
+            num_cores=num_cores,
             pbar=True
         )
         cloud_stats_df = pd.DataFrame.from_records(all_cloud_stats)
         cloud_stats_df = cloud_stats_df.sort_values(['entry_id', 'fp_img'])
-        fp_cloud_stats.parent.mkdir(exist_ok=True)
+        fp_cloud_stats = Path(out_rasters_dir).parent / 'aux_data' / 'cloud_stats.csv'
+        fp_cloud_stats.parent.mkdir(exist_ok=True, parents=True)
         cloud_stats_df.to_csv(fp_cloud_stats, index=False)
         print(f"cloud stats exported to {fp_cloud_stats}")
         cloud_stats_df.fp_img = cloud_stats_df.fp_img.apply(lambda s: Path(s))
@@ -65,7 +65,19 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         # choose the least cloudy images and prepare the paths
         col_prc_clouds = 'cloud_p_v1_gl_only'
         gl_df_sel = gl_df_sel.merge(cloud_stats_df[['fp_img', col_prc_clouds]], on='fp_img')
-        gl_df_sel = gl_df_sel.sort_values(col_prc_clouds).groupby('entry_id').first().reset_index()
+
+        # impose the max cloudiness threshold if given (this includes missing pixels)
+        if max_cloud_f is not None:
+            gl_df_sel = gl_df_sel[gl_df_sel[col_prc_clouds] <= max_cloud_f]
+
+        # keep the best n images (favour those close to 20.08 in case many images are cloud free)
+        gl_df_sel['date'] = gl_df_sel['fp_img'].apply(lambda s: pd.to_datetime(Path(s).name[:8]))
+        gl_df_sel['diff'] = gl_df_sel.date.apply(lambda d: abs(d - pd.to_datetime(f"{d.year}-08-20")).days)
+        gl_df_sel = gl_df_sel.sort_values([col_prc_clouds, 'diff'])
+        gl_df_sel = gl_df_sel.groupby('entry_id').head(max_n_imgs_per_g).reset_index()
+        print(f"avg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+        print(f"#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
+              f"({n / len(gid_list) * 100:.1f}%)")
 
     # prepare the DEMs filepaths
     fp_dem_list_all = list(Path(dems_dir).glob('**/dem.tif'))
@@ -101,43 +113,51 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         entry_id=list(gl_df_sel.entry_id),
         gl_df=gl_df_all,
         extra_gdf_dict=extra_gdf_dict,
-        consts=consts,
-        num_cores=C.NUM_CORES,
+        bands_to_keep=bands_to_keep,
+        buffer_px=buffer_px,
+        no_data=no_data,
+        num_cores=num_cores,
         pbar=True
     )
 
 
 if __name__ == "__main__":
-    # debris shapefiles
-    extra_shp_dict = {
-        'debris_scherler_2018': '../data/data_gmb/debris/scherler_2018/11_rgi60_CentralEurope_S2_DC_2015_2017_mode.shp',
-        'debris_sgi_2016': '../data/data_gmb/glamos/inventory_sgi2016_r2020/SGI_2016_debriscover.shp',
-    }
+    # specify which other outlines to use to build masks and add them to the final rasters
+    extra_shp_dict = C.DEBRIS_OUTLINES_FP
 
-    # # S2 data prep
-    # for rasters_dir in [C.S2.DIR_GL_RASTERS_INV, C.S2.DIR_GL_RASTERS_2023]:
-    #     settings = dict(
-    #         raw_images_dir=f"../data/sat_data_downloader/external/download/s2/raw/{Path(rasters_dir).name}",
-    #         dems_dir='../data/external/oggm/s2',
-    #         fp_gl_df_all='../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp',
-    #         out_rasters_dir=rasters_dir,
-    #         extra_shp_dict=extra_shp_dict,
-    #         min_area=C.S2.MIN_GLACIER_AREA,
-    #         choose_least_cloudy=True,
-    #         consts=C.S2
-    #     )
-    #     prepare_all_rasters(**settings)
+    # the next settings apply to all datasets
+    base_settings = dict(
+        raw_images_dir=C.RAW_DATA_DIR,
+        dems_dir=C.DEMS_DIR,
+        fp_gl_df_all=C.GLACIER_OUTLINES_FP,
+        out_rasters_dir=C.DIR_GL_INVENTORY,
+        min_area=C.MIN_GLACIER_AREA,
+        bands_to_keep=C.BANDS,
+        buffer_px=C.PATCH_RADIUS,
+        no_data=C.NODATA,
+        num_cores=C.NUM_CORES,
+        extra_shp_dict=extra_shp_dict
+    )
 
-    # Planet data prep
-    for rasters_dir in [C.PS.DIR_GL_RASTERS_INV]:
-        settings = dict(
-            raw_images_dir=f"../data/external/planet/{Path(rasters_dir).name}/raw_processed_sel",
-            dems_dir='../data/external/oggm/s2',
-            fp_gl_df_all='../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp',
-            out_rasters_dir=rasters_dir,
-            extra_shp_dict=extra_shp_dict,
-            min_area=C.PS.MIN_GLACIER_AREA,
-            choose_least_cloudy=False,
-            consts=C.PS
+    # some dataset specific settings
+    specific_settings = {}
+    if C.__name__ in ('S2', 'S2_GLAMOS'):
+        specific_settings = dict(
+            choose_least_cloudy=True,
         )
-        prepare_all_rasters(**settings)
+    elif C.__name__ == 'PS':
+        specific_settings = dict(
+            choose_least_cloudy=False,
+        )
+    elif C.__name__ == 'S2_PS':
+        # S2 data prep that matches the Planet data
+        # in this case multiple rasters per glacier will be produced; will manually choose the best, as for Planet
+        specific_settings = dict(
+            choose_least_cloudy=False,
+            max_cloud_f=0.2,
+            max_n_imgs_per_g=5
+        )
+
+    settings = base_settings.copy()
+    settings.update(specific_settings)
+    prepare_all_rasters(**settings)

@@ -13,14 +13,14 @@ class SegModel(torch.nn.Module):
 
         # extract the inputs
         self.input_settings = input_settings
-        self.s2_bands = input_settings['s2_bands']
+        self.bands = input_settings['bands']
         self.use_elevation = input_settings['elevation']
 
         # prepare the logger
         self.logger = logging.getLogger('pytorch_lightning.core')
 
         # compute the number of input channels based on what variables are used
-        num_ch = len(self.s2_bands)
+        num_ch = len(self.bands)
         if self.use_elevation:
             num_ch += 1
         self.model_args['in_channels'] = num_ch
@@ -64,7 +64,7 @@ class SegModel(torch.nn.Module):
         input_list = []
 
         # add the S2-bands
-        input_list.append(batch['s2_bands'])
+        input_list.append(batch['band_data'])
 
         # add the DEM
         if self.use_elevation:

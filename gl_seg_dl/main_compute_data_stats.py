@@ -6,15 +6,12 @@ from pathlib import Path
 from tqdm import tqdm
 
 # local imports
-import config
+from config import C
 from utils.data_stats import compute_normalization_stats, aggregate_normalization_stats
 
 if __name__ == '__main__':
-    # import the constants corresponding to the desired dataset
-    C = getattr(config, config.DATASET_NAME)
-
     data_dir_root = Path(C.DIR_GL_PATCHES)
-    out_dir_root = Path(C.DIR_AUX_DATA) / Path(C.DIR_GL_PATCHES).name
+    out_dir_root = data_dir_root.parent.parent / 'aux_data' / 'norm_stats' / Path(C.DIR_GL_PATCHES).name
     for i_split in range(1, C.NUM_CV_FOLDS + 1):
         data_dir_crt_split = data_dir_root / f'split_{i_split}' / 'fold_train'
         fp_list = sorted(list(Path(data_dir_crt_split).glob('**/*.nc')))

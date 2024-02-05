@@ -35,7 +35,7 @@ def run_in_parallel(fun, num_cores=1, pbar=False, **kwargs):
 
     # run and collect the results
     all_res = []
-    with tqdm(total=arg_lens[0], desc=f'Running {fun.__name__} with {num_cores} core(s)', disable=not pbar) as pbar:
+    with tqdm(total=arg_lens[0], desc=f'Running {fun} with {num_cores} core(s)', disable=not pbar) as pbar:
         if num_cores > 1:
             with multiprocessing.Pool(num_cores) as pool:
                 for res in pool.imap_unordered(_fn_star, kwargs_flatten):

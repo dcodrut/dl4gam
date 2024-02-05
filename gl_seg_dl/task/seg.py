@@ -74,7 +74,7 @@ class GlSegTask(pl.LightningModule):
         # extract the glacier name from the patch filepath
         all_fp = [fp for x in step_outputs for fp in x['filepaths']]
         df = pd.DataFrame({'fp': all_fp})
-        df['gid'] = df.fp.apply(lambda s: Path(s).parent.parent.name)
+        df['gid'] = df.fp.apply(lambda s: Path(s).parent.name)
 
         # add the metrics
         for m in step_outputs[0]['metrics']:

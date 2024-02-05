@@ -12,7 +12,7 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
     Given a xarray dataset for one glacier, it returns a geopandas dataframe with the contours of square patches
     extracted from the dataset. The patches are only generated if they have the center pixel on glacier.
 
-    :param nc: xarray dataset containing the S2 data and the glacier masks
+    :param nc: xarray dataset containing the image data and the glacier masks
     :param patch_radius: patch radius (in px)
     :param sampling_step: sampling step applied both on x and y (in px);
                           if smaller than 2 * patch_radius, then patches will overlap
@@ -90,19 +90,21 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
     return patches_df
 
 
-def data_cv_split(sdf, num_folds, valid_fraction, outlines_split_dir):
+def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
     """
-    :param sdf: geopandas dataframe with the glacier contours
+    :param gl_df: geopandas dataframe with the glacier contours
     :param num_folds: how many CV folds to generate
     :param valid_fraction: the percentage of each training fold to be used as validation
     :param outlines_split_dir: output directory where the outlines split will be exported
     :return:
     """
 
+    # make sure there is a column with the area
+    assert 'Area' in gl_df.columns
+
     # regional split, assuming W to E direction
-    sdf['bound_lim'] = sdf.bounds.maxx
-    sdf = sdf.sort_values('bound_lim')
-    sdf['Area'] = sdf.area / 1e6
+    gl_df['bound_lim'] = gl_df.bounds.maxx
+    gl_df = gl_df.sort_values('bound_lim')
 
     split_lims = np.linspace(0, 1, num_folds + 1)
     split_lims[-1] += 1e-4  # to include the last glacier
@@ -110,9 +112,9 @@ def data_cv_split(sdf, num_folds, valid_fraction, outlines_split_dir):
     for i_split in range(num_folds):
         # first extract the test fold and the combined train & valid fold
         test_lims = (split_lims[i_split], split_lims[i_split + 1])
-        area_cumsumf = sdf.Area.cumsum() / sdf.Area.sum()
+        area_cumsumf = gl_df.Area.cumsum() / gl_df.Area.sum()
         idx_test = (test_lims[0] <= area_cumsumf) & (area_cumsumf < test_lims[1])
-        s2_df_test = sdf[idx_test]
+        sdf_test = gl_df[idx_test]
 
         # compute the size of the validation relative to the entire set
         valid_fraction_adj = valid_fraction * ((num_folds - 1) / num_folds)
@@ -128,13 +130,13 @@ def data_cv_split(sdf, num_folds, valid_fraction, outlines_split_dir):
         idx_test_valid = (test_valid_lims[0] <= area_cumsumf) & (area_cumsumf < test_valid_lims[1])
         idx_valid = idx_test_valid & (~idx_test)
         idx_train = ~idx_test_valid
-        s2_df_train = sdf[idx_train]
-        s2_df_valid = sdf[idx_valid]
+        sdf_train = gl_df[idx_train]
+        sdf_valid = gl_df[idx_valid]
 
         df_per_fold = {
-            'train': s2_df_train,
-            'valid': s2_df_valid,
-            'test': s2_df_test,
+            'train': sdf_train,
+            'valid': sdf_valid,
+            'test': sdf_test,
         }
 
         for crt_fold, df_crt_fold in df_per_fold.items():
@@ -144,12 +146,13 @@ def data_cv_split(sdf, num_folds, valid_fraction, outlines_split_dir):
             df_crt_fold.to_file(outlines_split_fp)
             print(
                 f'Exported {len(df_crt_fold)} glaciers '
-                f'out of {len(sdf)} ({len(df_crt_fold) / len(sdf) * 100:.2f}%);'
-                f' actual area percentage = {df_crt_fold.Area.sum() / sdf.Area.sum() * 100:.2f}%'
-                f' ({df_crt_fold.Area.sum():.2f} km^2 from a total of {sdf.Area.sum():.2f} km^2)')
+                f'out of {len(gl_df)} ({len(df_crt_fold) / len(gl_df) * 100:.2f}%);'
+                f' actual area percentage = {df_crt_fold.Area.sum() / gl_df.Area.sum() * 100:.2f}%'
+                f' ({df_crt_fold.Area.sum():.2f} km^2 from a total of {gl_df.Area.sum():.2f} km^2)')
 
 
-def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, patch_radius, sampling_step):
+def patchify_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, patch_radius, sampling_step,
+                  folds=('train', 'valid')):
     """
     Using the get_patches_gdf function, it exports patches to disk for each cross-validation split, with each split
     separated into training-validation-test.
@@ -163,13 +166,14 @@ def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, pa
     :param patch_radius: patch radius (in px)
     :param sampling_step: sampling step applied both on x and y (in px);
                           if smaller than 2 * patch_radius, then patches will overlap
+    :param folds: which folds to patchify
     :return:
     """
     for i_split in range(1, num_folds + 1):
-        for crt_fold in ['train', 'valid', 'test']:
+        for crt_fold in folds:
             outlines_split_fp = Path(outlines_split_dir) / f'split_{i_split}' / f'fold_{crt_fold}.shp'
-            s2_df_crt_fold = gpd.read_file(outlines_split_fp)
-            entry_id_list = list(s2_df_crt_fold.entry_id)
+            gl_df_crt_fold = gpd.read_file(outlines_split_fp)
+            entry_id_list = list(gl_df_crt_fold.entry_id)
 
             for entry_id in tqdm(entry_id_list, desc=f'split = {i_split} / {num_folds}; fold = {crt_fold}'):
                 fp_list = sorted(list(((Path(rasters_dir) / entry_id).glob('**/*.nc'))))
@@ -190,7 +194,7 @@ def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, pa
                 # build the patches
                 for i in range(len(patches_df)):
                     patch_shp = patches_df.iloc[i:i + 1]
-                    crt_s2_data = nc.rio.clip(patch_shp.geometry)
+                    nc_patch = nc.rio.clip(patch_shp.geometry)
 
                     r = patch_shp.iloc[0]
                     fn = f'{entry_id}_patch_{i}_xc_{r.x_center}_yc_{r.y_center}.nc'
@@ -198,4 +202,4 @@ def patchify_s2_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, pa
                     patch_fp = Path(patches_dir) / f'split_{i_split}' / f'fold_{crt_fold}' / entry_id / fn
                     patch_fp.parent.mkdir(parents=True, exist_ok=True)
 
-                    crt_s2_data.to_netcdf(patch_fp)
+                    nc_patch.to_netcdf(patch_fp)
