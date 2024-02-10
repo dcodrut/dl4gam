@@ -9,9 +9,10 @@ from tqdm import tqdm
 import gc
 
 # local imports
-import config as C
+from config import PS as C
 
-if __name__ == "__main__":
+
+def main_process_inv_data():
     input_dir = Path('../data/data_gmb/data_gl_seg/external/planet/inv/raw/')
     output_dir = Path('../data/data_gmb/data_gl_seg/external/planet/raw_processed/inv/')
 
@@ -146,16 +147,16 @@ if __name__ == "__main__":
     # cut the image for each glacier
     for box_name in tqdm(sorted(set(s2_df_buffer_box.fn))):
         raw_fp = s2_df_buffer_box[s2_df_buffer_box.fn == box_name].fp.iloc[0]
-        img_planet = xr.open_dataarray(raw_fp, cache=False).fillna(C.PS.NODATA).astype(np.int16)
-        img_planet.attrs['_FillValue'] = C.PS.NODATA
+        img_planet = xr.open_dataarray(raw_fp, cache=False).fillna(C.NODATA).astype(np.int16)
+        img_planet.attrs['_FillValue'] = C.NODATA
 
         # read the corresponding mask and keep only the necessary bands
         mask_name = (raw_fp.stem + '_udm2.tif') if 'AnalyticMS_SR' not in raw_fp.stem \
             else raw_fp.name.replace('AnalyticMS_SR_harmonized', 'udm2')
         mask_planet = xr.open_dataarray(raw_fp.parent / mask_name, cache=False)
         idx_bands = [mask_planet.attrs['long_name'].index(x) for x in ['cloud', 'shadow']]
-        mask_planet = mask_planet.isel(band=idx_bands).fillna(C.PS.NODATA).astype(np.int16)
-        mask_planet.attrs['_FillValue'] = C.PS.NODATA
+        mask_planet = mask_planet.isel(band=idx_bands).fillna(C.NODATA).astype(np.int16)
+        mask_planet.attrs['_FillValue'] = C.NODATA
 
         # add the masks to the image
         img_planet_with_mask = xr.concat([img_planet, mask_planet], dim='band')
@@ -179,3 +180,79 @@ if __name__ == "__main__":
             img_crt_g.rio.to_raster(fp_out)
 
             gc.collect()
+
+
+def main_process_2023_data():
+    input_dir = Path('../data/data_gmb/data_gl_seg/external/planet/manual_mapping/2023')
+    output_dir = Path('../data/data_gmb/data_gl_seg/external/planet/raw_processed/2023/')
+
+    # prepare the glacier outlines and their buffers
+    outlines_fp = '../data/data_gmb/outlines_2015/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp'
+    s2_df = gpd.read_file(outlines_fp)
+    buffer_m = 1280
+    s2_df_buffer = s2_df[s2_df.AREA_KM2 >= 0.1].copy()
+    print(f"total area = {s2_df_buffer.area.sum() / 1e6:.3f} km2")
+
+    # draw a rectangle box with a buffer around each glacier
+    rectangle_buffers = s2_df_buffer.geometry.apply(
+        lambda g: shapely.geometry.box(*shapely.geometry.box(*g.bounds).buffer(buffer_m).bounds))
+    print(f"rectangle buffer_m = {buffer_m}; total area = {rectangle_buffers.area.sum() / 1e6:.3f} km2")
+    print(f"rectangle buffer_m = {buffer_m}; "
+          f"total area after reduction = {shapely.ops.unary_union(rectangle_buffers).area / 1e6:.3f} km2")
+
+    # set the desired buffers
+    s2_df_buffer.geometry = rectangle_buffers
+    s2_df_buffer = s2_df_buffer.to_crs(epsg=4326)
+    print(s2_df_buffer)
+
+    # add the corresponding raw filenames to each glacier
+    fp_list = list(input_dir.glob('**/*.tif'))
+    fp_list = list(filter(lambda x: 'udm2' not in x.name, fp_list))  # remove the Unusable Data Masks
+    gid_to_fp = {fp.relative_to(input_dir).parts[0].split('_')[0]: fp for fp in fp_list}
+    gid_to_fp_df = pd.Series(gid_to_fp).reset_index().rename(columns={'index': 'GLACIER_NR', 0: 'fp'})
+    gid_to_fp_df.GLACIER_NR = gid_to_fp_df.GLACIER_NR.astype(int)
+    print(gid_to_fp_df)
+
+    # keep only the glaciers with corresponding images
+    s2_df_buffer = s2_df_buffer.merge(gid_to_fp_df)
+
+    # cut the image for each glacier
+    for i in tqdm(range(len(s2_df_buffer))):
+        r = s2_df_buffer.iloc[i]
+        raw_fp = r.fp
+        img_planet = xr.open_dataarray(raw_fp, cache=False).fillna(C.NODATA).astype(np.int16)
+        img_planet.attrs['_FillValue'] = C.NODATA
+
+        # read the corresponding mask and keep only the necessary bands
+        mask_name = (raw_fp.stem + '_udm2.tif') if 'AnalyticMS_SR' not in raw_fp.stem \
+            else raw_fp.name.replace('AnalyticMS_SR_harmonized', 'udm2')
+        mask_planet = xr.open_dataarray(raw_fp.parent / mask_name, cache=False)
+        idx_bands = [mask_planet.attrs['long_name'].index(x) for x in ['cloud', 'shadow']]
+        mask_planet = mask_planet.isel(band=idx_bands).fillna(C.NODATA).astype(np.int16)
+        mask_planet.attrs['_FillValue'] = C.NODATA
+
+        # add the masks to the image
+        img_planet_with_mask = xr.concat([img_planet, mask_planet], dim='band')
+        img_planet.close()
+        mask_planet.close()
+
+        # reassign the coordinates and add their name
+        img_planet_with_mask = img_planet_with_mask.assign_coords(band=np.arange(len(img_planet_with_mask.band)) + 1)
+        img_planet_with_mask.attrs['long_name'] = ['B', 'G', 'R', 'NIR', 'cloud', 'shadow']
+
+        s2_sdf_buffer_local = s2_df_buffer.iloc[i:i + 1].to_crs(img_planet_with_mask.rio.crs)
+        date = raw_fp.name.split('_')[0].replace('-', '')
+        fp_out = output_dir / f"{r.GLACIER_NR:04d}" / f"{date}.tif"
+        if fp_out.exists():
+            continue
+        img_crt_g = img_planet_with_mask.rio.clip(s2_sdf_buffer_local.geometry)
+        img_crt_g.attrs['fn'] = date
+        fp_out.parent.mkdir(parents=True, exist_ok=True)
+        img_crt_g.rio.to_raster(fp_out)
+
+        gc.collect()
+
+
+if __name__ == "__main__":
+    # main_process_inv_data()
+    main_process_2023_data()
