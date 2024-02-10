@@ -13,7 +13,7 @@ class SegModel(torch.nn.Module):
 
         # extract the inputs
         self.input_settings = input_settings
-        self.bands = input_settings['bands']
+        self.bands = input_settings['bands_input']
         self.use_elevation = input_settings['elevation']
 
         # prepare the logger

@@ -3,14 +3,13 @@ from pathlib import Path
 
 import numpy as np
 import geopandas as gpd
-import pandas as pd
 import pytorch_lightning as pl
 import yaml
 from tqdm import tqdm
 import logging
 
 # local imports
-import config as C
+from config import C
 import models
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     if args.rasters_dir is not None:
         infer_dir_list = [args.rasters_dir]
     else:
-        infer_dir_list = C.INFERENCE.DIRS_INFER
+        infer_dir_list = [C.DIR_GL_INVENTORY]
 
     # choose the glaciers for the specified fold using the given shapefile
     glacier_ids = None

@@ -13,19 +13,23 @@ from utils.sampling_utils import get_patches_gdf
 
 def extract_inputs(ds, fp, input_settings):
     band_names = ds.band_data.attrs['long_name']
-    idx_bands = [band_names.index(b) for b in input_settings['bands']]
+    idx_bands = [band_names.index(b) for b in input_settings['bands_input']]
     band_data = ds.band_data.isel(band=idx_bands).values.astype(np.float32)
 
-    dataset_name = input_settings['dataset_name']
-    data_source = dataset_name[:2]
-
-    # extract the provided nodata mask if exists
-    if data_source == 'S2':
-        mask_no_data = ds.band_data.values[band_names.index('FILL_MASK')] == 0
-    elif data_source == 'PS':
-        mask_no_data = np.zeros_like(ds.band_data.isel(band=0).values).astype(bool)
-    else:
-        raise NotImplementedError
+    # build the data mask
+    mask_no_data = np.zeros_like(ds.band_data.isel(band=0).values).astype(bool)
+    mask_names = input_settings['bands_mask']
+    for mask_name in mask_names:
+        # check which value do we expect for the mask
+        if mask_name[0] == '~':
+            mask_name = mask_name[1:]
+            ok_value = 1
+        else:
+            ok_value = 0
+        # add the current mask
+        assert mask_name in band_names, f"Expecting one of the following values for masks: {band_names}"
+        crt_mask_no_data = ~(ds.band_data.values[band_names.index(mask_name)] == ok_value)
+        mask_no_data |= crt_mask_no_data
 
     # include to the nodata mask any NaN pixel
     # (it happened once that a few pixels were missing only from the last band but the mask did not include them)
@@ -40,15 +44,6 @@ def extract_inputs(ds, fp, input_settings):
         # make sure that these pixels are masked in mask_no_data too
         mask_na = mask_na_per_band.any(axis=0)
         mask_no_data |= mask_na
-
-    # include in the nodata mask the pixels covered by clouds or shadows
-    if data_source == 'S2':
-        mask_clouds_and_shadows = ~(ds.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
-        # mask_no_data |= mask_clouds_and_shadows
-    elif data_source == 'PS':
-        # use only the shadow mask (the clouds one seems to be on most of the time for the ice areas...)
-        mask_shadows = (ds.band_data.values[band_names.index('shadow')] == 1)
-        mask_no_data |= mask_shadows
 
     data = {
         'band_data': band_data,

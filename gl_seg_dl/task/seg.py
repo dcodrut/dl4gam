@@ -8,6 +8,7 @@ from pathlib import Path
 
 # local imports
 from task import loss as losses
+from task.data import extract_inputs
 from utils.postprocessing import nn_interp, hypso_interp
 
 
@@ -242,9 +243,8 @@ class GlSegTask(pl.LightningModule):
         nc_pred['pred_b'] = (('y', 'x'), preds_acc_np >= self.thr)
 
         # fill-in the masked pixels using two different methods
+        mask_to_fill = extract_inputs(ds=nc, fp=cube_fp, input_settings=self.model.input_settings)['mask_no_data']
         data = nc_pred.pred.values
-        mask_to_fill = (nc.band_data.isel(band=nc.band_data.attrs['long_name'].index('CLOUDLESS_MASK')).values != 1)
-        mask_to_fill |= (nc.band_data.isel(band=nc.band_data.attrs['long_name'].index('FILL_MASK')).values != 1)
         mask_crt_g = (nc.mask_crt_g.values == 1)
         mask_to_fill &= mask_crt_g
         mask_ok = (~mask_to_fill) & mask_crt_g
