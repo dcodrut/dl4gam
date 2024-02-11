@@ -7,12 +7,14 @@ import pandas as pd
 from functools import partial
 from tqdm import tqdm
 import itertools
+import yaml
 
 # local imports
+from task.data import extract_inputs
 from config import C
 
 
-def compute_stats(fp, dataset_name, mask_name='mask_crt_g', exclude_bad_pixels=True, return_rasters=False):
+def compute_stats(fp, band_target='mask_crt_g', exclude_bad_pixels=True, input_settings=None, return_rasters=False):
     stats = {'fp': fp}
 
     nc = xr.open_dataset(fp)
@@ -22,29 +24,13 @@ def compute_stats(fp, dataset_name, mask_name='mask_crt_g', exclude_bad_pixels=T
         nc['pred_b'] = nc['pred']
 
     # get the predictions and the ground truth
-    mask = (nc[mask_name].values == 1)
+    mask = (nc[band_target].values == 1)
     preds = nc.pred_b.values
 
     # extract the mask for cloudy, shadow or no-data pixels
     if exclude_bad_pixels:
-        band_names = nc.band_data.attrs['long_name']
-        if dataset_name[:2] == 'S2':
-            # it happens (rarely) that the data has NAs, but they are not captured in the no-data mask
-            mask_na = np.isnan(nc.band_data.values[:13]).any(axis=0)
-
-            # include in the nodata mask the pixels covered by clouds or shadows
-            mask_clouds_and_shadows = ~(nc.band_data.values[band_names.index('CLOUDLESS_MASK')] == 1)
-            mask_no_data = nc.band_data.values[band_names.index('FILL_MASK')] == 0
-
-            mask_exclude = (mask_na | mask_no_data | mask_clouds_and_shadows)
-        elif dataset_name == 'PS':
-            # do the same as for S2 (not sure if any no-data mask is available anyway)
-            mask_na = np.isnan(nc.band_data.values[:4]).any(axis=0)
-
-            # TODO (maybe): use the shadow mask
-            mask_exclude = mask_na
-        else:
-            raise NotImplementedError
+        assert input_settings is not None, 'input_settings must be specified when masking out predictions'
+        mask_exclude = extract_inputs(ds=nc, fp=fp, input_settings=input_settings)['mask_no_data']
     else:
         mask_exclude = np.zeros_like(mask)
     mask[mask_exclude] = False
@@ -159,6 +145,12 @@ if __name__ == "__main__":
     p = list(inference_dir_root.parts)
     stats_dir_root = Path(*p[:p.index('preds')]) / 'stats' / Path(*p[p.index('preds') + 1:])
 
+    # get the training settings (needed for building the data masks)
+    settings_fp = Path(*p[:p.index('output')]) / 'settings.yaml'
+
+    with open(settings_fp, 'r') as fp:
+        all_settings = yaml.load(fp, Loader=yaml.FullLoader)
+
     for fold in ('s_train', 's_valid', 's_test'):
         preds_dir = inference_dir_root / fold
         fp_list = list(preds_dir.glob('**/*.nc'))
@@ -167,14 +159,14 @@ if __name__ == "__main__":
             print(f'No predictions found for fold = {fold}. Skipping.')
             continue
 
-        for mask_name in ('mask_crt_g', 'mask_crt_g_b20'):
+        for band_target in ('mask_crt_g', 'mask_crt_g_b20'):
             for exclude_bad_pixels in (True, False):
 
                 _compute_stats = partial(
                     compute_stats,
+                    band_target=band_target,
                     exclude_bad_pixels=exclude_bad_pixels,
-                    mask_name=mask_name,
-                    dataset_name=C.__name__
+                    input_settings=all_settings['model']['inputs'],
                 )
 
                 with multiprocessing.Pool(C.NUM_CORES_EVAL) as pool:
@@ -182,11 +174,11 @@ if __name__ == "__main__":
                     for metrics in tqdm(
                             pool.imap_unordered(_compute_stats, fp_list, chunksize=1), total=len(fp_list),
                             desc=f'Computing evaluation metrics '
-                                 f'(exclude_bad_pixels = {exclude_bad_pixels}; mask_name = {mask_name})'):
+                                 f'(exclude_bad_pixels = {exclude_bad_pixels}; mask_name = {band_target})'):
                         all_metrics.append(metrics)
                     metrics_df = pd.DataFrame.from_records(all_metrics)
 
-                    stats_fp = stats_dir_root / fold / f'stats_excl_{exclude_bad_pixels}_{mask_name}.csv'
+                    stats_fp = stats_dir_root / fold / f'stats_excl_{exclude_bad_pixels}_{band_target}.csv'
                     stats_fp.parent.mkdir(parents=True, exist_ok=True)
                     metrics_df = metrics_df.sort_values('fp')
                     metrics_df.to_csv(stats_fp, index=False)
