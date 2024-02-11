@@ -215,7 +215,7 @@ class GlSegTask(pl.LightningModule):
         cube_fp = filepaths[0]
 
         # read the original glacier nc and create accumulators based on its shape
-        nc = xr.open_dataset(cube_fp, decode_coords='all')
+        nc = xr.load_dataset(cube_fp, decode_coords='all')
         preds_acc = torch.zeros(nc.mask_crt_g.shape).to(self.device)
         preds_cnt = torch.zeros(size=preds_acc.shape).to(self.device)
         for j in range(len(self.test_step_outputs)):

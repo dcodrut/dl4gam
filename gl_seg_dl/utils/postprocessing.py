@@ -7,12 +7,17 @@ def nn_interp(data, mask_to_fill, mask_ok, num_nn=100):
 
     data_interp = np.zeros_like(data) + np.nan
     data_interp[mask_ok] = data[mask_ok]
+    n_ok = len(x_px_ok)
     for x, y in zip(x_px_to_fill, y_px_to_fill):
         # get the closest num_nn pixels
         dists = (x - x_px_ok) ** 2 + (y - y_px_ok) ** 2
-        idx = np.argsort(dists)
-        x_px_ok_sel, y_px_ok_sel = x_px_ok[idx[:num_nn]], y_px_ok[idx[:num_nn]]
 
+        # keep only the closest pixels
+        max_dist = np.quantile(dists, q=num_nn/n_ok)
+        idx = (dists <= max_dist)
+        x_px_ok_sel, y_px_ok_sel = x_px_ok[idx], y_px_ok[idx]
+
+        # compute the mean over the selected pixels
         fill_value = np.mean(data[y_px_ok_sel, x_px_ok_sel])
         data_interp[y, x] = fill_value
     return data_interp
