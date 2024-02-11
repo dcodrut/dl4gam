@@ -21,6 +21,7 @@ class BaseConfig:
 
     # how many cores to use when evaluating the models per glacier
     NUM_CORES_EVAL = 16
+    PRELOAD_DATA_INFER = True  # whether to load the netcdf files in memory before patchifying them
 
     # the next properties have to be specified for each dataset
     @classmethod
@@ -49,9 +50,22 @@ class BaseConfig:
 
     @classmethod
     @property
-    def SAMPLING_STEP(cls):
-        """ The step (in pixels) between two consecutive patches """
+    def SAMPLING_STEP_TRAIN(cls):
+        """
+            The step (in pixels) between two consecutive patches for training.
+            These patches will be exported to disk.
+        """
         raise NotImplementedError
+
+    @classmethod
+    @property
+    def SAMPLING_STEP_INFER(cls):
+        """
+            The step (in pixels) between two consecutive patches for inference.
+            By default, the step is the half of the one used in training (so double the overlap).
+            These patches will be built in memory.
+        """
+        return cls.SAMPLING_STEP_TRAIN // 2
 
     # the next properties are derived based on the above
     @classmethod
@@ -67,7 +81,10 @@ class BaseConfig:
     @classmethod
     @property
     def DIR_GL_PATCHES(cls):
-        return Path(cls.WD) / Path(cls.RAW_DATA_DIR).name / 'patches' / f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP}"
+        return (
+                Path(cls.WD) / Path(cls.RAW_DATA_DIR).name / 'patches' /
+                f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP_TRAIN}"
+        )
 
 
 class S2(BaseConfig):
@@ -85,7 +102,7 @@ class S2(BaseConfig):
 
     # patch sampling settings
     PATCH_RADIUS = 128
-    SAMPLING_STEP = 128
+    SAMPLING_STEP_TRAIN = 128
 
 
 class S2_GLAMOS(S2):
@@ -106,8 +123,8 @@ class PS(BaseConfig):
 
     # patch sampling settings
     PATCH_RADIUS = 256
-    SAMPLING_STEP = 256
-    DIR_GL_PATCHES = f'{WD}/inv/patches/r_{PATCH_RADIUS}_s_{SAMPLING_STEP}'
+    SAMPLING_STEP_TRAIN = 256
+    DIR_GL_PATCHES = f'{WD}/inv/patches/r_{PATCH_RADIUS}_s_{SAMPLING_STEP_TRAIN}'
 
 
 class S2_PS(S2):

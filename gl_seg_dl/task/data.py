@@ -173,14 +173,23 @@ class GlSegPatchDataset(Dataset):
 
 
 class GlSegDataset(GlSegPatchDataset):
-    def __init__(self, fp, **kwargs):
+    def __init__(self, fp, patch_radius=None, sampling_step=None, preload_data=False, **kwargs):
         self.fp = fp
         super().__init__(folder=None, fp_list=[fp], **kwargs)
 
         # get all possible patches for the glacier
-        self.nc = xr.open_dataset(fp, decode_coords='all').load()
+        if preload_data:
+            self.nc = xr.load_dataset(fp, decode_coords='all')
+        else:
+            self.nc = xr.open_dataset(fp, decode_coords='all')
         self.patches_df = get_patches_gdf(
-            self.nc, patch_radius=128, sampling_step=64, add_center=False, add_centroid=True, add_extremes=True)
+            self.nc,
+            patch_radius=patch_radius,
+            sampling_step=sampling_step,
+            add_center=False,
+            add_centroid=True,
+            add_extremes=True
+        )
 
     def __getitem__(self, idx):
         patch_shp = self.patches_df.iloc[idx:idx + 1]
@@ -274,7 +283,7 @@ class GlSegDataModule(pl.LightningDataModule):
                 data_stats_df=self.data_stats_df
             )
 
-    def setup_dl_per_glacier(self, gid_list=None):
+    def setup_dl_per_glacier(self, gid_list=None, patch_radius=None, sampling_step=None, preload_data=False):
         # get the directory of the full glacier cubes
         cubes_dir = Path(self.rasters_dir)
         assert cubes_dir.exists()
@@ -295,7 +304,10 @@ class GlSegDataModule(pl.LightningDataModule):
                     standardize_data=self.standardize_data,
                     minmax_scale_data=self.minmax_scale_data,
                     scale_each_band=self.scale_each_band,
-                    data_stats_df=self.data_stats_df
+                    data_stats_df=self.data_stats_df,
+                    patch_radius=patch_radius,
+                    sampling_step=sampling_step,
+                    preload_data=preload_data
                 )
             )
 
@@ -331,8 +343,13 @@ class GlSegDataModule(pl.LightningDataModule):
             drop_last=False
         )
 
-    def test_dataloaders_per_glacier(self, gid_list):
-        test_ds_list = self.setup_dl_per_glacier(gid_list=gid_list)
+    def test_dataloaders_per_glacier(self, gid_list, patch_radius=None, sampling_step=None, preload_data=False):
+        test_ds_list = self.setup_dl_per_glacier(
+            gid_list=gid_list,
+            patch_radius=patch_radius,
+            sampling_step=sampling_step,
+            preload_data=preload_data
+        )
 
         dloaders = []
         for ds in test_ds_list:

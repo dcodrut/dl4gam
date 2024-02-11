@@ -23,7 +23,10 @@ root_logger.handlers[0].setFormatter(logging.Formatter(fmt))
 logger = logging.getLogger('pytorch_lightning.core')
 
 
-def test_model(settings, fold, test_per_glacier=False, glacier_id_list=None, checkpoint=None):
+def test_model(
+        settings, fold, test_per_glacier=False, glacier_id_list=None, checkpoint=None, patch_radius=None,
+        sampling_step=None, preload_data=None
+):
     logger.info(f'Settings: {settings}')
 
     # Data
@@ -95,7 +98,12 @@ def test_model(settings, fold, test_per_glacier=False, glacier_id_list=None, che
         glacier_id_list_final = set(glacier_id_list_crt_dir) & set(glacier_id_list)
         logger.info(f'#glaciers to test on = {len(glacier_id_list_final)}')
 
-        dl_list = dm.test_dataloaders_per_glacier(gid_list=glacier_id_list_final)
+        dl_list = dm.test_dataloaders_per_glacier(
+            gid_list=glacier_id_list_final,
+            patch_radius=patch_radius,
+            sampling_step=sampling_step,
+            preload_data=preload_data
+        )
         for dl in tqdm(dl_list, desc='Testing per glacier'):
             trainer.test(model=task, dataloaders=dl)
 
@@ -197,4 +205,7 @@ if __name__ == "__main__":
             test_per_glacier=args.test_per_glacier,
             glacier_id_list=glacier_ids,
             fold=args.fold,
+            patch_radius=C.PATCH_RADIUS,
+            sampling_step=C.SAMPLING_STEP_INFER,
+            preload_data=C.PRELOAD_DATA_INFER
         )

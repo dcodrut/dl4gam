@@ -53,5 +53,5 @@ if __name__ == "__main__":
         num_folds=C.NUM_CV_FOLDS,
         patches_dir=C.DIR_GL_PATCHES,
         patch_radius=C.PATCH_RADIUS,
-        sampling_step=C.SAMPLING_STEP,
+        sampling_step=C.SAMPLING_STEP_TRAIN,
     )
