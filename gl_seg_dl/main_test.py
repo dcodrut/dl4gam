@@ -64,12 +64,14 @@ def test_model(
     logger.info(f'test_per_glacier = {test_per_glacier}')
     checkpoint_root_dir = Path(checkpoint).parent.parent
     if test_per_glacier:
-        ds_name = Path(data_params['rasters_dir']).parent.name
-        subdir = Path(data_params['rasters_dir']).name
+        p = list(Path(data_params['rasters_dir']).parts)
+        ds_name = p[p.index('glacier_wide') - 2]
+        subdir = p[p.index('glacier_wide') - 1]
         root_outdir = checkpoint_root_dir / 'output' / 'preds' / ds_name / subdir
     else:
-        ds_name = Path(data_params['data_root_dir']).parent.name
-        root_outdir = checkpoint_root_dir / 'output' / 'stats' / ds_name
+        p = list(Path(data_params['data_root_dir']).parts)
+        ds_name = p[p.index('patches') + 1]
+        root_outdir = checkpoint_root_dir / 'output' / 'stats' / f"patches_{ds_name}"
 
     assert fold in ['s_train', 's_valid', 's_test']
     logger.info(f'Testing for fold = {fold}')
@@ -98,6 +100,7 @@ def test_model(
         glacier_id_list_final = set(glacier_id_list_crt_dir) & set(glacier_id_list)
         logger.info(f'#glaciers to test on = {len(glacier_id_list_final)}')
 
+        # TODO: parallelize this and avoid loading everything in-memory at the beginning
         dl_list = dm.test_dataloaders_per_glacier(
             gid_list=glacier_id_list_final,
             patch_radius=patch_radius,
@@ -129,7 +132,7 @@ if __name__ == "__main__":
     parser.add_argument('--settings_fp', type=str, metavar='path/to/settings.yaml', help='yaml with all the settings')
     parser.add_argument('--checkpoint', type=str, metavar='path/to/checkpoint', help='checkpoint file', default=None)
     parser.add_argument('--checkpoint_dir', type=str, metavar='path/to/checkpoint_dir',
-                        help='a directory from which the model with the lowest L1 distance will be selected '
+                        help='a directory from which the model with the best evaluation score will be selected '
                              '(alternative to checkpoint_file)', default=None)
     parser.add_argument('--fold', type=str, metavar='s_train|s_valid|s_test', required=True,
                         help='which subset to test on: either s_train, s_valid or s_test')
