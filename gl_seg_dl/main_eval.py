@@ -135,6 +135,8 @@ if __name__ == "__main__":
         '--inference_dir', type=str, metavar='path/to/inference_dir', required=True,
         help='directory where the model predictions are stored',
     )
+    parser.add_argument('--fold', type=str, metavar='s_train|s_valid|s_test', required=True,
+                        help='which subset to evaluate on: either s_train, s_valid or s_test')
 
     args = parser.parse_args()
     inference_dir_root = Path(args.inference_dir)
@@ -151,35 +153,35 @@ if __name__ == "__main__":
     with open(settings_fp, 'r') as fp:
         all_settings = yaml.load(fp, Loader=yaml.FullLoader)
 
-    for fold in ('s_train', 's_valid', 's_test'):
-        preds_dir = inference_dir_root / fold
-        fp_list = list(preds_dir.glob('**/*.nc'))
-        print(f'fold = {fold}; #glaciers = {len(fp_list)}')
-        if len(fp_list) == 0:
-            print(f'No predictions found for fold = {fold}. Skipping.')
-            continue
+    fold = args.fold
+    preds_dir = inference_dir_root / fold
+    fp_list = list(preds_dir.glob('**/*.nc'))
+    print(f'fold = {fold}; #glaciers = {len(fp_list)}')
+    if len(fp_list) == 0:
+        print(f'No predictions found for fold = {fold}. Skipping.')
+        exit(0)
 
-        for band_target in ('mask_crt_g', 'mask_crt_g_b20'):
-            for exclude_bad_pixels in (True, False):
+    for band_target in ('mask_crt_g', 'mask_crt_g_b20'):
+        for exclude_bad_pixels in (True, False):
 
-                _compute_stats = partial(
-                    compute_stats,
-                    band_target=band_target,
-                    exclude_bad_pixels=exclude_bad_pixels,
-                    input_settings=all_settings['model']['inputs'],
-                )
+            _compute_stats = partial(
+                compute_stats,
+                band_target=band_target,
+                exclude_bad_pixels=exclude_bad_pixels,
+                input_settings=all_settings['model']['inputs'],
+            )
 
-                with multiprocessing.Pool(C.NUM_CORES_EVAL) as pool:
-                    all_metrics = []
-                    for metrics in tqdm(
-                            pool.imap_unordered(_compute_stats, fp_list, chunksize=1), total=len(fp_list),
-                            desc=f'Computing evaluation metrics '
-                                 f'(exclude_bad_pixels = {exclude_bad_pixels}; mask_name = {band_target})'):
-                        all_metrics.append(metrics)
-                    metrics_df = pd.DataFrame.from_records(all_metrics)
+            with multiprocessing.Pool(C.NUM_CORES_EVAL) as pool:
+                all_metrics = []
+                for metrics in tqdm(
+                        pool.imap_unordered(_compute_stats, fp_list, chunksize=1), total=len(fp_list),
+                        desc=f'Computing evaluation metrics '
+                             f'(exclude_bad_pixels = {exclude_bad_pixels}; mask_name = {band_target})'):
+                    all_metrics.append(metrics)
+                metrics_df = pd.DataFrame.from_records(all_metrics)
 
-                    stats_fp = stats_dir_root / fold / f'stats_excl_{exclude_bad_pixels}_{band_target}.csv'
-                    stats_fp.parent.mkdir(parents=True, exist_ok=True)
-                    metrics_df = metrics_df.sort_values('fp')
-                    metrics_df.to_csv(stats_fp, index=False)
-                    print(f'Evaluation metrics exported to {stats_fp}')
+                stats_fp = stats_dir_root / fold / f'stats_excl_{exclude_bad_pixels}_{band_target}.csv'
+                stats_fp.parent.mkdir(parents=True, exist_ok=True)
+                metrics_df = metrics_df.sort_values('fp')
+                metrics_df.to_csv(stats_fp, index=False)
+                print(f'Evaluation metrics exported to {stats_fp}')
