@@ -26,6 +26,7 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
         assert add_center or add_centroid
 
     # build a mask containing all feasible patch centers
+    assert 'mask_crt_g' in nc.data_vars, nc.data_vars
     nc_full_crt_g_mask_center_sel = (nc.mask_crt_g.data == 1)
     nc_full_crt_g_mask_center_sel[:patch_radius, :] = False
     nc_full_crt_g_mask_center_sel[:, -patch_radius:] = False
