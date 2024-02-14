@@ -7,7 +7,7 @@ import functools
 from utils.data_stats import compute_cloud_stats
 from utils.data_prep import prep_raster
 from utils.general import run_in_parallel
-from config import C
+from config import C, S2_PS, PS
 
 
 def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
@@ -133,7 +133,6 @@ if __name__ == "__main__":
         out_rasters_dir=C.DIR_GL_INVENTORY,
         min_area=C.MIN_GLACIER_AREA,
         bands_to_keep=C.BANDS,
-        buffer_px=C.PATCH_RADIUS,
         no_data=C.NODATA,
         num_cores=C.NUM_CORES,
         extra_shp_dict=extra_shp_dict
@@ -144,15 +143,19 @@ if __name__ == "__main__":
     if C.__name__ in ('S2', 'S2_GLAMOS'):
         specific_settings = dict(
             choose_least_cloudy=True,
+            buffer_px=C.PATCH_RADIUS,
         )
     elif C.__name__ == 'PS':
         specific_settings = dict(
             choose_least_cloudy=False,
+            # increase the buffer even if it's not needed to have the same spatial extend as S2 data
+            buffer_px=int(PS.PATCH_RADIUS * (S2_PS.PATCH_RADIUS * 10) / (PS.PATCH_RADIUS * 3)),
         )
     elif C.__name__ == 'S2_PS':
         # S2 data prep that matches the Planet data
         # in this case multiple rasters per glacier will be produced; will manually choose the best, as for Planet
         specific_settings = dict(
+            buffer_px=C.PATCH_RADIUS,
             choose_least_cloudy=False,
             max_cloud_f=0.2,
             max_n_imgs_per_g=5
