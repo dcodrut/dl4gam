@@ -51,7 +51,7 @@ class SegModel(torch.nn.Module):
 
                 # discard the input bands which are not needed
                 band_names = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']
-                idx_bands = [band_names.index(b) for b in input_settings['s2_bands']]
+                idx_bands = [band_names.index(b) for b in input_settings['bands_input']]
 
                 # use one more band for the DEM if needed
                 if self.use_elevation:

@@ -15,11 +15,7 @@ data:
 
 task:
   seed: 42
-  loss:
-    name: 'MaskedDist'
-    args: {
-      distance_type: 'BCE'
-    }
+  loss: 'BCE'
   optimization:
     optimizer:
       - name: 'SGD'
@@ -34,8 +30,8 @@ task:
           gamma: 0.1
 
 logger:
-  save_dir: '../data/external/scratch/experiments_server'
-  name: 'unet/ps_vs_s2/s2/split_1'
+  save_dir: '../data/external/experiments_server/s2'
+  name: 'unet/split_1'
 
 trainer:
   devices: [ 0 ]

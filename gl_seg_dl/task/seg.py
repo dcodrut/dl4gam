@@ -1,3 +1,4 @@
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchmetrics as tm
@@ -7,7 +8,7 @@ import xarray as xr
 from pathlib import Path
 
 # local imports
-from task import loss as losses
+from task.loss import MaskedLoss
 from task.data import extract_inputs
 from utils.postprocessing import nn_interp, hypso_interp
 
@@ -17,11 +18,12 @@ class GlSegTask(pl.LightningModule):
         super().__init__()
 
         self.model = model
-        self.loss = getattr(losses, task_params['loss']['name'])(**task_params['loss']['args'])
+        self.loss = MaskedLoss(metric=task_params['loss'])
         self.thr = 0.5
         self.val_metrics = tm.MetricCollection([
             tm.Accuracy(threshold=self.thr, task='binary'),
             tm.JaccardIndex(threshold=self.thr, task='binary'),
+            tm.Dice(threshold=self.thr),
             tm.Precision(threshold=self.thr, task='binary'),
             tm.Recall(threshold=self.thr, task='binary'),
             tm.F1Score(threshold=self.thr, task='binary')
@@ -91,7 +93,7 @@ class GlSegTask(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         y_pred = self(batch)
-        y_true = batch['mask_all_g'].type(y_pred.dtype).unsqueeze(dim=1)
+        y_true = batch['mask_all_g'].unsqueeze(dim=1)
         mask = ~batch['mask_no_data'].unsqueeze(dim=1)
         loss = self.loss(preds=y_pred, targets=y_true, mask=mask, samplewise=True)
 
@@ -103,7 +105,7 @@ class GlSegTask(pl.LightningModule):
         val_metrics_samplewise = self.compute_masked_val_metrics(y_pred, y_true, mask)
 
         # compute the recall of the debris-covered areas
-        y_true_debris = batch['mask_debris_crt_g'].type(y_pred.dtype).unsqueeze(dim=1)
+        y_true_debris = batch['mask_debris_crt_g'].unsqueeze(dim=1)
         y_true_debris *= y_true  # in case the debris mask contains areas outside the current outlines
         area_debris_fraction = y_true_debris.flatten(start_dim=1).sum(dim=1) / y_true.flatten(start_dim=1).sum(dim=1)
         recall_samplewise_debris = self.compute_masked_val_metrics(y_pred, y_true_debris, mask)['BinaryRecall']
@@ -132,7 +134,7 @@ class GlSegTask(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         y_pred = self(batch)
-        y_true = batch['mask_all_g'].type(y_pred.dtype).unsqueeze(dim=1)
+        y_true = batch['mask_all_g'].unsqueeze(dim=1)
         mask = ~batch['mask_no_data'].unsqueeze(dim=1)
         loss_samplewise = self.loss(preds=y_pred, targets=y_true, mask=mask, samplewise=True)
 
@@ -140,7 +142,7 @@ class GlSegTask(pl.LightningModule):
         val_metrics_samplewise = self.compute_masked_val_metrics(y_pred, y_true, mask)
 
         # compute the recall of the debris-covered areas (if the area is above 1%)
-        y_true_debris = batch['mask_debris_crt_g'].type(y_pred.dtype).unsqueeze(dim=1)
+        y_true_debris = batch['mask_debris_crt_g'].unsqueeze(dim=1)
         y_true_debris *= y_true  # in case the debris mask contains areas outside the current outlines
         area_debris_fraction = y_true_debris.flatten(start_dim=1).sum(dim=1) / y_true.flatten(start_dim=1).sum(dim=1)
         recall_samplewise_debris = self.compute_masked_val_metrics(y_pred, y_true_debris, mask)['BinaryRecall']
@@ -187,7 +189,7 @@ class GlSegTask(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         y_pred = self(batch)
-        y_true = batch['mask_all_g'].type(y_pred.dtype).unsqueeze(dim=1)
+        y_true = batch['mask_all_g'].unsqueeze(dim=1)
         mask = ~batch['mask_no_data'].unsqueeze(dim=1)
         loss_samplewise = self.loss(preds=y_pred, targets=y_true, mask=mask, samplewise=True)
 
