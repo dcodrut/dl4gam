@@ -1,4 +1,3 @@
-import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchmetrics as tm
@@ -95,10 +94,9 @@ class GlSegTask(pl.LightningModule):
         y_pred = self(batch)
         y_true = batch['mask_all_g'].unsqueeze(dim=1)
         mask = ~batch['mask_no_data'].unsqueeze(dim=1)
-        loss = self.loss(preds=y_pred, targets=y_true, mask=mask, samplewise=True)
+        loss = self.loss(preds=y_pred, targets=y_true, mask=mask, samplewise=False)
 
-        # loss_cp = loss.clone().detach()
-        tb_logs = {'train_loss': loss.mean()}
+        tb_logs = {'train_loss': loss}
         self.log_dict(tb_logs, on_epoch=True, on_step=True, batch_size=len(y_true), sync_dist=True)
 
         # compute the evaluation metrics for each element in the batch
@@ -112,7 +110,7 @@ class GlSegTask(pl.LightningModule):
         recall_samplewise_debris[area_debris_fraction < 0.01] = torch.nan
         val_metrics_samplewise['BinaryRecall_debris'] = recall_samplewise_debris
 
-        res = {'loss': loss.mean(), 'metrics': val_metrics_samplewise, 'filepaths': batch['fp']}
+        res = {'loss': loss, 'metrics': val_metrics_samplewise, 'filepaths': batch['fp']}
 
         self.training_step_outputs.append(res)
 
