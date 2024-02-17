@@ -40,7 +40,7 @@ def train_model(settings: dict):
     logger.info(f'Initial settings: {settings}')
 
     # Data
-    data_params = settings['data']
+    data_params = settings['data'].copy()
     data_params['input_settings'] = settings['model']['inputs']
     dm = GlSegDataModule(**data_params)
 
