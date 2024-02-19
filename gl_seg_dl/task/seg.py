@@ -48,6 +48,8 @@ class GlSegTask(pl.LightningModule):
             getattr(torch.optim, o['name'])(self.parameters(), **o['args'])
             for o in self.optimizer_settings
         ]
+        if self.lr_scheduler_settings is None:
+            return optimizers
         schedulers = [
             getattr(torch.optim.lr_scheduler, s['name'])(optimizers[i], **s['args'])
             for i, s in enumerate(self.lr_scheduler_settings)

@@ -22,12 +22,8 @@ task:
         args:
           lr: 0.01
           nesterov: True
-          momentum: 0.95
-    lr_schedule:
-      - name: 'MultiStepLR'
-        args:
-          milestones: [ 10, 25 ]
-          gamma: 0.1
+          momentum: 0.9
+    lr_schedule: null
 
 logger:
   save_dir: '../data/external/experiments_server/s2'
