@@ -22,7 +22,6 @@ class GlSegTask(pl.LightningModule):
         self.val_metrics = tm.MetricCollection([
             tm.Accuracy(threshold=self.thr, task='binary'),
             tm.JaccardIndex(threshold=self.thr, task='binary'),
-            tm.Dice(threshold=self.thr),
             tm.Precision(threshold=self.thr, task='binary'),
             tm.Recall(threshold=self.thr, task='binary'),
             tm.F1Score(threshold=self.thr, task='binary')
@@ -77,20 +76,31 @@ class GlSegTask(pl.LightningModule):
     def aggregate_step_metrics(self, step_outputs, split_name):
         # extract the glacier name from the patch filepath
         all_fp = [fp for x in step_outputs for fp in x['filepaths']]
-        df = pd.DataFrame({'fp': all_fp})
-        df['gid'] = df.fp.apply(lambda s: Path(s).parent.name)
+        df_per_patch = pd.DataFrame({'fp': all_fp})
+        df_per_patch['gid'] = df_per_patch.fp.apply(lambda s: Path(s).parent.name)
 
-        # add the metrics
+        # add the metrics (per patch)
         for m in step_outputs[0]['metrics']:
-            df[m] = torch.stack([y for x in step_outputs for y in x['metrics'][m]]).cpu().numpy()
+            col_name = m.replace('Binary', '')
+            df_per_patch[col_name] = torch.stack([y for x in step_outputs for y in x['metrics'][m]]).cpu().numpy()
 
-        # summarize the metrics per glacier
+        # prepare the weights based on the glaciers' areas
+        _df_weights = pd.DataFrame({
+            'gid': df_per_patch.gid,
+            'glacier_area': torch.stack([area for x in step_outputs for area in x['glacier_areas']]).cpu().numpy()
+        }).groupby('gid').first()
+        weights = (_df_weights.glacier_area / _df_weights.glacier_area.sum())
+
+        # average the metrics, both over patches and then over glaciers weighted by their areas
+        df_per_glacier = df_per_patch.groupby('gid').mean(numeric_only=True)
         avg_tb_logs = {}
-        stats_per_g = df.groupby('gid').mean(numeric_only=True)
-        for m in stats_per_g.columns:
-            avg_tb_logs[f'{m}_{split_name}_epoch_avg_per_g'] = stats_per_g[m].mean()
+        for m in df_per_glacier.columns:
+            avg_tb_logs[f'{m}_{split_name}_epoch_avg'] = df_per_patch[m].mean()
+            # skip the weighted version for the debris, doesn't make sense
+            if 'debris' not in m:
+                avg_tb_logs[f'w_{m}_{split_name}_epoch_avg_per_g'] = (df_per_glacier[m] * weights).sum()
 
-        return avg_tb_logs, df
+        return avg_tb_logs, df_per_patch
 
     def training_step(self, batch, batch_idx):
         y_pred = self(batch)
@@ -112,7 +122,12 @@ class GlSegTask(pl.LightningModule):
         recall_samplewise_debris[area_debris_fraction < 0.01] = torch.nan
         val_metrics_samplewise['BinaryRecall_debris'] = recall_samplewise_debris
 
-        res = {'loss': loss, 'metrics': val_metrics_samplewise, 'filepaths': batch['fp']}
+        res = {
+            'loss': loss,
+            'metrics': val_metrics_samplewise,
+            'filepaths': batch['fp'],
+            'glacier_areas': batch['glacier_area']
+        }
 
         self.training_step_outputs.append(res)
 
@@ -155,7 +170,7 @@ class GlSegTask(pl.LightningModule):
         tb_logs = {'val_loss': loss_samplewise.mean()}
         self.log_dict(tb_logs, on_epoch=True, on_step=True, batch_size=len(y_true), sync_dist=True)
 
-        res = {'metrics': val_metrics_samplewise, 'filepaths': batch['fp']}
+        res = {'metrics': val_metrics_samplewise, 'filepaths': batch['fp'], 'glacier_areas': batch['glacier_area']}
         self.validation_step_outputs.append(res)
 
         return res
@@ -165,9 +180,9 @@ class GlSegTask(pl.LightningModule):
 
         # show the stats
         with pd.option_context('display.max_rows', 10, 'display.max_columns', None, 'display.width', None):
-            self._logger.info(f'validation scores stats:\n{df.describe()}')
+            self._logger.info(f'validation scores stats:\n{df.describe().round(3)}')
             self._logger.info(f'validation scores stats (per glacier):\n'
-                              f'{df.groupby("gid").mean(numeric_only=True).describe()}')
+                              f'{df.groupby("gid").mean(numeric_only=True).describe().round(3)}')
 
         # export the stats if needed
         if self.outdir is not None:
@@ -199,7 +214,7 @@ class GlSegTask(pl.LightningModule):
         # add also the loss to the metrics
         val_metrics_samplewise.update({'loss': loss_samplewise})
 
-        res = {'metrics': val_metrics_samplewise, 'filepaths': batch['fp']}
+        res = {'metrics': val_metrics_samplewise, 'filepaths': batch['fp'], 'glacier_areas': batch['glacier_area']}
         res['patch_info'] = batch['patch_info']
         res['preds'] = y_pred
 

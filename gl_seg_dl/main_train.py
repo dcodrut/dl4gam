@@ -9,7 +9,7 @@ import yaml
 import json
 
 # local imports
-import config as C
+from config import C
 import models
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
@@ -59,8 +59,8 @@ def train_model(settings: dict):
 
     # Callbacks
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        monitor='BinaryJaccardIndex_val_epoch_avg_per_g',
-        filename='ckpt-{epoch:02d}-{BinaryJaccardIndex_val_epoch_avg_per_g:.4f}',
+        monitor='w_JaccardIndex_val_epoch_avg_per_g',
+        filename='ckpt-{epoch:02d}-{w_JaccardIndex_val_epoch_avg_per_g:.4f}',
         save_top_k=1,
         save_last=True,
         mode='max',
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--split',
         type=str, help='training split (if not given, the one from the config is used)', default=None, required=False,
-        choices={f"split_{i + 1}" for i in range(C.S2.NUM_CV_FOLDS)}
+        choices={f"split_{i + 1}" for i in range(C.NUM_CV_FOLDS)}
     )
     parser.add_argument(
         '--gpu_id',

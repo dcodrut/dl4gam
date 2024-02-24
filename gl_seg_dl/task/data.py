@@ -51,6 +51,7 @@ def extract_inputs(ds, fp, input_settings):
         'mask_crt_g': ds.mask_crt_g.values == 1,
         'mask_all_g': ~np.isnan(ds.mask_all_g_id.values),
         'fp': str(fp),
+        'glacier_area': ds.attrs['glacier_area']
     }
 
     # add the debris masks (priority: SGI)

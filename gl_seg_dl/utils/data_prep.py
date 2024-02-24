@@ -103,4 +103,5 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_t
     # export
     fp_out.parent.mkdir(exist_ok=True, parents=True)
     nc.attrs['fn'] = fp_img.name
+    nc.attrs['glacier_area'] = row_crt_g.Area.iloc[0]
     nc.to_netcdf(fp_out)

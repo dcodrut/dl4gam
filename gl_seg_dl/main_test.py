@@ -156,7 +156,7 @@ if __name__ == "__main__":
         # get the best checkpoint
         checkpoint_file = get_best_model_ckpt(
             checkpoint_dir=args.checkpoint_dir,
-            metric_name='BinaryJaccardIndex_val_epoch_avg_per_g',
+            metric_name='w_JaccardIndex_val_epoch_avg_per_g',
             sort_method='max'
         )
     else:
