@@ -14,54 +14,66 @@ from task.data import extract_inputs
 from config import C
 
 
-def compute_stats(fp, band_target='mask_crt_g', exclude_bad_pixels=True, input_settings=None, return_rasters=False):
+def compute_stats(fp, input_settings, band_target='mask_crt_g', exclude_bad_pixels=True, return_rasters=False):
     stats = {'fp': fp}
 
+    # read and process the data
     nc = xr.open_dataset(fp)
+    nc_data = extract_inputs(fp=fp, ds=nc, input_settings=input_settings)
+
     # hack: assume perfect predictions when plotting only the images and not the results
     if 'pred' not in nc.data_vars:
         nc['pred'] = (nc.mask_crt_g == 1)
         nc['pred_b'] = nc['pred']
 
-    # get the predictions and the ground truth
+    # get the ground truth based on the given target band
     mask = (nc[band_target].values == 1)
-    preds = nc.pred_b.values
 
-    # extract the mask for cloudy, shadow or no-data pixels
-    if exclude_bad_pixels:
-        assert input_settings is not None, 'input_settings must be specified when masking out predictions'
-        mask_exclude = extract_inputs(ds=nc, fp=fp, input_settings=input_settings)['mask_no_data']
-    else:
-        mask_exclude = np.zeros_like(mask)
-    mask[mask_exclude] = False
-    preds[mask_exclude] = False
-
+    # prepare the scaling constant for area computation in km2
     dx = nc.rio.resolution()[0]
     f_area = (dx ** 2) / 1e6
-    area = np.sum(mask) * f_area
+
+    # extract the mask for no-data pixels (which depends on the training yaml settings)
+    mask_exclude = nc_data['mask_no_data'] if exclude_bad_pixels else np.zeros_like(mask)
+    area_ok = np.sum(mask & (~mask_exclude)) * f_area
+    stats['area_ok'] = area_ok
     area_excluded = np.sum((nc.mask_crt_g.values == 1) & mask_exclude) * f_area
-    area_recalled = np.sum(mask & preds) * f_area
-    recall = area_recalled / area if area > 0 else np.nan
-
-    stats['area_ok'] = area
     stats['area_excluded'] = area_excluded
-    stats['area_recalled'] = area_recalled
-    stats['recall'] = recall
 
-    # add debris-specific stats
-    if 'mask_debris_crt_g' in nc.data_vars:
-        mask_debris = (nc.mask_debris_crt_g.values == 1) & mask
-    else:
-        mask_debris = np.zeros_like(mask)
-
+    # get the debris mask and its area
+    mask_debris = nc_data['mask_debris_crt_g']
     area_debris = np.sum(mask_debris) * f_area
-    area_debris_recalled = np.sum(mask_debris & preds) * f_area
-    recall_debris = area_debris_recalled / area_debris if area_debris > 0 else np.nan
     stats['area_debris'] = area_debris
-    stats['area_debris_recalled'] = area_debris_recalled
-    stats['recall_debris'] = recall_debris
 
-    # compute the FPs for the non-glacierized area (where predictions are made)
+    # loop over the original predictions and its interpolated versions, if any
+    # interpolation should be found when pixels are missing and there are more than 30 non-masked pixels
+    pred_bands = ['pred_b']
+    pred_bands += [c for c in ['pred_i_nn_b', 'pred_i_hypso_b'] if c in nc.data_vars]
+
+    for pred_band in pred_bands:
+        suffix = pred_band.split('pred')[1].split('_b')[0]
+
+        preds = nc[pred_band].values.copy()
+
+        if pred_band == 'pred_b': # apply the mask only on the raw predictions
+            preds[mask_exclude] = False
+            area = area_ok
+        else:
+            area = area_ok + area_excluded
+
+        area_recalled = np.sum(mask & preds) * f_area
+        recall = area_recalled / area if area > 0 else np.nan
+        stats[f"area_recalled{suffix}"] = area_recalled
+        stats[f"recall{suffix}"] = recall
+
+        # add debris-specific stats
+        area_debris_recalled = np.sum(mask_debris & preds) * f_area
+        recall_debris = area_debris_recalled / area_debris if area_debris > 0 else np.nan
+        stats[f"area_debris_recalled{suffix}"] = area_debris_recalled
+        stats[f"recall_debris{suffix}"] = recall_debris
+
+    # compute the FPs for the non-glacierized area (where predictions are made); use the default predictions
+    preds = nc['pred_b'].values
     mask_preds_exist = ~np.isnan(nc.pred.values)
     mask_non_g = np.isnan(nc.mask_all_g_id.values) & mask_preds_exist & (~mask_exclude)
     area_non_g = np.sum(mask_non_g) * f_area
@@ -107,7 +119,7 @@ def compute_stats(fp, band_target='mask_crt_g', exclude_bad_pixels=True, input_s
 
         all_masked = (np.sum(mask_lowest) == 0)
         idx = np.where(mask_lowest)
-        stats[f'term_h_{num_px_thr}_px'] = np.nan if all_masked else h_thr
+        stats[f'term_h_{num_px_thr}_px'] = np.nan if all_masked else float(h_thr)
         stats[f'term_x_i_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(idx[1]))
         stats[f'term_y_i_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(idx[0]))
         stats[f'term_x_m_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(nc.x.values[idx[1]]))
