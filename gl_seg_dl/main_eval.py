@@ -55,7 +55,7 @@ def compute_stats(fp, input_settings, band_target='mask_crt_g', exclude_bad_pixe
 
         preds = nc[pred_band].values.copy()
 
-        if pred_band == 'pred_b': # apply the mask only on the raw predictions
+        if pred_band == 'pred_b':  # apply the mask only on the raw predictions
             preds[mask_exclude] = False
             area = area_ok
         else:
@@ -85,14 +85,14 @@ def compute_stats(fp, input_settings, band_target='mask_crt_g', exclude_bad_pixe
     # compute the FPs for the non-glacierized area but only within a certain buffer
     nc['mask_crt_g_b0'] = nc['mask_crt_g']
     for b1, b2 in list(itertools.combinations(['b0', 'b10', 'b20', 'b50'], 2)):
-        mask_crt_b_interval = (nc[f'mask_crt_g_{b1}'].values == 0) & (nc[f'mask_crt_g_{b2}'].values == 1)
-        mask_non_g_crt_b = mask_non_g & mask_crt_b_interval
-        area_non_g_crt_b = np.sum(mask_non_g_crt_b) * f_area
-        mask_fp_crt_b = preds & mask_non_g_crt_b
-        area_fp_crt_b = np.sum(mask_fp_crt_b) * f_area
-        stats[f'area_non_g_{b1}_{b2}'] = area_non_g_crt_b
-        stats[f'area_non_g_{b1}_{b2}_excluded'] = np.sum(mask_crt_b_interval & mask_preds_exist & mask_exclude) * f_area
-        stats[f'area_fp_{b1}_{b2}'] = area_fp_crt_b
+        for exclude_other_glaciers in [False, True]:
+            mask_crt_b_interval = (nc[f'mask_crt_g_{b1}'].values == 0) & (nc[f'mask_crt_g_{b2}'].values == 1)
+            mask_non_g_crt_b = mask_non_g & mask_crt_b_interval
+            mask_fp_crt_b = preds & mask_non_g_crt_b
+
+            # compute the total non-glacier area in the current buffer and the corresponding FP area
+            stats[f"area_non_g_{b1}_{b2}"] = np.sum(mask_non_g_crt_b) * f_area
+            stats[f"area_fp_{b1}_{b2}"] = np.sum(mask_fp_crt_b) * f_area
 
     # estimate the altitude & location of the terminus
     # first by the lower ice-predicted pixel (if it's not masked), then by the median of the lowest 30 pixels
