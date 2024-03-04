@@ -12,7 +12,7 @@ from config import C, S2_PS, PS
 
 def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
                         num_cores, extra_shp_dict=None, min_area=None, choose_least_cloudy=False, max_cloud_f=None,
-                        max_n_imgs_per_g=1):
+                        max_n_imgs_per_g=1, df_dates=None):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
 
@@ -39,6 +39,11 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         'fp_img': fp_img_list_all
     })
     print(f"#total raw images = {len(raw_fp_df)}")
+
+    if df_dates is not None:
+        raw_fp_df['s2_file'] = raw_fp_df.fp_img.apply(lambda fp: fp.stem)
+        raw_fp_df = raw_fp_df.merge(df_dates, on=['entry_id', 's2_file'])
+        print(f"#total raw images (after filtering by date) = {len(raw_fp_df)}")
 
     # add the filepaths to the selected glaciers and check the data coverage
     gid_list = set(gl_df_sel.entry_id)
@@ -153,12 +158,13 @@ if __name__ == "__main__":
         )
     elif C.__name__ == 'S2_PS':
         # S2 data prep that matches the Planet data
-        # in this case multiple rasters per glacier will be produced; will manually choose the best, as for Planet
+        # in this case multiple rasters per glacier were initially produced, then manually chose the best, as for Planet
+        # the dates for the final rasters were saved in the provided csv file
+        print(f"Reading the final dates csv from {C.CSV_FINAL_DATES}")
+        final_dates = pd.read_csv(C.CSV_FINAL_DATES, converters={'entry_id': str})
         specific_settings = dict(
             buffer_px=C.PATCH_RADIUS,
-            choose_least_cloudy=False,
-            max_cloud_f=0.2,
-            max_n_imgs_per_g=5
+            df_dates=final_dates
         )
 
     settings = base_settings.copy()

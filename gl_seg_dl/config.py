@@ -146,7 +146,7 @@ class S2_PS(S2):
     """
     RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2_ps/inv'
     WD = '../data/external/wd/s2_ps'
-
+    CSV_FINAL_DATES = '../data/sat_data_downloader/external/aux/s2_dates/dates_ps_s2.csv'
 
 # specify which dataset to use
 C = S2
