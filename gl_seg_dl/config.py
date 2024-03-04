@@ -91,6 +91,7 @@ class S2(BaseConfig):
     """ Settings for Sentinel-2 data using the Paul. et al. 2020 outlines """
 
     RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2/inv'
+    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2/2023'
     WD = f'../data/external/wd/s2'
 
     # raw -> rasters settings
@@ -108,8 +109,18 @@ class S2(BaseConfig):
 class S2_GLAMOS(S2):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
-    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2_glamos/inv'
+    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/inv'
+    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/2023'
+
     WD = '../data/external/wd/s2_glamos'
+
+    # SGI2016 outlines in the RGI format
+    GLACIER_OUTLINES_FP = Path(
+        '../data/data_gmb/glamos/inventory_sgi2016_r2020_rgi_format/SGI_2016_glaciers_rgi_format.shp'
+    )
+
+    # we need specific DEMs given that the outlines are different
+    DEMS_DIR = Path('../data/external/oggm/s2_glamos')
 
 
 class PS(BaseConfig):
@@ -117,6 +128,7 @@ class PS(BaseConfig):
 
     WD = f'../data/external/wd/ps'
     RAW_DATA_DIR = '../data/external/planet/raw_processed/inv'
+    # RAW_DATA_DIR = '../data/external/planet/raw_processed/2023'
 
     # raw -> rasters settings
     BANDS = ('B', 'G', 'R', 'NIR', 'cloud', 'shadow')
@@ -138,3 +150,6 @@ class S2_PS(S2):
 
 # specify which dataset to use
 C = S2
+# C = S2_GLAMOS
+# C = S2_PS
+# C = PS
