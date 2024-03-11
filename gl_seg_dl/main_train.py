@@ -110,7 +110,7 @@ if __name__ == '__main__':
 
     # overwrite the seed if provided
     if args.seed is not None:
-        all_settings['seed'] = args.seed
+        all_settings['task']['seed'] = args.seed
 
     # overwrite the split if provided
     if args.split is not None:
