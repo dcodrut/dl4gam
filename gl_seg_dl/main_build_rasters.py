@@ -145,10 +145,18 @@ if __name__ == "__main__":
 
     # some dataset specific settings
     specific_settings = {}
-    if C.__name__ in ('S2', 'S2_GLAMOS'):
+    if C.__name__ == 'S2':
         specific_settings = dict(
             choose_least_cloudy=True,
             buffer_px=C.PATCH_RADIUS,
+        )
+    elif C.__name__ == 'S2_GLAMOS':
+        print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
+        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
+        specific_settings = dict(
+            choose_least_cloudy=True,
+            buffer_px=C.PATCH_RADIUS,
+            df_dates=dates_allowed
         )
     elif C.__name__ == 'PS':
         specific_settings = dict(

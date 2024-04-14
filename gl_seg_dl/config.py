@@ -109,10 +109,13 @@ class S2(BaseConfig):
 class S2_GLAMOS(S2):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
-    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/inv'
-    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/2023'
+    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/inv'
+    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/2023'
 
     WD = '../data/external/wd/s2_glamos'
+
+    # some dates are skipped when building the rasters because of seasonal snow
+    CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'dates_allowed.csv'
 
     # SGI2016 outlines in the RGI format
     GLACIER_OUTLINES_FP = Path(
