@@ -29,7 +29,7 @@ class SegModel(torch.nn.Module):
         self.model_args['classes'] = 1
 
         self.logger.info(f'Building Unet with {self.model_args}')
-        self.unet = getattr(smp, self.model_name)(**self.model_args)
+        self.seg_model = getattr(smp, self.model_name)(**self.model_args)
 
         if other_settings is not None:
             use_external_weights = other_settings['external_encoder_weights'] is not None
@@ -58,7 +58,7 @@ class SegModel(torch.nn.Module):
                     idx_bands.append(band_names.index('B8A'))
 
                 state_dict['conv1.weight'] = state_dict['conv1.weight'][:, idx_bands, ...]
-                self.unet.encoder.load_state_dict(state_dict)
+                self.seg_model.encoder.load_state_dict(state_dict)
 
     def forward(self, batch):
         input_list = []
@@ -74,6 +74,6 @@ class SegModel(torch.nn.Module):
         inputs = torch.cat(input_list, dim=1)
 
         # get the predictions
-        preds = self.unet(inputs)
+        preds = self.seg_model(inputs)
 
         return preds
