@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import Union
 
-import pandas as pd
-import xarray as xr
-import pytorch_lightning as pl
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
+import xarray as xr
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from utils.sampling_utils import get_patches_gdf
@@ -73,6 +73,31 @@ def extract_inputs(ds, fp, input_settings):
         # fill in the NAs with the average
         dem[np.isnan(dem)] = np.mean(dem[~np.isnan(dem)])
         data['dem'] = dem
+
+    if input_settings['indices']:
+        # compute the NDSI, NDVI and NDWI indices
+        # NDSI = (Green - SWIR) / (Green + SWIR)
+        # NDVI = (NIR - Red) / (NIR + Red)
+        # NDWI = (Green - NIR) / (Green + NIR)
+        swir = band_data[input_settings['bands_input'].index('B12')]
+        r = band_data[input_settings['bands_input'].index('B4')]
+        g = band_data[input_settings['bands_input'].index('B3')]
+        nir = band_data[input_settings['bands_input'].index('B8')]
+
+        # NDSI
+        den = g + swir
+        den[den == 0] = 1  # avoid division by zero
+        data['ndsi'] = (g - swir) / den
+
+        # NDVI
+        den = nir + r
+        den[den == 0] = 1  # avoid division by zero
+        data['ndvi'] = (nir - r) / den
+
+        # NDWI
+        den = g + nir
+        den[den == 0] = 1  # avoid division by zero
+        data['ndwi'] = (g - nir) / den
 
     return data
 

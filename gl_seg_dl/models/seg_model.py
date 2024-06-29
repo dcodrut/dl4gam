@@ -1,8 +1,8 @@
 import logging
+from pathlib import Path
 
 import segmentation_models_pytorch as smp
 import torch
-from pathlib import Path
 
 
 class SegModel(torch.nn.Module):
@@ -15,6 +15,7 @@ class SegModel(torch.nn.Module):
         self.input_settings = input_settings
         self.bands = input_settings['bands_input']
         self.use_elevation = input_settings['elevation']
+        self.use_indices = input_settings['indices']
 
         # prepare the logger
         self.logger = logging.getLogger('pytorch_lightning.core')
@@ -23,6 +24,8 @@ class SegModel(torch.nn.Module):
         num_ch = len(self.bands)
         if self.use_elevation:
             num_ch += 1
+        if self.use_indices:
+            num_ch += 3
         self.model_args['in_channels'] = num_ch
 
         # set the number of output channels
@@ -69,6 +72,12 @@ class SegModel(torch.nn.Module):
         # add the DEM
         if self.use_elevation:
             input_list.append(batch['dem'][:, None, :, :])
+
+        # add the indices if needed
+        if self.use_indices:
+            input_list.append(batch['ndsi'][:, None, :, :])
+            input_list.append(batch['ndvi'][:, None, :, :])
+            input_list.append(batch['ndwi'][:, None, :, :])
 
         # concatenate all the inputs over channel
         inputs = torch.cat(input_list, dim=1)
