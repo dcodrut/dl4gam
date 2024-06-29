@@ -36,13 +36,14 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
     fp_img_list_all = sorted(list(raw_images_dir.glob('**/*.tif')))
     raw_fp_df = pd.DataFrame({
         'entry_id': [fp.parent.name for fp in fp_img_list_all],
-        'fp_img': fp_img_list_all
+        'fp_img': fp_img_list_all,
+        'date': [pd.to_datetime(fp.stem[:8]).strftime('%Y-%m-%d') for fp in fp_img_list_all]
     })
     print(f"#total raw images = {len(raw_fp_df)}")
 
     if df_dates is not None:
-        raw_fp_df['s2_file'] = raw_fp_df.fp_img.apply(lambda fp: fp.stem)
-        raw_fp_df = raw_fp_df.merge(df_dates, on=['entry_id', 's2_file'])
+        df_dates.entry_id = df_dates.entry_id.apply(lambda x: f"{x:04d}")
+        raw_fp_df = raw_fp_df.merge(df_dates, on=['entry_id', 'date'])
         print(f"#total raw images (after filtering by date) = {len(raw_fp_df)}")
 
     # add the filepaths to the selected glaciers and check the data coverage
@@ -149,6 +150,13 @@ if __name__ == "__main__":
         specific_settings = dict(
             choose_least_cloudy=True,
             buffer_px=C.PATCH_RADIUS,
+        )
+    elif C.__name__ == 'S2_PLUS':
+        print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
+        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
+        specific_settings = dict(
+            buffer_px=C.PATCH_RADIUS,
+            df_dates=dates_allowed
         )
     elif C.__name__ == 'S2_GLAMOS':
         print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")

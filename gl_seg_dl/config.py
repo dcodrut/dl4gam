@@ -106,6 +106,29 @@ class S2(BaseConfig):
     SAMPLING_STEP_TRAIN = 128
 
 
+class S2_PLUS(BaseConfig):
+    """ Settings for Sentinel-2 data using the Paul. et al. 2020 outlines with manually checked images
+    (same images were replaced because they had too many clouds/shadows or had too much seasonal snow)"""
+
+    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2_plus/inv'
+    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2_plus/2023'
+    WD = f'../data/external/wd/s2_plus'
+
+    # csv file with the finals dates
+    CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'final_dates.csv'
+
+    # raw -> rasters settings
+    BANDS = (
+        'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12',
+        'CLOUDLESS_MASK',
+        'FILL_MASK'
+    )
+
+    # patch sampling settings
+    PATCH_RADIUS = 128
+    SAMPLING_STEP_TRAIN = 128
+
+
 class S2_GLAMOS(S2):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
@@ -152,7 +175,8 @@ class S2_PS(S2):
     CSV_FINAL_DATES = '../data/sat_data_downloader/external/aux/s2_dates/dates_ps_s2.csv'
 
 # specify which dataset to use
-C = S2
+# C = S2
+C = S2_PLUS
 # C = S2_GLAMOS
 # C = S2_PS
 # C = PS
