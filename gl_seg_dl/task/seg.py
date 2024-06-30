@@ -1,14 +1,15 @@
+import logging
+from pathlib import Path
+
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 import torchmetrics as tm
-import pandas as pd
-import logging
 import xarray as xr
-from pathlib import Path
 
 # local imports
-from task.loss import MaskedLoss
 from task.data import extract_inputs
+from task.loss import MaskedLoss
 from utils.postprocessing import nn_interp, hypso_interp
 
 
@@ -282,6 +283,9 @@ class GlSegTask(pl.LightningModule):
         # add the CRS to the new data arrays
         for c in [_c for _c in nc_pred.data_vars if 'pred' in _c]:
             nc_pred[c].rio.write_crs(nc_pred.rio.crs, inplace=True)
+
+        # drop the data variables to save space
+        nc_pred = nc_pred[[c for c in nc_pred.data_vars if 'pred' in c or 'mask' in c]]
 
         gl_id = Path(cube_fp).parent.name
         cube_pred_fp = Path(self.outdir) / gl_id / Path(cube_fp).name
