@@ -1,25 +1,35 @@
-from argparse import ArgumentParser
-from pathlib import Path
+import itertools
 import multiprocessing
-import xarray as xr
+from argparse import ArgumentParser
+from functools import partial
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from functools import partial
-from tqdm import tqdm
-import itertools
+import xarray as xr
 import yaml
+from tqdm import tqdm
 
 # local imports
-from task.data import extract_inputs
 from config import C
+from task.data import extract_inputs
 
 
 def compute_stats(fp, input_settings, band_target='mask_crt_g', exclude_bad_pixels=True, return_rasters=False):
     stats = {'fp': fp}
 
-    # read and process the data
+    # read the predictions
     nc = xr.open_dataset(fp)
-    nc_data = extract_inputs(fp=fp, ds=nc, input_settings=input_settings)
+
+    # read the raw data and add it to the predictions dataset
+    ds_name = fp.parent.parent.parent.name
+    entry_id = fp.parent.name
+    fp_orig = Path(C.DIR_GL_INVENTORY).parent.parent / ds_name / 'glacier_wide' / entry_id / fp.name
+    nc_orig = xr.open_dataset(fp_orig)
+    for c in nc_orig.data_vars:
+        if 'pred' not in c or 'mask' not in c:
+            nc[c] = nc_orig[c]
+    nc_data = extract_inputs(fp=fp_orig, ds=nc_orig, input_settings=input_settings)
 
     # hack: assume perfect predictions when plotting only the images and not the results
     if 'pred' not in nc.data_vars:
