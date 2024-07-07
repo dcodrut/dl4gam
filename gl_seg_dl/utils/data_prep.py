@@ -37,7 +37,7 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
     nc_data_crop['mask_all_g_id'].rio.write_crs(nc_data.rio.crs, inplace=True)
 
     # 2. binary mask only for the current glacier, also with various buffers (in meters)
-    for buffer_mask in [0, 10, 20, 50]:
+    for buffer_mask in [-20, -10, 0, 10, 20, 50]:
         _crt_g_shp = crt_g_shp.buffer(buffer_mask)
         tmp_raster = nc_data_crop.band_data.isel(band=0).fillna(0).rio.clip(_crt_g_shp.geometry, drop=False).values
         mask_crt_glacier = (~np.isnan(tmp_raster)).astype(np.int8)
