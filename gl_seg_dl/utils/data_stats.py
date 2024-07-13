@@ -1,8 +1,9 @@
-import pandas as pd
-import numpy as np
-import xarray as xr
-from pathlib import Path
 import json
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import xarray as xr
 
 # local imports
 from .data_prep import add_glacier_masks
@@ -77,18 +78,15 @@ def aggregate_normalization_stats(df):
     return df_stats_agg
 
 
-def compute_cloud_stats(gl_sdf, buffer_px):
+def compute_qc_stats(gl_sdf, include_shadows=True):
     assert len(gl_sdf) == 1, 'Expecting a dataframe with a single entry.'
     row = gl_sdf.iloc[0]
     fp = Path(row.fp_img)
     stats = {'fp_img': str(fp)}
     nc = xr.open_dataset(fp)
 
-    # keep only the mask bands
+    # get the band names
     band_names = list(nc.band_data.attrs['long_name'])
-    idx_bands_to_keep = [band_names.index(b) for b in band_names if 'MASK' in b]
-    band_names = [band_names[i] for i in idx_bands_to_keep]
-    nc = nc.isel(band=idx_bands_to_keep)
 
     # read the metadata from the same directory
     with open(fp.with_suffix('.json'), 'r') as f:
@@ -96,9 +94,7 @@ def compute_cloud_stats(gl_sdf, buffer_px):
 
     # get the glacier ID
     entry_id_i = row.entry_id_i
-    dx = nc.rio.resolution()[0]
-    buffer = buffer_px * dx
-    nc = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=buffer)
+    nc = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=50)
 
     # get the cloud percentage for the entire image which should be automatically computed by geedim
     # if the image comes from multiple tiles, use the one with the highest coverage
@@ -110,25 +106,64 @@ def compute_cloud_stats(gl_sdf, buffer_px):
     stats['fill_p_meta'] = fill_p_meta
 
     # prepare the cloud masks, either using the provided CLOUDLESS_MASK band
-    #   or the one composed by the bands FILL_MASK | CLOUD_MASK | SHADOW_MASK
+    #   or the one composed by the bands FILL_MASK | CLOUD_MASK | SHADOW_MASK (if required)
     fill_mask = nc.band_data.isel(band=band_names.index('FILL_MASK')).data
     fill_p = np.nansum(fill_mask == 1) / np.prod(fill_mask.shape)
     cloud_mask_v1 = (nc.band_data.isel(band=band_names.index('CLOUDLESS_MASK')).data != 1)
     cloud_p_v1 = np.nansum(cloud_mask_v1 == 1) / np.prod(cloud_mask_v1.shape)
     cloud_mask = nc.band_data.isel(band=band_names.index('CLOUD_MASK')).data
-    shadow_mask = nc.band_data.isel(band=band_names.index('SHADOW_MASK')).data
-    cloud_mask_v2 = (cloud_mask == 1) | (shadow_mask == 1) | (fill_mask != 1)
+    cloud_mask_v2 = (cloud_mask == 1) | (fill_mask != 1)
+    if include_shadows:
+        shadow_mask = nc.band_data.isel(band=band_names.index('SHADOW_MASK')).data
+        cloud_mask_v2 |= (shadow_mask == 1)
     cloud_p_v2 = np.nansum(cloud_mask_v2 == 1) / np.prod(cloud_mask_v2.shape)
 
-    # compute the glacier-level cloud percentage using the 20m buffer
-    gl_mask = (nc.mask_crt_g_b20.values == 1)
-    cloud_mask_v1_gl_only = ((cloud_mask_v1 == 1) & gl_mask)
-    cloud_mask_v2_gl_only = ((cloud_mask_v2 == 1) & gl_mask)
-    cloud_p_v1_gl_only = np.sum(cloud_mask_v1_gl_only) / np.sum(gl_mask)
-    cloud_p_v2_gl_only = np.sum(cloud_mask_v2_gl_only) / np.sum(gl_mask)
+    # compute the glacier-level cloud percentage using the 50m buffer
+    gl_mask_50m_buffer = (nc.mask_crt_g_b50.values == 1)
+    cloud_mask_v1_gl_only = ((cloud_mask_v1 == 1) & gl_mask_50m_buffer)
+    cloud_mask_v2_gl_only = ((cloud_mask_v2 == 1) & gl_mask_50m_buffer)
+    cloud_p_v1_gl_only = np.sum(cloud_mask_v1_gl_only) / np.sum(gl_mask_50m_buffer)
+    cloud_p_v2_gl_only = np.sum(cloud_mask_v2_gl_only) / np.sum(gl_mask_50m_buffer)
 
     # get the tile-level cloud percentage
     tile_level_cloud_p = metadata['imgs_props_extra'][k]['CLOUDY_PIXEL_PERCENTAGE'] / 100
+
+    # compute the albedo, NDSI & Red \ SWIR, over the unclouded surfaces (glacier & non-glacier & within 50m buffer)
+    for cloud_mask_v, cloud_mask in zip(['v1', 'v2'], [cloud_mask_v1_gl_only, cloud_mask_v2_gl_only]):
+        mask_clean = ~cloud_mask
+        mask_gl_clean = (nc.mask_crt_g.values == 1) & mask_clean
+        mask_gl_buffer_50m_clean = (nc.mask_crt_g_b50.values == 1) & mask_clean
+        mask_non_gl_clean = (nc.mask_all_g_id.values == -1) & mask_clean
+        mask_non_gl_clean_buffer_50m = (nc.mask_crt_g_b50.values == 1) & (nc.mask_all_g_id.values == -1) & mask_clean
+        for name, mask in zip(
+                ['scene', 'gl', 'gl_b50m', 'non_gl', 'non_gl_b50m'],
+                [mask_clean, mask_gl_clean, mask_gl_buffer_50m_clean, mask_non_gl_clean, mask_non_gl_clean_buffer_50m]
+        ):
+            if np.sum(mask) < 30:  # at least 30 clean pixels required
+                continue
+
+            # albedo
+            nc_crt = nc.where(mask)
+            img_bgr = nc_crt.isel(band=[band_names.index(x) for x in ['B2', 'B3', 'B4']]).band_data.values / 10000
+            albedo = 0.5621 * img_bgr[0] + 0.1479 * img_bgr[1] + 0.2512 * img_bgr[2] + 0.0015
+            albedo_avg = np.nanmean(albedo) if np.sum(~np.isnan(albedo)) > 0 else np.nan
+            stats[f"albedo_avg_{name}_{cloud_mask_v}"] = albedo_avg
+
+            # NDSI
+            img_g_swir = nc_crt.isel(band=[band_names.index(x) for x in ['B3', 'B11']]).band_data.values
+            den = (img_g_swir[0] + img_g_swir[1])
+            den[den == 0] = 1
+            ndsi = (img_g_swir[0] - img_g_swir[1]) / den
+            ndsi_avg = np.nanmean(ndsi) if np.sum(~np.isnan(ndsi)) > 0 else np.nan
+            stats[f"ndsi_avg_{name}_{cloud_mask_v}"] = ndsi_avg
+
+            # Red / SWIR
+            img_r_swir = nc_crt.isel(band=[band_names.index(x) for x in ['B4', 'B11']]).band_data.values
+            den = img_r_swir[1].copy()
+            den[den == 0] = 1
+            r_swir = img_r_swir[0] / den
+            r_swir_avg = np.nanmean(r_swir) if np.sum(~np.isnan(r_swir)) > 0 else np.nan
+            stats[f"r_swir_avg_{name}_{cloud_mask_v}"] = r_swir_avg
 
     # save and return the stats
     stats['fill_p'] = fill_p

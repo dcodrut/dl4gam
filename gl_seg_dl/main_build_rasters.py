@@ -1,17 +1,19 @@
-import geopandas as gpd
-import pandas as pd
-from pathlib import Path
 import functools
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
 
 # local imports
-from utils.data_stats import compute_cloud_stats
-from utils.data_prep import prep_raster
-from utils.general import run_in_parallel
 from config import C, S2_PS, PS
+from utils.data_prep import prep_raster
+from utils.data_stats import compute_qc_stats
+from utils.general import run_in_parallel
 
 
 def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
-                        num_cores, extra_shp_dict=None, min_area=None, choose_least_cloudy=False, max_cloud_f=None,
+                        num_cores, extra_shp_dict=None, min_area=None, choose_best_auto=False, max_cloud_f=None,
                         max_n_imgs_per_g=1, df_dates=None):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
@@ -42,7 +44,6 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
     print(f"#total raw images = {len(raw_fp_df)}")
 
     if df_dates is not None:
-        df_dates.entry_id = df_dates.entry_id.apply(lambda x: f"{x:04d}")
         raw_fp_df = raw_fp_df.merge(df_dates, on=['entry_id', 'date'])
         print(f"#total raw images (after filtering by date) = {len(raw_fp_df)}")
 
@@ -53,37 +54,75 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
     print(f"#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} ({n / len(gid_list) * 100:.1f}%)")
 
     # compute the cloud coverage statistics for each downloaded image if needed
-    if choose_least_cloudy:
-        all_cloud_stats = run_in_parallel(
-            fun=functools.partial(compute_cloud_stats, buffer_px=buffer_px),
-            gl_sdf=[gl_df_sel[i:i + 1] for i in range(len(gl_df_sel))],
-            num_cores=num_cores,
-            pbar=True
-        )
-        cloud_stats_df = pd.DataFrame.from_records(all_cloud_stats)
-        cloud_stats_df = cloud_stats_df.sort_values(['entry_id', 'fp_img'])
+    if choose_best_auto or max_cloud_f is not None:
         fp_cloud_stats = Path(out_rasters_dir).parent / 'aux_data' / 'cloud_stats.csv'
-        fp_cloud_stats.parent.mkdir(exist_ok=True, parents=True)
-        cloud_stats_df.to_csv(fp_cloud_stats, index=False)
-        print(f"cloud stats exported to {fp_cloud_stats}")
+        if fp_cloud_stats.exists():
+            print(f"Reading the cloud stats from {fp_cloud_stats}")
+            cloud_stats_df = pd.read_csv(fp_cloud_stats)
+        else:
+            gl_sdf_list = list(
+                gl_df_sel.apply(lambda r: gpd.GeoDataFrame(pd.DataFrame(r).T, crs=gl_df_sel.crs), axis=1)
+            )
+            all_cloud_stats = run_in_parallel(
+                fun=functools.partial(compute_qc_stats, include_shadows=False),
+                gl_sdf=gl_sdf_list,
+                num_cores=num_cores,
+                pbar=True
+            )
+            cloud_stats_df = pd.DataFrame.from_records(all_cloud_stats)
+            cloud_stats_df = cloud_stats_df.sort_values(['entry_id', 'fp_img'])
+            fp_cloud_stats.parent.mkdir(exist_ok=True, parents=True)
+            cloud_stats_df.to_csv(fp_cloud_stats, index=False)
+            print(f"cloud stats exported to {fp_cloud_stats}")
         cloud_stats_df.fp_img = cloud_stats_df.fp_img.apply(lambda s: Path(s))
 
         # choose the least cloudy images and prepare the paths
-        col_prc_clouds = 'cloud_p_v1_gl_only'
-        gl_df_sel = gl_df_sel.merge(cloud_stats_df[['fp_img', col_prc_clouds]], on='fp_img')
+        col_clouds = 'cloud_p_v1_gl_only'
+        col_ndsi = 'ndsi_avg_scene_v1'
+        col_albedo = 'albedo_avg_gl_v1'
+        cols_qc = [col_clouds, col_ndsi, col_albedo]
+        gl_df_sel = gl_df_sel.merge(cloud_stats_df[['fp_img'] + cols_qc], on='fp_img')
 
         # impose the max cloudiness threshold if given (this includes missing pixels)
         if max_cloud_f is not None:
-            gl_df_sel = gl_df_sel[gl_df_sel[col_prc_clouds] <= max_cloud_f]
+            gl_df_sel = gl_df_sel[gl_df_sel[col_clouds] <= max_cloud_f]
+            print(f"after cloud filtering with max_cloud_f = {max_cloud_f:.2f}")
+            print(f"\t#images = {len(gl_df_sel)}")
+            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+            print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
+                  f"({n / len(gid_list) * 100:.1f}%)")
 
-        # keep the best n images (favour those close to 20.08 in case many images are cloud free)
-        gl_df_sel['date'] = gl_df_sel['fp_img'].apply(lambda s: pd.to_datetime(Path(s).name[:8]))
-        gl_df_sel['diff'] = gl_df_sel.date.apply(lambda d: abs(d - pd.to_datetime(f"{d.year}-08-20")).days)
-        gl_df_sel = gl_df_sel.sort_values([col_prc_clouds, 'diff'])
-        gl_df_sel = gl_df_sel.groupby('entry_id').head(max_n_imgs_per_g).reset_index()
-        print(f"avg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
-        print(f"#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
-              f"({n / len(gid_list) * 100:.1f}%)")
+        # keep the best n images (based on cloud coverage and NDSI)
+        if choose_best_auto:
+            # give an index to each image based on the cloud coverage and the NDSI
+            for c in [col_clouds, col_ndsi]:
+                df_idx = gl_df_sel.groupby('entry_id', sort=True, group_keys=False).apply(
+                    lambda ssdf: pd.DataFrame(
+                        {
+                            'entry_id': ssdf.entry_id,
+                            'date': ssdf.date,
+                            f"{c}_s": np.searchsorted(ssdf[c].round(2).sort_values(), ssdf[c]),
+                        }
+                    )
+                )
+                gl_df_sel = gl_df_sel.merge(df_idx, on=['entry_id', 'date'], validate='one_to_one')
+
+            # compute the combined score based on the cloud coverage and the NDSI
+            gl_df_sel['qc_score'] = (gl_df_sel[f"{col_clouds}_s"] + gl_df_sel[f"{col_ndsi}_s"]) / 2
+
+            # keep the best (use albedo as tie-breaker)
+            gl_df_sel = gl_df_sel.sort_values(['qc_score', col_albedo])
+            gl_df_sel = gl_df_sel.groupby('entry_id').head(max_n_imgs_per_g).reset_index()
+            print(f"after keeping the best {max_n_imgs_per_g} images per glacier:")
+            print(f"\t#images = {len(gl_df_sel)}")
+            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+            print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
+                  f"({n / len(gid_list) * 100:.1f}%)")
+
+            # export the selected dataframe
+            fp_sel = Path(out_rasters_dir).parent / 'aux_data' / 'selected_images.csv'
+            pd.DataFrame(gl_df_sel.drop(columns='geometry')).to_csv(fp_sel, index=False)
+            print(f"Selected images exported to {fp_sel}")
 
     # prepare the DEMs filepaths
     fp_dem_list_all = list(Path(dems_dir).glob('**/dem.tif'))
@@ -152,15 +191,23 @@ if __name__ == "__main__":
             buffer_px=C.PATCH_RADIUS,
         )
     elif C.__name__ == 'S2_PLUS':
-        print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
-        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
+        if C.CSV_DATES_ALLOWED is not None:
+            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
+            max_cloud_f = None
+            choose_best_auto = False
+        else:
+            dates_allowed = None
+            max_cloud_f = 0.25
+            choose_best_auto = True
         specific_settings = dict(
             buffer_px=C.PATCH_RADIUS,
-            df_dates=dates_allowed
+            df_dates=dates_allowed,
+            max_cloud_f=max_cloud_f,
+            choose_best_auto=choose_best_auto
         )
     elif C.__name__ == 'S2_GLAMOS':
         print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
-        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
+        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
         specific_settings = dict(
             choose_least_cloudy=True,
             buffer_px=C.PATCH_RADIUS,
