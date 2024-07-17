@@ -47,8 +47,9 @@ def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exc
     # extract the mask for no-data pixels (which depends on the training yaml settings)
     mask_exclude = nc_data['mask_no_data'] if exclude_bad_pixels else np.zeros_like(mask)
     area_ok = np.sum(mask & (~mask_exclude)) * f_area
+    stats['area_inv'] = np.sum(nc.mask_crt_g.values) * f_area
     stats['area_ok'] = area_ok
-    area_excluded = np.sum((nc.mask_crt_g.values == 1) & mask_exclude) * f_area
+    area_excluded = np.sum(mask & mask_exclude) * f_area
     stats['area_excluded'] = area_excluded
 
     # get the debris mask and its area
@@ -96,14 +97,14 @@ def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exc
     # compute the FPs for the non-glacierized area but only within a certain buffer
     nc['mask_crt_g_b0'] = nc['mask_crt_g']
     for b1, b2 in list(itertools.combinations(['b-20', 'b-10', 'b0', 'b10', 'b20', 'b50'], 2)):
-        for exclude_other_glaciers in [False, True]:
-            mask_crt_b_interval = (nc[f'mask_crt_g_{b1}'].values == 0) & (nc[f'mask_crt_g_{b2}'].values == 1)
-            mask_non_g_crt_b = mask_non_g & mask_crt_b_interval
-            mask_fp_crt_b = preds & mask_non_g_crt_b
+        mask_crt_b_interval = (nc[f'mask_crt_g_{b1}'].values == 0) & (nc[f'mask_crt_g_{b2}'].values == 1)
+        mask_non_g_crt_b = mask_non_g & mask_crt_b_interval
+        mask_fp_crt_b = preds & mask_non_g_crt_b
 
-            # compute the total non-glacier area in the current buffer and the corresponding FP area
-            stats[f"area_non_g_{b1}_{b2}"] = np.sum(mask_non_g_crt_b) * f_area
-            stats[f"area_fp_{b1}_{b2}"] = np.sum(mask_fp_crt_b) * f_area
+        # compute the total non-glacier area in the current buffer and the corresponding FP area
+        stats[f"area_{b1}_{b2}"] = np.sum(mask_crt_b_interval) * f_area
+        stats[f"area_non_g_{b1}_{b2}"] = np.sum(mask_non_g_crt_b) * f_area
+        stats[f"area_fp_{b1}_{b2}"] = np.sum(mask_fp_crt_b) * f_area
 
     # estimate the altitude & location of the terminus
     # first by the lower ice-predicted pixel (if it's not masked), then by the median of the lowest 30 pixels
