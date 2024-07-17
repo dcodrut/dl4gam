@@ -15,7 +15,8 @@ from config import C
 from task.data import extract_inputs
 
 
-def compute_stats(fp, input_settings, band_target='mask_crt_g', exclude_bad_pixels=True, return_rasters=False):
+def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exclude_bad_pixels=True,
+                  return_rasters=False):
     stats = {'fp': fp}
 
     # read the predictions
@@ -24,7 +25,7 @@ def compute_stats(fp, input_settings, band_target='mask_crt_g', exclude_bad_pixe
     # read the raw data and add it to the predictions dataset
     ds_name = fp.parent.parent.parent.name
     entry_id = fp.parent.name
-    fp_orig = Path(C.DIR_GL_INVENTORY).parent.parent / ds_name / 'glacier_wide' / entry_id / fp.name
+    fp_orig = Path(rasters_dir).parent.parent / ds_name / 'glacier_wide' / entry_id / fp.name
     nc_orig = xr.open_dataset(fp_orig)
     for c in nc_orig.data_vars:
         if 'pred' not in c or 'mask' not in c:
@@ -159,11 +160,21 @@ if __name__ == "__main__":
     )
     parser.add_argument('--fold', type=str, metavar='s_train|s_valid|s_test', required=True,
                         help='which subset to evaluate on: either s_train, s_valid or s_test')
+    parser.add_argument('--rasters_dir', type=str, required=False,
+                        help='directory where the original images are stored; '
+                             'if not provided, the one from the config file is used'
+                        )
 
     args = parser.parse_args()
     inference_dir_root = Path(args.inference_dir)
     print(f'inference_dir_root = {inference_dir_root}')
     assert inference_dir_root.exists()
+
+    # set the raster directory to the command line argument if given, otherwise use the inference dirs from the config
+    if args.rasters_dir is not None:
+        rasters_dir = args.rasters_dir
+    else:
+        rasters_dir = C.DIR_GL_INVENTORY
 
     # replace the 'preds' subdirectory with 'stats'
     p = list(inference_dir_root.parts)
@@ -188,6 +199,7 @@ if __name__ == "__main__":
 
             _compute_stats = partial(
                 compute_stats,
+                rasters_dir=rasters_dir,
                 band_target=band_target,
                 exclude_bad_pixels=exclude_bad_pixels,
                 input_settings=all_settings['model']['inputs'],
