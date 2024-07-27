@@ -4,6 +4,14 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyproj
+import rasterio
+import rioxarray as rxr
+import rioxarray.merge
+import shapely
+import shapely.ops
+import xarray as xr
+from tqdm import tqdm
 
 # local imports
 from config import C, S2_PS, PS
@@ -13,8 +21,8 @@ from utils.general import run_in_parallel
 
 
 def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
-                        num_cores, extra_shp_dict=None, min_area=None, choose_best_auto=False, max_cloud_f=None,
-                        max_n_imgs_per_g=1, df_dates=None):
+                        num_cores, extra_shp_dict=None, extra_rasters_dict=None, min_area=None, choose_best_auto=False,
+                        max_cloud_f=None, max_n_imgs_per_g=1, df_dates=None):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
 
@@ -109,6 +117,10 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
 
             # compute the combined score based on the cloud coverage and the NDSI
             gl_df_sel['qc_score'] = (gl_df_sel[f"{col_clouds}_s"] + gl_df_sel[f"{col_ndsi}_s"]) / 2
+            # export the scores
+            fp_sel = Path(out_rasters_dir).parent / 'aux_data' / 'qc_stats.csv'
+            pd.DataFrame(gl_df_sel.drop(columns='geometry')).to_csv(fp_sel, index=False)
+            print(f"Selected images exported to {fp_sel}")
 
             # keep the best (use albedo as tie-breaker)
             gl_df_sel = gl_df_sel.sort_values(['qc_score', col_albedo])
@@ -121,20 +133,24 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
 
             # export the selected dataframe
             fp_sel = Path(out_rasters_dir).parent / 'aux_data' / 'selected_images.csv'
+            gl_df_sel = gl_df_sel.sort_values(['entry_id', 'date'])
             pd.DataFrame(gl_df_sel.drop(columns='geometry')).to_csv(fp_sel, index=False)
             print(f"Selected images exported to {fp_sel}")
 
     # prepare the DEMs filepaths
-    fp_dem_list_all = list(Path(dems_dir).glob('**/dem.tif'))
-    dem_fp_df = pd.DataFrame({
-        'RGIId': [fp.parent.name for fp in fp_dem_list_all],
-        'fp_dem': fp_dem_list_all
-    })
-    print(f"#DEMs = {len(dem_fp_df)}")
-    rgi_ids_without_dems = set(gl_df_sel.RGIId) - set(dem_fp_df.RGIId)
-    assert len(rgi_ids_without_dems) == 0, f"No DEMs found for {rgi_ids_without_dems}"
-    gl_df_sel = gl_df_sel.merge(dem_fp_df, on='RGIId')
-    fp_dem_list = list(gl_df_sel.fp_dem)
+    if dems_dir is not None:
+        fp_dem_list_all = list(Path(dems_dir).glob('**/dem.tif'))
+        dem_fp_df = pd.DataFrame({
+            'RGIId': [fp.parent.name for fp in fp_dem_list_all],
+            'fp_dem': fp_dem_list_all
+        })
+        print(f"#DEMs = {len(dem_fp_df)}")
+        rgi_ids_without_dems = set(gl_df_sel.RGIId) - set(dem_fp_df.RGIId)
+        assert len(rgi_ids_without_dems) == 0, f"No DEMs found for {rgi_ids_without_dems}"
+        gl_df_sel = gl_df_sel.merge(dem_fp_df, on='RGIId')
+        fp_dem_list = list(gl_df_sel.fp_dem)
+    else:
+        fp_dem_list = None
 
     # read the extra shapefiles if given
     if extra_shp_dict is not None:
@@ -165,6 +181,46 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         pbar=True
     )
 
+    # save the bounding boxes of all the rasters and all the glaciers (including the buffer)
+    extra_rasters_bb_dict = {}
+    for k, crt_dir in extra_rasters_dict.items():
+        rasters_crt_dir = list(Path(crt_dir).glob('**/*.tif'))
+        extra_rasters_bb_dict[k] = {
+            fp: shapely.geometry.box(*xr.open_dataset(fp).rio.bounds()) for fp in rasters_crt_dir
+        }
+
+    # for each glacier, keep the rasters that intersect it (including a buffer)
+    # TODO: parallelize this
+    for i in tqdm(range(len(fp_img_list)), desc='Adding rasters'):
+        with xr.open_dataset(fp_out_list[i], decode_coords='all') as nc_gl:
+            nc_gl.load()
+            nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
+
+            for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
+                # check which dhdt files intersect the current glacier
+                crt_nc_list = []
+                for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
+                    crt_nc = xr.open_dataarray(fp)
+                    transform = pyproj.Transformer.from_crs(crt_nc.rio.crs, nc_gl.rio.crs, always_xy=True).transform
+                    if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
+                        crt_nc_list.append(crt_nc)
+
+                # merge the dhdt datasets if needed
+                if len(crt_nc_list) > 1:
+                    nc_raster = rxr.merge.merge_arrays(crt_nc_list)
+                else:
+                    nc_raster = crt_nc_list[0]
+
+                # add the current raster to the glacier dataset
+                nc_gl[k] = nc_raster.isel(band=0).rio.reproject_match(
+                    nc_gl, resampling=rasterio.enums.Resampling.bilinear
+                )
+
+        assert (nc_gl.dem.values != 0).all()
+
+        # export
+        nc_gl.to_netcdf(fp_out_list[i])
+
 
 if __name__ == "__main__":
     # specify which other outlines to use to build masks and add them to the final rasters
@@ -173,14 +229,18 @@ if __name__ == "__main__":
     # the next settings apply to all datasets
     base_settings = dict(
         raw_images_dir=C.RAW_DATA_DIR,
-        dems_dir=C.DEMS_DIR,
+        dems_dir=None,
         fp_gl_df_all=C.GLACIER_OUTLINES_FP,
         out_rasters_dir=C.DIR_GL_INVENTORY,
         min_area=C.MIN_GLACIER_AREA,
         bands_to_keep=C.BANDS,
         no_data=C.NODATA,
         num_cores=C.NUM_CORES,
-        extra_shp_dict=extra_shp_dict
+        extra_shp_dict=extra_shp_dict,
+        extra_rasters_dict={
+            'dem': C.DEMS_DIR,
+            'dhdt': C.DHDT_DIR
+        }
     )
 
     # some dataset specific settings

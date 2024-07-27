@@ -8,7 +8,9 @@ class BaseConfig:
     NUM_CV_FOLDS = 5
     VALID_FRACTION = 0.15
     MIN_GLACIER_AREA = 0.1  # km2
-    DEMS_DIR = Path('../data/external/oggm/s2')
+    DEMS_DIR = Path('../data/external/copdem_eea10m')
+    # DHDT_DIR = Path('../data/external/dhdt_hugonnet/11_rgi60_2015-01-01_2020-01-01/dhdt')
+    DHDT_DIR = Path('../data/external/dhdt_hugonnet/11_rgi60_2000-01-01_2020-01-01/dhdt')
     GLACIER_OUTLINES_FP = Path('../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp')
     DEBRIS_OUTLINES_FP = dict(
         debris_scherler_2018='../data/data_gmb/debris/scherler_2018/11_rgi60_CentralEurope_S2_DC_2015_2017_mode.shp',
@@ -17,7 +19,7 @@ class BaseConfig:
     NODATA = -9999
 
     # how many cores to use when building the rasters
-    NUM_CORES = 32
+    NUM_CORES = 16
 
     # how many cores to use when evaluating the models per glacier
     NUM_CORES_EVAL = 16
