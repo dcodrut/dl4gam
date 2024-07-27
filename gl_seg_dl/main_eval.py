@@ -144,6 +144,7 @@ def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exc
         return stats
 
     rasters = {
+        'full_raster': nc,
         'mask': mask,
         'mask_exclude': mask_exclude,
         'preds': preds,
