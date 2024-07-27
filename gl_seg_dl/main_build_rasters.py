@@ -109,7 +109,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
                         {
                             'entry_id': ssdf.entry_id,
                             'date': ssdf.date,
-                            f"{c}_s": np.searchsorted(ssdf[c].round(2).sort_values(), ssdf[c]),
+                            f"{c}_s": np.searchsorted(ssdf[c].round(2).sort_values(), ssdf[c].round(2)),
                         }
                     )
                 )
