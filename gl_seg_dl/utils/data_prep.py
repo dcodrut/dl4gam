@@ -72,11 +72,14 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_t
     nc = xr.open_dataset(fp_img)
 
     # keep only the bands we need later
-    all_bands = list(nc.band_data.long_name)
-    bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
-    if len(bands_to_drop) > 0:
-        nc = nc.drop_isel(band=[all_bands.index(b) for b in bands_to_drop])
-    nc.band_data.attrs['long_name'] = tuple(bands_to_keep)
+    if 'long_name' in nc.band_data.attrs:
+        all_bands = list(nc.band_data.long_name)
+        bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
+        if len(bands_to_drop) > 0:
+            nc = nc.drop_isel(band=[all_bands.index(b) for b in bands_to_drop])
+        nc.band_data.attrs['long_name'] = tuple(bands_to_keep)
+    else:
+        nc.band_data.attrs['long_name'] = ['pancromatic']
 
     # add the glacier masks
     entry_id_int = row_crt_g.iloc[0].entry_id_i
@@ -95,10 +98,11 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_t
     nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)  # not sure why but needed for QGIS
 
     # add the DEM
-    nc_dem = xr.open_dataset(fp_dem, mask_and_scale=False).isel(band=0)
-    nc_dem = nc_dem.rio.reproject_match(nc, resampling=rasterio.enums.Resampling.bilinear)
-    nc_dem['band_data'].attrs['_FillValue'] = no_data
-    nc['dem'] = nc_dem.band_data
+    if fp_dem is not None:
+        nc_dem = xr.open_dataset(fp_dem, mask_and_scale=False).isel(band=0)
+        nc_dem = nc_dem.rio.reproject_match(nc, resampling=rasterio.enums.Resampling.bilinear)
+        nc_dem['band_data'].attrs['_FillValue'] = no_data
+        nc['dem'] = nc_dem.band_data
 
     # export
     fp_out.parent.mkdir(exist_ok=True, parents=True)
