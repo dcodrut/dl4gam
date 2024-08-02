@@ -15,6 +15,7 @@ class SegModel(torch.nn.Module):
         self.input_settings = input_settings
         self.bands = input_settings['bands_input']
         self.use_elevation = input_settings['elevation']
+        self.use_dhdt = input_settings['dhdt']
         self.use_indices = input_settings['indices']
 
         # prepare the logger
@@ -26,6 +27,8 @@ class SegModel(torch.nn.Module):
             num_ch += 1
         if self.use_indices:
             num_ch += 3
+        if self.use_dhdt:
+            num_ch += 1
         self.model_args['in_channels'] = num_ch
 
         # set the number of output channels
@@ -72,6 +75,10 @@ class SegModel(torch.nn.Module):
         # add the DEM
         if self.use_elevation:
             input_list.append(batch['dem'][:, None, :, :])
+
+        # add the dhdt if needed
+        if self.use_dhdt:
+            input_list.append(batch['dhdt'][:, None, :, :])
 
         # add the indices if needed
         if self.use_indices:

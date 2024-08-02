@@ -74,6 +74,12 @@ def extract_inputs(ds, fp, input_settings):
         dem[np.isnan(dem)] = np.mean(dem[~np.isnan(dem)])
         data['dem'] = dem
 
+    if input_settings['dhdt']:
+        dhdt = ds.dhdt.values.astype(np.float32)
+        # fill in the NAs with zeros
+        dhdt[np.isnan(dhdt)] = 0.0
+        data['dhdt'] = dhdt
+
     if input_settings['indices']:
         # compute the NDSI, NDVI and NDWI indices
         # NDSI = (Green - SWIR) / (Green + SWIR)
@@ -115,7 +121,7 @@ def standardize_inputs(data, stats_df, scale_each_band):
     data['band_data'] /= stddev[:, None, None]
 
     # do the same for the static variables
-    for v in ['dem']:
+    for v in ['dem', 'dhdt']:
         if v in data:
             sdf = stats_df[stats_df.var_name == v]
             mu = sdf.mu.values[0]
@@ -139,7 +145,7 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
     data['band_data'] /= (vmax[:, None, None] - vmin[:, None, None])
 
     # do the same for the static variables
-    for v in ['dem']:
+    for v in ['dem', 'dhdt']:
         if v in data:
             # apply the scaling
             sdf = stats_df[stats_df.var_name == v]
