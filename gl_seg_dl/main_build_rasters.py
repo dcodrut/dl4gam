@@ -190,6 +190,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         fp_gl=fp_out_list,
         extra_rasters_bb_dict=extra_rasters_bb_dict,
         num_cores=num_cores,
+        no_data=no_data,
         pbar=True
     )
 
@@ -199,6 +200,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
             fun=add_dem_features,
             fp_gl=fp_out_list,
             num_cores=num_cores,
+            no_data=no_data,
             pbar=True
         )
 

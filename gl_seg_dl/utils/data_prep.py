@@ -119,15 +119,16 @@ def prep_glacier_dataset(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict
     nc.to_netcdf(fp_out)
 
 
-def add_external_raster(fp_gl, extra_rasters_bb_dict):
+def add_external_raster(fp_gl, extra_rasters_bb_dict, no_data):
     """
         Adds extra rasters to the glacier dataset.
 
         :param fp_gl: str, path to the glacier dataset
         :param extra_rasters_bb_dict: dict, the paths to the extra rasters as keys and their bounding boxes that will be
         used to determine which of them intersect the current glacier
+        :no_data: the value to be used as NODATA
     """
-    with xr.open_dataset(fp_gl, decode_coords='all') as nc_gl:
+    with xr.open_dataset(fp_gl, decode_coords='all', mask_and_scale=False) as nc_gl:
         nc_gl.load()  # needed to be able to close the file and save the changes to the same file
         nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
 
@@ -135,7 +136,7 @@ def add_external_raster(fp_gl, extra_rasters_bb_dict):
             # check which raster files intersect the current glacier
             crt_nc_list = []
             for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
-                crt_nc = xr.open_dataarray(fp)
+                crt_nc = xr.open_dataarray(fp, mask_and_scale=False)
                 transform = pyproj.Transformer.from_crs(crt_nc.rio.crs, nc_gl.rio.crs, always_xy=True).transform
                 if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
                     crt_nc_list.append(crt_nc)
@@ -143,27 +144,29 @@ def add_external_raster(fp_gl, extra_rasters_bb_dict):
             # merge the datasets if needed
             nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
 
-            # set NODATA value to np.nan
-            nc_raster.attrs['_FillValue'] = np.nan
+            # reproject
+            nc_raster = nc_raster.isel(band=0).rio.reproject_match(
+                nc_gl, resampling=rasterio.enums.Resampling.bilinear).astype(np.float32)
+            nc_raster.rio.write_crs(nc_gl.rio.crs, inplace=True)  # not sure why but needed for QGIS
+            nc_raster.attrs['_FillValue'] = np.float32(no_data)
 
             # add the current raster to the glacier dataset
-            nc_gl[k] = nc_raster.isel(band=0).rio.reproject_match(
-                nc_gl, resampling=rasterio.enums.Resampling.bilinear
-            )
+            nc_gl[k] = nc_raster
 
     # export
     nc_gl.to_netcdf(fp_gl)
 
 
-def add_dem_features(fp_gl):
+def add_dem_features(fp_gl, no_data):
     """
         Add DEM features to the glacier dataset using the XDEM library.
         The features are: slope, aspect, planform curvature, profile curvature, terrain ruggedness index.
 
        :param fp_gl: the path to the glacier dataset (the result will be saved in the same file)
+       :no_data: the value to be used as NODATA
     """
     # read the glacier dataset
-    with xr.open_dataset(fp_gl, decode_coords='all') as nc_gl:
+    with xr.open_dataset(fp_gl, decode_coords='all', mask_and_scale=False) as nc_gl:
         nc_gl.load()  # needed to be able to close the file and save the changes to the same file
         assert 'dem' in nc_gl.data_vars, "The DEM is missing."
 
@@ -203,7 +206,7 @@ def add_dem_features(fp_gl):
                 for k, data in zip(attrs_names, attributes):
                     data_padded = np.pad(data[1:-1, 1:-1].astype(np.float32), pad_width=1, mode='edge')
                     nc_gl[k] = (('y', 'x'), data_padded)
-                    nc_gl[k].attrs['_FillValue'] = np.nan
+                    nc_gl[k].attrs['_FillValue'] = np.float32(no_data)
                     nc_gl[k].rio.write_crs(nc_gl.rio.crs, inplace=True)
 
     # export to the same file
