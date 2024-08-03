@@ -197,7 +197,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
             nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
 
             for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
-                # check which dhdt files intersect the current glacier
+                # check which raster files intersect the current glacier
                 crt_nc_list = []
                 for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
                     crt_nc = xr.open_dataarray(fp)
@@ -205,11 +205,8 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
                     if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
                         crt_nc_list.append(crt_nc)
 
-                # merge the dhdt datasets if needed
-                if len(crt_nc_list) > 1:
-                    nc_raster = rxr.merge.merge_arrays(crt_nc_list)
-                else:
-                    nc_raster = crt_nc_list[0]
+                # merge the datasets if needed
+                nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
 
                 # add the current raster to the glacier dataset
                 nc_gl[k] = nc_raster.isel(band=0).rio.reproject_match(
