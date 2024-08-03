@@ -1,11 +1,15 @@
 import numpy as np
+import oggm
+import oggm.core.gis
 import pyproj
 import rasterio
+import rasterio as rio
 import rioxarray as rxr
 import rioxarray.merge
 import shapely
 import shapely.ops
 import xarray as xr
+import xdem
 
 
 def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
@@ -148,4 +152,59 @@ def add_external_raster(fp_gl, extra_rasters_bb_dict):
             )
 
     # export
+    nc_gl.to_netcdf(fp_gl)
+
+
+def add_dem_features(fp_gl):
+    """
+        Add DEM features to the glacier dataset using the XDEM library.
+        The features are: slope, aspect, planform curvature, profile curvature, terrain ruggedness index.
+
+       :param fp_gl: the path to the glacier dataset (the result will be saved in the same file)
+    """
+    # read the glacier dataset
+    with xr.open_dataset(fp_gl, decode_coords='all') as nc_gl:
+        nc_gl.load()  # needed to be able to close the file and save the changes to the same file
+        assert 'dem' in nc_gl.data_vars, "The DEM is missing."
+
+        # create a rasterio dataset in memory with the DEM data
+        with rio.io.MemoryFile() as memfile:
+            with memfile.open(
+                    driver='GTiff',
+                    height=nc_gl.dem.data.shape[0],
+                    width=nc_gl.dem.data.shape[1],
+                    count=1,
+                    dtype=nc_gl.dem.data.dtype,
+                    crs=nc_gl.rio.crs,
+                    transform=nc_gl.rio.transform(),
+            ) as dataset:
+                dem_data = nc_gl.dem.data.copy()
+
+                # smooth the DEM with a 3x3 gaussian kernel
+                dem_data = oggm.core.gis.gaussian_blur(dem_data, size=1)
+
+                # prepare a XDEM object
+                dataset.write(dem_data, 1)
+                dem = xdem.DEM.from_array(dataset.read(1), transform=nc_gl.rio.transform(), crs=nc_gl.rio.crs)
+
+                # compute the DEM features
+                attrs_names = [
+                    'slope',
+                    'aspect',
+                    'planform_curvature',
+                    'profile_curvature',
+                    'terrain_ruggedness_index'
+                ]
+                attributes = xdem.terrain.get_terrain_attribute(
+                    dem.data, resolution=dem.res, attribute=attrs_names
+                )
+
+                # add the features to the glacier dataset (remove the NANs from the margins)
+                for k, data in zip(attrs_names, attributes):
+                    data_padded = np.pad(data[1:-1, 1:-1].astype(np.float32), pad_width=1, mode='edge')
+                    nc_gl[k] = (('y', 'x'), data_padded)
+                    nc_gl[k].attrs['_FillValue'] = np.nan
+                    nc_gl[k].rio.write_crs(nc_gl.rio.crs, inplace=True)
+
+    # export to the same file
     nc_gl.to_netcdf(fp_gl)

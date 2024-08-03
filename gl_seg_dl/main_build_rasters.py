@@ -10,14 +10,14 @@ import xarray as xr
 
 # local imports
 from config import C, S2_PS, PS
-from utils.data_prep import prep_glacier_dataset, add_external_raster
+from utils.data_prep import prep_glacier_dataset, add_external_raster, add_dem_features
 from utils.data_stats import compute_qc_stats
 from utils.general import run_in_parallel
 
 
 def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
                         num_cores, extra_shp_dict=None, extra_rasters_dict=None, min_area=None, choose_best_auto=False,
-                        max_cloud_f=None, max_n_imgs_per_g=1, df_dates=None):
+                        max_cloud_f=None, max_n_imgs_per_g=1, df_dates=None, compute_dem_features=False):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
 
@@ -193,6 +193,15 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         pbar=True
     )
 
+    # derive features from the DEM if needed
+    if add_dem_features:
+        run_in_parallel(
+            fun=add_dem_features,
+            fp_gl=fp_out_list,
+            num_cores=num_cores,
+            pbar=True
+        )
+
 
 if __name__ == "__main__":
     # specify which other outlines to use to build masks and add them to the final rasters
@@ -212,7 +221,8 @@ if __name__ == "__main__":
         extra_rasters_dict={
             'dem': C.DEMS_DIR,
             'dhdt': C.DHDT_DIR
-        }
+        },
+        compute_dem_features=True
     )
 
     # some dataset specific settings
