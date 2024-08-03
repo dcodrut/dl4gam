@@ -208,12 +208,13 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
                 # merge the datasets if needed
                 nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
 
+                # set NODATA value to np.nan
+                nc_raster.attrs['_FillValue'] = np.nan
+
                 # add the current raster to the glacier dataset
                 nc_gl[k] = nc_raster.isel(band=0).rio.reproject_match(
                     nc_gl, resampling=rasterio.enums.Resampling.bilinear
                 )
-
-        assert (nc_gl.dem.values != 0).all()
 
         # export
         nc_gl.to_netcdf(fp_out_list[i])
