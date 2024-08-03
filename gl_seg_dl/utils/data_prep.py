@@ -1,6 +1,10 @@
 import numpy as np
+import pyproj
 import rasterio
+import rioxarray as rxr
+import rioxarray.merge
 import shapely
+import shapely.ops
 import xarray as xr
 
 
@@ -64,7 +68,7 @@ def add_extra_mask(nc_data, mask_name, gdf):
     return nc_data
 
 
-def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_to_keep, buffer_px, no_data):
+def prep_glacier_dataset(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_to_keep, buffer_px, no_data):
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
 
@@ -109,3 +113,39 @@ def prep_raster(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_t
     nc.attrs['fn'] = fp_img.name
     nc.attrs['glacier_area'] = row_crt_g.Area.iloc[0]
     nc.to_netcdf(fp_out)
+
+
+def add_external_raster(fp_gl, extra_rasters_bb_dict):
+    """
+        Adds extra rasters to the glacier dataset.
+
+        :param fp_gl: str, path to the glacier dataset
+        :param extra_rasters_bb_dict: dict, the paths to the extra rasters as keys and their bounding boxes that will be
+        used to determine which of them intersect the current glacier
+    """
+    with xr.open_dataset(fp_gl, decode_coords='all') as nc_gl:
+        nc_gl.load()  # needed to be able to close the file and save the changes to the same file
+        nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
+
+        for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
+            # check which raster files intersect the current glacier
+            crt_nc_list = []
+            for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
+                crt_nc = xr.open_dataarray(fp)
+                transform = pyproj.Transformer.from_crs(crt_nc.rio.crs, nc_gl.rio.crs, always_xy=True).transform
+                if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
+                    crt_nc_list.append(crt_nc)
+
+            # merge the datasets if needed
+            nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
+
+            # set NODATA value to np.nan
+            nc_raster.attrs['_FillValue'] = np.nan
+
+            # add the current raster to the glacier dataset
+            nc_gl[k] = nc_raster.isel(band=0).rio.reproject_match(
+                nc_gl, resampling=rasterio.enums.Resampling.bilinear
+            )
+
+    # export
+    nc_gl.to_netcdf(fp_gl)

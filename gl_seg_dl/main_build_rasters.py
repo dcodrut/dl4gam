@@ -4,18 +4,13 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import pyproj
-import rasterio
-import rioxarray as rxr
-import rioxarray.merge
 import shapely
 import shapely.ops
 import xarray as xr
-from tqdm import tqdm
 
 # local imports
 from config import C, S2_PS, PS
-from utils.data_prep import prep_raster
+from utils.data_prep import prep_glacier_dataset, add_external_raster
 from utils.data_stats import compute_qc_stats
 from utils.general import run_in_parallel
 
@@ -167,7 +162,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
 
     # build and export the rasters for each image
     run_in_parallel(
-        fun=prep_raster,
+        fun=prep_glacier_dataset,
         fp_img=fp_img_list,
         fp_dem=fp_dem_list,
         fp_out=fp_out_list,
@@ -181,7 +176,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
         pbar=True
     )
 
-    # save the bounding boxes of all the rasters and all the glaciers (including the buffer)
+    # save the bounding boxes of all the provided rasters (needed for the next step)
     extra_rasters_bb_dict = {}
     for k, crt_dir in extra_rasters_dict.items():
         rasters_crt_dir = list(Path(crt_dir).glob('**/*.tif'))
@@ -189,35 +184,14 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
             fp: shapely.geometry.box(*xr.open_dataset(fp).rio.bounds()) for fp in rasters_crt_dir
         }
 
-    # for each glacier, keep the rasters that intersect it (including a buffer)
-    # TODO: parallelize this
-    for i in tqdm(range(len(fp_img_list)), desc='Adding rasters'):
-        with xr.open_dataset(fp_out_list[i], decode_coords='all') as nc_gl:
-            nc_gl.load()
-            nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
-
-            for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
-                # check which raster files intersect the current glacier
-                crt_nc_list = []
-                for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
-                    crt_nc = xr.open_dataarray(fp)
-                    transform = pyproj.Transformer.from_crs(crt_nc.rio.crs, nc_gl.rio.crs, always_xy=True).transform
-                    if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
-                        crt_nc_list.append(crt_nc)
-
-                # merge the datasets if needed
-                nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
-
-                # set NODATA value to np.nan
-                nc_raster.attrs['_FillValue'] = np.nan
-
-                # add the current raster to the glacier dataset
-                nc_gl[k] = nc_raster.isel(band=0).rio.reproject_match(
-                    nc_gl, resampling=rasterio.enums.Resampling.bilinear
-                )
-
-        # export
-        nc_gl.to_netcdf(fp_out_list[i])
+    # add the extra rasters to the glacier datasets by loading those that intersect each glacier using the previous bb
+    run_in_parallel(
+        fun=add_external_raster,
+        fp_gl=fp_out_list,
+        extra_rasters_bb_dict=extra_rasters_bb_dict,
+        num_cores=num_cores,
+        pbar=True
+    )
 
 
 if __name__ == "__main__":
