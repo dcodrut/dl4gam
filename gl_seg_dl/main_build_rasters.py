@@ -195,7 +195,7 @@ def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir,
     )
 
     # derive features from the DEM if needed
-    if add_dem_features:
+    if compute_dem_features:
         run_in_parallel(
             fun=add_dem_features,
             fp_gl=fp_out_list,
