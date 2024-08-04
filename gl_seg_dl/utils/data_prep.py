@@ -117,6 +117,7 @@ def prep_glacier_dataset(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict
     nc.attrs['fn'] = fp_img.name
     nc.attrs['glacier_area'] = row_crt_g.Area.iloc[0]
     nc.to_netcdf(fp_out)
+    nc.close()
 
 
 def add_external_raster(fp_gl, extra_rasters_bb_dict, no_data):
@@ -155,6 +156,7 @@ def add_external_raster(fp_gl, extra_rasters_bb_dict, no_data):
 
     # export
     nc_gl.to_netcdf(fp_gl)
+    nc_gl.close()
 
 
 def add_dem_features(fp_gl, no_data):
@@ -211,3 +213,4 @@ def add_dem_features(fp_gl, no_data):
 
     # export to the same file
     nc_gl.to_netcdf(fp_gl)
+    nc_gl.close()
