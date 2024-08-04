@@ -97,6 +97,9 @@ def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exc
     # compute the FPs for the non-glacierized area but only within a certain buffer
     nc['mask_crt_g_b0'] = nc['mask_crt_g']
     for b1, b2 in list(itertools.combinations(['b-20', 'b-10', 'b0', 'b10', 'b20', 'b50'], 2)):
+        # ignore the combinations that result in a buffer completely within glacier
+        if b2 in ['b-10', 'b0']:
+            continue
         mask_crt_b_interval = (nc[f'mask_crt_g_{b1}'].values == 0) & (nc[f'mask_crt_g_{b2}'].values == 1)
         mask_non_g_crt_b = mask_non_g & mask_crt_b_interval
         mask_fp_crt_b = preds & mask_non_g_crt_b
