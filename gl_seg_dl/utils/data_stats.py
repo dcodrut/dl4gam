@@ -11,15 +11,20 @@ from .data_prep import add_glacier_masks
 
 def compute_normalization_stats(fp):
     """
-    Given the filepath to a data patch, it computes the various statistics which will used to build the
+    Given the filepath to a data patch, it computes various statistics which will used to build the
     normalization constants (needed either for min-max scaling or standardization).
 
     :param fp: Filepath to a xarray dataset
     :return: a dictionary with the stats for the current raster
     """
     nc = xr.open_dataset(fp)
-    band_data = nc.band_data.values
-    data = np.concatenate([band_data, nc.dem.values[None, ...]], axis=0)
+    band_data = nc.band_data.values[:13]
+    list_arrays = [band_data]
+    extra_vars = ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']
+    for v in extra_vars:
+        if v in nc:
+            list_arrays.append(nc[v].values[None, ...])
+    data = np.concatenate(list_arrays, axis=0)
 
     stats = {
         'fp': str(fp),
@@ -45,7 +50,7 @@ def compute_normalization_stats(fp):
     stats['sum_2'] = ssq_list
     stats['vmin'] = vmin_list
     stats['vmax'] = vmax_list
-    stats['var_name'] = [f'band_{i}' for i in range(len(band_data))] + ['dem']
+    stats['var_name'] = [f'band_{i}' for i in range(len(band_data))] + extra_vars
 
     return stats
 

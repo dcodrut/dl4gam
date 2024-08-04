@@ -80,7 +80,7 @@ def extract_inputs(ds, fp, input_settings):
         dhdt[np.isnan(dhdt)] = 0.0
         data['dhdt'] = dhdt
 
-    if input_settings['indices']:
+    if input_settings['optical_indices']:
         # compute the NDSI, NDVI and NDWI indices
         # NDSI = (Green - SWIR) / (Green + SWIR)
         # NDVI = (NIR - Red) / (NIR + Red)
@@ -105,6 +105,17 @@ def extract_inputs(ds, fp, input_settings):
         den[den == 0] = 1  # avoid division by zero
         data['ndwi'] = (g - nir) / den
 
+    if input_settings['dem_features']:
+        data['slope'] = ds.slope.values.astype(np.float32) / 90.  # scale the slope to [0, 1]
+
+        # compute the sine and cosine of the aspect
+        data['aspect_sin'] = np.sin(ds.aspect.values.astype(np.float32) / 180)
+        data['aspect_cos'] = np.cos(ds.aspect.values.astype(np.float32) / 180)
+
+        # add the planform curvature, profile curvature, terrain ruggedness index, which will be later normalized
+        for k in ['planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
+            data[k] = ds[k].values.astype(np.float32)
+
     return data
 
 
@@ -120,10 +131,11 @@ def standardize_inputs(data, stats_df, scale_each_band):
     data['band_data'] -= mu[:, None, None]
     data['band_data'] /= stddev[:, None, None]
 
-    # do the same for the static variables
-    for v in ['dem', 'dhdt']:
+    # do the same for the static variables that need to be standardized
+    for v in ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
         if v in data:
             sdf = stats_df[stats_df.var_name == v]
+            assert len(sdf) == 1, f"Expecting one stats row for {v}"
             mu = sdf.mu.values[0]
             stddev = sdf.stddev.values[0]
             data[v] -= mu
@@ -144,11 +156,12 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
     data['band_data'] -= vmin[:, None, None]
     data['band_data'] /= (vmax[:, None, None] - vmin[:, None, None])
 
-    # do the same for the static variables
-    for v in ['dem', 'dhdt']:
+    # do the same for the static variables that need to be normalized
+    for v in ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
         if v in data:
             # apply the scaling
             sdf = stats_df[stats_df.var_name == v]
+            assert len(sdf) == 1, f"Expecting one stats row for {v}"
             vmin = sdf.vmin.values[0]
             vmax = sdf.vmax.values[0]
             data[v] -= vmin
