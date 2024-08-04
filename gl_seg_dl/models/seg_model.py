@@ -16,7 +16,8 @@ class SegModel(torch.nn.Module):
         self.bands = input_settings['bands_input']
         self.use_elevation = input_settings['elevation']
         self.use_dhdt = input_settings['dhdt']
-        self.use_indices = input_settings['indices']
+        self.use_optical_indices = input_settings['optical_indices']
+        self.use_dem_features = input_settings['dem_features']
 
         # prepare the logger
         self.logger = logging.getLogger('pytorch_lightning.core')
@@ -25,8 +26,10 @@ class SegModel(torch.nn.Module):
         num_ch = len(self.bands)
         if self.use_elevation:
             num_ch += 1
-        if self.use_indices:
+        if self.use_optical_indices:
             num_ch += 3
+        if self.use_dem_features:
+            num_ch += 6
         if self.use_dhdt:
             num_ch += 1
         self.model_args['in_channels'] = num_ch
@@ -81,10 +84,22 @@ class SegModel(torch.nn.Module):
             input_list.append(batch['dhdt'][:, None, :, :])
 
         # add the indices if needed
-        if self.use_indices:
+        if self.use_optical_indices:
             input_list.append(batch['ndsi'][:, None, :, :])
             input_list.append(batch['ndvi'][:, None, :, :])
             input_list.append(batch['ndwi'][:, None, :, :])
+
+        # add the DEM features if needed
+        if self.use_dem_features:
+            for k in [
+                'slope',
+                'aspect_sin',
+                'aspect_cos',
+                'planform_curvature',
+                'profile_curvature',
+                'terrain_ruggedness_index'
+            ]:
+                input_list.append(batch[k][:, None, :, :])
 
         # concatenate all the inputs over channel
         inputs = torch.cat(input_list, dim=1)
