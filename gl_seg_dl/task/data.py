@@ -109,8 +109,8 @@ def extract_inputs(ds, fp, input_settings):
         data['slope'] = ds.slope.values.astype(np.float32) / 90.  # scale the slope to [0, 1]
 
         # compute the sine and cosine of the aspect
-        data['aspect_sin'] = np.sin(ds.aspect.values.astype(np.float32) / 180)
-        data['aspect_cos'] = np.cos(ds.aspect.values.astype(np.float32) / 180)
+        data['aspect_sin'] = np.sin(ds.aspect.values.astype(np.float32) * np.pi / 180)
+        data['aspect_cos'] = np.cos(ds.aspect.values.astype(np.float32) * np.pi / 180)
 
         # add the planform curvature, profile curvature, terrain ruggedness index, which will be later normalized
         for k in ['planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
