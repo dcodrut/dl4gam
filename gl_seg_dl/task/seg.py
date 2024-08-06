@@ -260,12 +260,12 @@ class GlSegTask(pl.LightningModule):
         nc_pred['pred'] = (('y', 'x'), preds_acc_np)
         nc_pred['pred_b'] = (('y', 'x'), preds_acc_np >= self.thr)
 
-        # fill-in the masked pixels using two different methods
+        # fill-in the masked pixels (only within 50m buffer) using two different methods
         mask_to_fill = extract_inputs(ds=nc, fp=cube_fp, input_settings=self.model.input_settings)['mask_no_data']
         data = nc_pred.pred.values
-        mask_crt_g = (nc.mask_crt_g.values == 1)
-        mask_to_fill &= mask_crt_g
-        mask_ok = (~mask_to_fill) & mask_crt_g
+        mask_crt_g_b50 = (nc.mask_crt_g_b50.values == 1)
+        mask_to_fill &= mask_crt_g_b50
+        mask_ok = (~mask_to_fill) & mask_crt_g_b50
 
         n_px = 30  # how many pixels to use as source for interpolation value
         if mask_to_fill.sum() > 0 and mask_ok.sum() >= n_px:
