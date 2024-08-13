@@ -227,6 +227,14 @@ if __name__ == "__main__":
         compute_dem_features=True
     )
 
+    # add the extra rasters if specified in the config
+    extra_rasters_dict = {}
+    if C.DEMS_DIR is not None:
+        extra_rasters_dict['dem'] = C.DEMS_DIR
+    if C.DHDT_DIR is not None:
+        extra_rasters_dict['dhdt'] = C.DHDT_DIR
+    base_settings['extra_rasters_dict'] = extra_rasters_dict
+
     # some dataset specific settings
     specific_settings = {}
     if C.__name__ == 'S2':
