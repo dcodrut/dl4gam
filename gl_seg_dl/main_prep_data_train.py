@@ -19,6 +19,13 @@ if __name__ == "__main__":
     area = gl_df.Area.sum()
     print(f'#glaciers = {len(gl_df)}; area = {area} km2 ({area / initial_area * 100:.2f}%)')
 
+    # remove the glaciers for which there is no data
+    print(f'Keeping only the glaciers that have data in {C.DIR_GL_INVENTORY}')
+    gl_entry_ids_ok = [x.parent.name for x in Path(C.DIR_GL_INVENTORY).glob('**/*.nc')]
+    gl_df = gl_df[gl_df.entry_id.isin(gl_entry_ids_ok)]
+    print(f'#glaciers = {len(gl_df)}; area = {area} km2 ({area / initial_area * 100:.2f}%)')
+
+    # remove the glaciers that do not have a date in the allowed dates
     if C.__name__ == 'S2_PLUS' and C.CSV_DATES_ALLOWED is not None:
         print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
         dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
