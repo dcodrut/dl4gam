@@ -146,6 +146,9 @@ def add_external_raster(fp_gl, extra_rasters_bb_dict, no_data):
                 if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
                     crt_nc_list.append(crt_nc)
 
+            # ensure at least one intersection was found
+            assert len(crt_nc_list) > 0, f"No intersection found for {k} and fp_gl = {fp_gl}"
+
             # merge the datasets if needed
             nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
 
