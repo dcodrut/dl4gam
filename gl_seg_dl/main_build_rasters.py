@@ -15,15 +15,33 @@ from utils.data_stats import compute_qc_stats
 from utils.general import run_in_parallel
 
 
-def prepare_all_rasters(raw_images_dir, dems_dir, fp_gl_df_all, out_rasters_dir, bands_to_keep, buffer_px, no_data,
-                        num_cores, extra_shp_dict=None, extra_rasters_dict=None, min_area=None, choose_best_auto=False,
-                        max_cloud_f=None, max_n_imgs_per_g=1, df_dates=None, compute_dem_features=False):
+def prepare_all_rasters(
+        raw_images_dir,
+        dems_dir,
+        fp_gl_df_all,
+        out_rasters_dir,
+        buffer_px,
+        no_data,
+        num_cores=1,
+        bands_to_keep=None,
+        extra_shp_dict=None,
+        extra_rasters_dict=None,
+        min_area=None,
+        choose_best_auto=False,
+        max_cloud_f=None,
+        max_n_imgs_per_g=1,
+        df_dates=None,
+        compute_dem_features=False
+):
     raw_images_dir = Path(raw_images_dir)
     assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
 
     print(f"Reading the glacier outlines in from {fp_gl_df_all}")
     gl_df_all = gpd.read_file(fp_gl_df_all)
     print(f"#glaciers = {len(gl_df_all)}")
+
+    # gl_df_all = gl_df_all.iloc[:3]
+    # gl_df_all = gl_df_all[gl_df_all.entry_id.isin(['gl_4566'])]
 
     # check if the dataframes have the required ID columns
     assert 'entry_id' in gl_df_all.columns
@@ -220,10 +238,6 @@ if __name__ == "__main__":
         no_data=C.NODATA,
         num_cores=C.NUM_CORES,
         extra_shp_dict=extra_shp_dict,
-        extra_rasters_dict={
-            'dem': C.DEMS_DIR,
-            'dhdt': C.DHDT_DIR
-        },
         compute_dem_features=True
     )
 
@@ -239,7 +253,7 @@ if __name__ == "__main__":
     specific_settings = {}
     if C.__name__ == 'S2':
         specific_settings = dict(
-            choose_least_cloudy=True,
+            choose_best_auto=True,
             buffer_px=C.PATCH_RADIUS,
         )
     elif C.__name__ == 'S2_PLUS':
@@ -261,13 +275,14 @@ if __name__ == "__main__":
         print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
         dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
         specific_settings = dict(
-            choose_least_cloudy=True,
+            choose_best_auto=True,
+            max_cloud_f=0.25,
             buffer_px=C.PATCH_RADIUS,
             df_dates=dates_allowed
         )
     elif C.__name__ == 'PS':
         specific_settings = dict(
-            choose_least_cloudy=False,
+            choose_best_auto=False,
             # increase the buffer even if it's not needed to have the same spatial extend as S2 data
             buffer_px=int(PS.PATCH_RADIUS * (S2_PS.PATCH_RADIUS * 10) / (PS.PATCH_RADIUS * 3)),
         )

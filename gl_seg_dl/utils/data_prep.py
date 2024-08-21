@@ -76,22 +76,26 @@ def add_extra_mask(nc_data, mask_name, gdf):
     return nc_data
 
 
-def prep_glacier_dataset(fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, bands_to_keep, buffer_px, no_data):
+def prep_glacier_dataset(
+        fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, buffer_px, no_data, bands_to_keep=None
+):
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
 
     # read the raw image
     nc = xr.open_dataset(fp_img)
 
-    # keep only the bands we need later
-    if 'long_name' in nc.band_data.attrs:
+    # check if the name of the bands is given, otherwise name them
+    if 'long_name' not in nc.band_data.attrs:
+        nc.band_data.attrs['long_name'] = [f'B{i + 1}' for i in range(len(nc.band_data))]
+
+    # keep only the bands we need later if specified
+    if bands_to_keep is not None:
         all_bands = list(nc.band_data.long_name)
         bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
         if len(bands_to_drop) > 0:
             nc = nc.drop_isel(band=[all_bands.index(b) for b in bands_to_drop])
         nc.band_data.attrs['long_name'] = tuple(bands_to_keep)
-    else:
-        nc.band_data.attrs['long_name'] = ['pancromatic']
 
     # add the glacier masks
     entry_id_int = row_crt_g.iloc[0].entry_id_i
