@@ -49,9 +49,7 @@ if __name__ == "__main__":
         crt_split_dir = Path(C.DIR_OUTLINES_SPLIT) / f"split_{i_split}"
         for fold in ['train', 'valid', 'test']:
             fp = crt_split_dir / f"fold_{fold}.shp"
-            df = gpd.read_file(fp)[['entry_id', 'CenLat', 'CenLon']].rename(
-                columns={'CenLat': 'cen_lat', 'CenLon': 'cen_lon'}
-            )
+            df = gpd.read_file(fp)
             df['split'] = f"split_{i_split}"
             df['fold'] = f"fold_{fold}"
             df_list.append(df)
