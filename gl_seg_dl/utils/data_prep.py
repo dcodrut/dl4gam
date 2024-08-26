@@ -91,6 +91,10 @@ def prep_glacier_dataset(
 
     # keep only the bands we need later if specified
     if bands_to_keep is not None:
+        # ensure the bands to keep are in the image
+        bands_missing = [b for b in bands_to_keep if b not in nc.band_data.long_name]
+        assert len(bands_missing) == 0, f"Missing bands: {bands_missing}"
+
         all_bands = list(nc.band_data.long_name)
         bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
         if len(bands_to_drop) > 0:
