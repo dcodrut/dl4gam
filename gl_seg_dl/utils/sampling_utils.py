@@ -25,15 +25,9 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
     if sampling_step is not None:
         assert add_center or add_centroid
 
-    # build a mask containing all feasible patch centers
+    # get all feasible patch centers s.t. the center pixel is on glacier
     assert 'mask_crt_g' in nc.data_vars, nc.data_vars
     nc_full_crt_g_mask_center_sel = (nc.mask_crt_g.data == 1)
-    nc_full_crt_g_mask_center_sel[:patch_radius, :] = False
-    nc_full_crt_g_mask_center_sel[:, -patch_radius:] = False
-    nc_full_crt_g_mask_center_sel[:, :patch_radius] = False
-    nc_full_crt_g_mask_center_sel[-patch_radius:, :] = False
-
-    # get all feasible centers
     all_y_centers, all_x_centers = np.where(nc_full_crt_g_mask_center_sel)
     minx = all_x_centers.min()
     miny = all_y_centers.min()
