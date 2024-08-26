@@ -102,12 +102,14 @@ class S2(BaseConfig):
         'FILL_MASK'
     )
 
+    GSD = 10  # ground sampling distance in meters
+
     # patch sampling settings
     PATCH_RADIUS = 128
     SAMPLING_STEP_TRAIN = 128
 
 
-class S2_PLUS(BaseConfig):
+class S2_PLUS(S2):
     """ Settings for Sentinel-2 data using the Paul. et al. 2020 outlines with manually checked images
     (same images were replaced because they had too many clouds/shadows or had too much seasonal snow)"""
 
@@ -160,6 +162,8 @@ class PS(BaseConfig):
 
     # raw -> rasters settings
     BANDS = ('B', 'G', 'R', 'NIR', 'cloud', 'shadow')
+
+    GSD = 3  # ground sampling distance in meters
 
     # patch sampling settings
     PATCH_RADIUS = 256

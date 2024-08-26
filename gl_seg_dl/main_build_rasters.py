@@ -16,12 +16,13 @@ from utils.general import run_in_parallel
 
 
 def prepare_all_rasters(
-        raw_images_dir,
-        dems_dir,
         fp_gl_df_all,
         out_rasters_dir,
         buffer_px,
-        no_data,
+        raw_images_dir=None,
+        raw_fp_df=None,
+        no_data=C.NODATA,
+        dems_dir_per_gl=None,
         num_cores=1,
         bands_to_keep=None,
         extra_shp_dict=None,
@@ -33,15 +34,9 @@ def prepare_all_rasters(
         df_dates=None,
         compute_dem_features=False
 ):
-    raw_images_dir = Path(raw_images_dir)
-    assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
-
     print(f"Reading the glacier outlines in from {fp_gl_df_all}")
     gl_df_all = gpd.read_file(fp_gl_df_all)
     print(f"#glaciers = {len(gl_df_all)}")
-
-    # gl_df_all = gl_df_all.iloc[:3]
-    # gl_df_all = gl_df_all[gl_df_all.entry_id.isin(['gl_4566'])]
 
     # check if the dataframes have the required ID columns
     assert 'entry_id' in gl_df_all.columns
@@ -55,13 +50,18 @@ def prepare_all_rasters(
     else:
         gl_df_sel = gl_df_all
 
-    # get all the raw images and match them to the corresponding glaciers
-    fp_img_list_all = sorted(list(raw_images_dir.glob('**/*.tif')))
-    raw_fp_df = pd.DataFrame({
-        'entry_id': [fp.parent.name for fp in fp_img_list_all],
-        'fp_img': fp_img_list_all,
-        'date': [pd.to_datetime(fp.stem[:8]).strftime('%Y-%m-%d') for fp in fp_img_list_all]
-    })
+    assert (raw_images_dir is not None) or (
+            raw_fp_df is not None), "Either raw_images_dir or raw_fp_df must be given (the latter has priority)."
+    if raw_fp_df is None:
+        # get all the raw images and match them to the corresponding glaciers if the raw_fp_df is not given
+        raw_images_dir = Path(raw_images_dir)
+        assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
+        fp_img_list_all = sorted(list(raw_images_dir.glob('**/*.tif')))
+        raw_fp_df = pd.DataFrame({
+            'entry_id': [fp.parent.name for fp in fp_img_list_all],
+            'fp_img': fp_img_list_all,
+            'date': [pd.to_datetime(fp.stem[:8]).strftime('%Y-%m-%d') for fp in fp_img_list_all]
+        })
     print(f"#total raw images = {len(raw_fp_df)}")
 
     if df_dates is not None:
@@ -71,7 +71,7 @@ def prepare_all_rasters(
     # add the filepaths to the selected glaciers and check the data coverage
     gid_list = set(gl_df_sel.entry_id)
     gl_df_sel = gl_df_sel.merge(raw_fp_df, on='entry_id', how='inner')  # we allow missing images
-    print(f"avg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+    print(f"avg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
     print(f"#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} ({n / len(gid_list) * 100:.1f}%)")
 
     # compute the cloud coverage statistics for each downloaded image if needed
@@ -109,7 +109,7 @@ def prepare_all_rasters(
             gl_df_sel = gl_df_sel[gl_df_sel[col_clouds] <= max_cloud_f]
             print(f"after cloud filtering with max_cloud_f = {max_cloud_f:.2f}")
             print(f"\t#images = {len(gl_df_sel)}")
-            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
             print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
                   f"({n / len(gid_list) * 100:.1f}%)")
 
@@ -140,7 +140,7 @@ def prepare_all_rasters(
             gl_df_sel = gl_df_sel.groupby('entry_id').head(max_n_imgs_per_g).reset_index()
             print(f"after keeping the best {max_n_imgs_per_g} images per glacier:")
             print(f"\t#images = {len(gl_df_sel)}")
-            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().gid.mean():.1f}")
+            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
             print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
                   f"({n / len(gid_list) * 100:.1f}%)")
 
@@ -151,8 +151,8 @@ def prepare_all_rasters(
             print(f"Selected images exported to {fp_sel}")
 
     # prepare the DEMs filepaths
-    if dems_dir is not None:
-        fp_dem_list_all = list(Path(dems_dir).glob('**/dem.tif'))
+    if dems_dir_per_gl is not None:
+        fp_dem_list_all = list(Path(dems_dir_per_gl).glob('**/dem.tif'))
         dem_fp_df = pd.DataFrame({
             'RGIId': [fp.parent.name for fp in fp_dem_list_all],
             'fp_dem': fp_dem_list_all
@@ -176,7 +176,8 @@ def prepare_all_rasters(
 
     # prepare the output paths
     fp_img_list = [Path(x) for x in gl_df_sel.fp_img]
-    fp_out_list = [Path(out_rasters_dir) / x.parent.name / x.with_suffix('.nc').name for x in fp_img_list]
+    fn_img_out_list = [x.with_suffix('.nc').name for x in fp_img_list]
+    fp_out_list = [Path(out_rasters_dir) / x / y for x, y in zip(gl_df_sel.entry_id, fn_img_out_list)]
 
     # build and export the rasters for each image
     run_in_parallel(
@@ -230,7 +231,8 @@ if __name__ == "__main__":
     # the next settings apply to all datasets
     base_settings = dict(
         raw_images_dir=C.RAW_DATA_DIR,
-        dems_dir=None,
+        raw_fp_df=None,
+        dems_dir_per_gl=None,  # obsoleted (can be used when DEMs are provided per glacier)
         fp_gl_df_all=C.GLACIER_OUTLINES_FP,
         out_rasters_dir=C.DIR_GL_INVENTORY,
         min_area=C.MIN_GLACIER_AREA,
@@ -283,8 +285,8 @@ if __name__ == "__main__":
     elif C.__name__ == 'PS':
         specific_settings = dict(
             choose_best_auto=False,
-            # increase the buffer even if it's not needed to have the same spatial extend as S2 data
-            buffer_px=int(PS.PATCH_RADIUS * (S2_PS.PATCH_RADIUS * 10) / (PS.PATCH_RADIUS * 3)),
+            # increase the buffer even if it's unnecessary, just to have the same spatial extend as S2 data
+            buffer_px=int(PS.PATCH_RADIUS * (S2_PS.PATCH_RADIUS * S2_PS.GSD) / (PS.PATCH_RADIUS * PS.GSD)),
         )
     elif C.__name__ == 'S2_PS':
         # S2 data prep that matches the Planet data
