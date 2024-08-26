@@ -20,10 +20,10 @@ def compute_normalization_stats(fp):
     nc = xr.open_dataset(fp)
     band_data = nc.band_data.values[:13]
     list_arrays = [band_data]
-    extra_vars = ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']
+    extra_vars_all = ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']
+    extra_vars = [v for v in extra_vars_all if v in nc.data_vars]
     for v in extra_vars:
-        if v in nc:
-            list_arrays.append(nc[v].values[None, ...])
+        list_arrays.append(nc[v].values[None, ...])
     data = np.concatenate(list_arrays, axis=0)
 
     stats = {
