@@ -54,22 +54,12 @@ def extract_inputs(ds, fp, input_settings):
         'glacier_area': ds.attrs['glacier_area']
     }
 
-    # add the debris masks (priority: SGI, if available)
-    if 'mask_debris_scherler_2018' in ds.data_vars:
-        mask_debris_sherler_2018_crt_g = (ds.mask_debris_scherler_2018.values == 1) & data['mask_crt_g']
-        mask_debris_sherler_2018_all_g = (ds.mask_debris_scherler_2018.values == 1) & data['mask_all_g']
-        data['mask_debris_crt_g'] = mask_debris_sherler_2018_crt_g
-        data['mask_debris_all_g'] = mask_debris_sherler_2018_all_g
-        data['debris_source'] = 'sherler_2018'
-
-        # if SGI is available (meaning that the glacier is from Switzerland), then the SGI has priority
-        if 'mask_debris_sgi_2016' in ds.data_vars:
-            mask_debris_sgi_2016_crt_g = (ds.mask_debris_sgi_2016.values == 1) & data['mask_crt_g']
-            mask_debris_sgi_2016_all_g = (ds.mask_debris_sgi_2016.values == 1) & data['mask_all_g']
-            if mask_debris_sgi_2016_crt_g.sum() > 0:
-                data['mask_debris_crt_g'] = mask_debris_sgi_2016_crt_g
-                data['mask_debris_all_g'] = mask_debris_sgi_2016_all_g
-                data['debris_source'] = 'sgi_2016'
+    # add the debris mask if available
+    if 'mask_debris' in ds.data_vars:
+        mask_debris_crt_g = (ds.mask_debris.values == 1) & data['mask_crt_g']
+        mask_debris_all_g = (ds.mask_debris.values == 1) & data['mask_all_g']
+        data['mask_debris_crt_g'] = mask_debris_crt_g
+        data['mask_debris_all_g'] = mask_debris_all_g
 
     if input_settings['elevation']:
         dem = ds.dem.values.astype(np.float32)

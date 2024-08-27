@@ -226,7 +226,7 @@ def prepare_all_rasters(
 
 if __name__ == "__main__":
     # specify which other outlines to use to build masks and add them to the final rasters
-    extra_shp_dict = C.DEBRIS_OUTLINES_FP
+    extra_shp_dict = {'debris': C.DEBRIS_OUTLINES_FP}
 
     # the next settings apply to all datasets
     base_settings = dict(

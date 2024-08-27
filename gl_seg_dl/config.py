@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 class BaseConfig:
-    """ Class which defines the constants applied for all configs and specifies the dataset specific ones """
+    """ Class which defines the constants applied for all configs and specifies the dataset-specific ones """
 
     # the next properties are the same for all the datasets
     NUM_CV_FOLDS = 5
@@ -11,10 +11,7 @@ class BaseConfig:
     DEMS_DIR = Path('../data/external/copdem_eea10m')
     DHDT_DIR = Path('../data/external/dhdt_hugonnet/11_rgi60_2000-01-01_2020-01-01/dhdt')
     GLACIER_OUTLINES_FP = Path('../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp')
-    DEBRIS_OUTLINES_FP = dict(
-        debris_scherler_2018='../data/data_gmb/debris/scherler_2018/11_rgi60_CentralEurope_S2_DC_2015_2017_mode.shp',
-        debris_sgi_2016='../data/data_gmb/glamos/inventory_sgi2016_r2020/SGI_2016_debriscover.shp',
-    )
+    DEBRIS_OUTLINES_FP = Path('../data/data_gmb/debris/combined_debris_s2_inv/combined_debris_s2_inv.shp')
     NODATA = -9999
 
     # how many cores to use when building the rasters
