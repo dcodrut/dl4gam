@@ -16,7 +16,7 @@ from task.data import extract_inputs
 
 
 def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exclude_bad_pixels=True,
-                  return_rasters=False):
+                  return_rasters=False, estimate_terminus_loc=True):
     stats = {'fp': fp}
 
     # read the predictions
@@ -26,6 +26,8 @@ def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exc
     ds_name = fp.parent.parent.parent.name
     entry_id = fp.parent.name
     fp_orig = Path(rasters_dir).parent.parent / ds_name / 'glacier_wide' / entry_id / fp.name
+    assert fp_orig.exists(), f'Original raster not found: {fp_orig}'
+
     nc_orig = xr.open_dataset(fp_orig)
     for c in nc_orig.data_vars:
         if 'pred' not in c or 'mask' not in c:
@@ -109,36 +111,37 @@ def compute_stats(fp, rasters_dir, input_settings, band_target='mask_crt_g', exc
         stats[f"area_non_g_{b1}_{b2}"] = np.sum(mask_non_g_crt_b) * f_area
         stats[f"area_fp_{b1}_{b2}"] = np.sum(mask_fp_crt_b) * f_area
 
-    # estimate the altitude & location of the terminus
-    # first by the lower ice-predicted pixel (if it's not masked), then by the median of the lowest 30 pixels
-    # if there are multiple pixels with the same minimum altitude, use the average
-    nc_g = nc.where(nc.mask_crt_g == 1)
-    dem_pred_on = nc_g.dem.values.copy()
-    dem_pred_on[~preds] = np.nan
-    h_pred_on_sorted = np.sort(np.unique(dem_pred_on.flatten()))
-    h_pred_on_sorted = h_pred_on_sorted[~np.isnan(h_pred_on_sorted)]
+    # estimate the altitude & location of the terminus if needed
+    if estimate_terminus_loc:
+        # first by the lower ice-predicted pixel (if it's not masked), then by the median of the lowest 30 pixels
+        # if there are multiple pixels with the same minimum altitude, use the average
+        nc_g = nc.where(nc.mask_crt_g == 1)
+        dem_pred_on = nc_g.dem.values.copy()
+        dem_pred_on[~preds] = np.nan
+        h_pred_on_sorted = np.sort(np.unique(dem_pred_on.flatten()))
+        h_pred_on_sorted = h_pred_on_sorted[~np.isnan(h_pred_on_sorted)]
 
-    for num_px_thr in [1, 30]:
-        if len(h_pred_on_sorted) > 0:  # it can happen that all the pixels are masked
-            i = 0
-            h_thr = h_pred_on_sorted[i]
-            while i < len(h_pred_on_sorted) - 1 and np.sum(dem_pred_on <= h_thr) < num_px_thr:
-                i += 1
+        for num_px_thr in [1, 30]:
+            if len(h_pred_on_sorted) > 0:  # it can happen that all the pixels are masked
+                i = 0
                 h_thr = h_pred_on_sorted[i]
-        else:
-            h_thr = -1
+                while i < len(h_pred_on_sorted) - 1 and np.sum(dem_pred_on <= h_thr) < num_px_thr:
+                    i += 1
+                    h_thr = h_pred_on_sorted[i]
+            else:
+                h_thr = -1
 
-        # exclude the masked pixels; if all of them are masked, the result will be NaN
-        mask_lowest = (dem_pred_on <= h_thr)
-        mask_lowest[mask_exclude] = False
+            # exclude the masked pixels; if all of them are masked, the result will be NaN
+            mask_lowest = (dem_pred_on <= h_thr)
+            mask_lowest[mask_exclude] = False
 
-        all_masked = (np.sum(mask_lowest) == 0)
-        idx = np.where(mask_lowest)
-        stats[f'term_h_{num_px_thr}_px'] = np.nan if all_masked else float(h_thr)
-        stats[f'term_x_i_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(idx[1]))
-        stats[f'term_y_i_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(idx[0]))
-        stats[f'term_x_m_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(nc.x.values[idx[1]]))
-        stats[f'term_y_m_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(nc.y.values[idx[0]]))
+            all_masked = (np.sum(mask_lowest) == 0)
+            idx = np.where(mask_lowest)
+            stats[f'term_h_{num_px_thr}_px'] = np.nan if all_masked else float(h_thr)
+            stats[f'term_x_i_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(idx[1]))
+            stats[f'term_y_i_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(idx[0]))
+            stats[f'term_x_m_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(nc.x.values[idx[1]]))
+            stats[f'term_y_m_{num_px_thr}_px'] = np.nan if all_masked else int(np.median(nc.y.values[idx[0]]))
 
     # save the filename of the original S2 data
     stats['fn'] = nc.attrs['fn']
