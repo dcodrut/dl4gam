@@ -3,11 +3,11 @@
 """
 import pandas as pd
 from pathlib import Path
-from tqdm import tqdm
 
 # local imports
 from config import C
 from utils.data_stats import compute_normalization_stats, aggregate_normalization_stats
+from utils.general import run_in_parallel
 
 if __name__ == '__main__':
     data_dir_root = Path(C.DIR_GL_PATCHES)
@@ -16,13 +16,12 @@ if __name__ == '__main__':
         data_dir_crt_split = data_dir_root / f'split_{i_split}' / 'fold_train'
         fp_list = sorted(list(Path(data_dir_crt_split).glob('**/*.nc')))
 
-        all_df = []
-        for fp_crt_patch in tqdm(fp_list, desc=f'Compute stats for train patches from split = {i_split}'):
-            stats_crt_patch = compute_normalization_stats(fp_crt_patch)
-            df = pd.DataFrame(stats_crt_patch)
-            all_df.append(df)
+        print(f'Computing normalization stats for split = {i_split}')
+        all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_cores=C.NUM_CORES, pbar=True)
+        all_df = [pd.DataFrame(stats) for stats in all_stats]
 
         df = pd.concat(all_df)
+        df = df.sort_values('fn')
         out_dir_crt_split = out_dir_root / f'split_{i_split}'
         out_dir_crt_split.mkdir(parents=True, exist_ok=True)
         fp_out = Path(out_dir_crt_split) / 'stats_train_patches.csv'

@@ -17,17 +17,18 @@ def compute_normalization_stats(fp):
     :param fp: Filepath to a xarray dataset
     :return: a dictionary with the stats for the current raster
     """
-    nc = xr.open_dataset(fp)
+    nc = xr.open_dataset(fp, decode_coords='all')
     band_data = nc.band_data.values[:13]
     list_arrays = [band_data]
-    extra_vars_all = ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']
-    extra_vars = [v for v in extra_vars_all if v in nc.data_vars]
+
+    # add the other variables (except the masks and the already added band_data), assuming that they are 2D
+    extra_vars = [v for v in nc if 'mask' not in v and v != 'band_data']
     for v in extra_vars:
         list_arrays.append(nc[v].values[None, ...])
     data = np.concatenate(list_arrays, axis=0)
 
     stats = {
-        'fp': str(fp),
+        'fn': fp.name,
     }
 
     # add the stats for the band data
