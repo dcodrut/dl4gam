@@ -119,6 +119,9 @@ if __name__ == '__main__':
             Path(all_settings['data']['data_stats_fp']).parent.parent / args.split / 'stats_train_patches_agg.csv')
         all_settings['logger']['name'] = str(Path(all_settings['logger']['name']).parent / args.split)
 
+    # add the seed as a subfolder
+    all_settings['logger']['name'] = str(Path(all_settings['logger']['name']) / f'seed_{all_settings["task"]["seed"]}')
+
     # overwrite the gpu id if provided
     if args.gpu_id is not None:
         all_settings['trainer']['devices'] = [args.gpu_id]
