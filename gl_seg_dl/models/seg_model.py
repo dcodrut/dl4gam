@@ -14,24 +14,22 @@ class SegModel(torch.nn.Module):
         # extract the inputs
         self.input_settings = input_settings
         self.bands = input_settings['bands_input']
-        self.use_elevation = input_settings['elevation']
-        self.use_dhdt = input_settings['dhdt']
         self.use_optical_indices = input_settings['optical_indices']
+        self.use_dem = input_settings['dem']
         self.use_dem_features = input_settings['dem_features']
+        self.use_dhdt = input_settings['dhdt']
+        self.use_velocities = input_settings['velocity']
 
         # prepare the logger
         self.logger = logging.getLogger('pytorch_lightning.core')
 
         # compute the number of input channels based on what variables are used
         num_ch = len(self.bands)
-        if self.use_elevation:
-            num_ch += 1
-        if self.use_optical_indices:
-            num_ch += 3
-        if self.use_dem_features:
-            num_ch += 6
-        if self.use_dhdt:
-            num_ch += 1
+        num_ch += 3 * self.use_optical_indices
+        num_ch += 1 * self.use_dem
+        num_ch += 6 * self.use_dem_features
+        num_ch += 1 * self.use_dhdt
+        num_ch += 1 * self.use_velocities
         self.model_args['in_channels'] = num_ch
 
         # set the number of output channels
@@ -63,7 +61,7 @@ class SegModel(torch.nn.Module):
                 idx_bands = [band_names.index(b) for b in input_settings['bands_input']]
 
                 # use one more band for the DEM if needed
-                if self.use_elevation:
+                if self.use_dem:
                     idx_bands.append(band_names.index('B8A'))
 
                 state_dict['conv1.weight'] = state_dict['conv1.weight'][:, idx_bands, ...]
@@ -75,19 +73,15 @@ class SegModel(torch.nn.Module):
         # add the S2-bands
         input_list.append(batch['band_data'])
 
-        # add the DEM
-        if self.use_elevation:
-            input_list.append(batch['dem'][:, None, :, :])
-
-        # add the dhdt if needed
-        if self.use_dhdt:
-            input_list.append(batch['dhdt'][:, None, :, :])
-
         # add the indices if needed
         if self.use_optical_indices:
             input_list.append(batch['ndsi'][:, None, :, :])
             input_list.append(batch['ndvi'][:, None, :, :])
             input_list.append(batch['ndwi'][:, None, :, :])
+
+        # add the DEM if needed
+        if self.use_dem:
+            input_list.append(batch['dem'][:, None, :, :])
 
         # add the DEM features if needed
         if self.use_dem_features:
@@ -100,6 +94,14 @@ class SegModel(torch.nn.Module):
                 'terrain_ruggedness_index'
             ]:
                 input_list.append(batch[k][:, None, :, :])
+
+        # add the dhdt if needed
+        if self.use_dhdt:
+            input_list.append(batch['dhdt'][:, None, :, :])
+
+        # add the velocities if needed
+        if self.use_velocities:
+            input_list.append(batch['v'][:, None, :, :])
 
         # concatenate all the inputs over channel
         inputs = torch.cat(input_list, dim=1)

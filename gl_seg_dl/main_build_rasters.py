@@ -248,6 +248,8 @@ if __name__ == "__main__":
         extra_rasters_dict['dem'] = C.DEMS_DIR
     if C.DHDT_DIR is not None:
         extra_rasters_dict['dhdt'] = C.DHDT_DIR
+    if C.VELOCITIES_DIR is not None:
+        extra_rasters_dict['v'] = C.VELOCITIES_DIR
     base_settings['extra_rasters_dict'] = extra_rasters_dict
 
     # some dataset specific settings

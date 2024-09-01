@@ -61,7 +61,7 @@ def extract_inputs(ds, fp, input_settings):
         data['mask_debris_crt_g'] = mask_debris_crt_g
         data['mask_debris_all_g'] = mask_debris_all_g
 
-    if input_settings['elevation']:
+    if input_settings['dem']:
         dem = ds.dem.values.astype(np.float32)
         # fill in the NAs with the average
         dem[np.isnan(dem)] = np.mean(dem[~np.isnan(dem)])
@@ -72,6 +72,12 @@ def extract_inputs(ds, fp, input_settings):
         # fill in the NAs with zeros
         dhdt[np.isnan(dhdt)] = 0.0
         data['dhdt'] = dhdt
+
+    if input_settings['velocity']:
+        v = ds.v.values.astype(np.float32)
+        # fill in the NAs with the average
+        v[np.isnan(v)] = np.mean(v[~np.isnan(v)])
+        data['v'] = v
 
     if input_settings['optical_indices']:
         # compute the NDSI, NDVI and NDWI indices
@@ -125,7 +131,7 @@ def standardize_inputs(data, stats_df, scale_each_band):
     data['band_data'] /= stddev[:, None, None]
 
     # do the same for the static variables that need to be standardized
-    for v in ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
+    for v in ['dem', 'dhdt', 'v', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
         if v in data:
             sdf = stats_df[stats_df.var_name == v]
             assert len(sdf) == 1, f"Expecting one stats row for {v}"
@@ -133,8 +139,6 @@ def standardize_inputs(data, stats_df, scale_each_band):
             stddev = sdf.stddev.values[0]
             data[v] -= mu
             data[v] /= stddev
-
-    return data
 
 
 def minmax_scale_inputs(data, stats_df, scale_each_band):
@@ -150,7 +154,7 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
     data['band_data'] /= (vmax[:, None, None] - vmin[:, None, None])
 
     # do the same for the static variables that need to be normalized
-    for v in ['dem', 'dhdt', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
+    for v in ['dem', 'dhdt', 'v', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
         if v in data:
             # apply the scaling
             sdf = stats_df[stats_df.var_name == v]
@@ -159,8 +163,6 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
             vmax = sdf.vmax.values[0]
             data[v] -= vmin
             data[v] /= (vmax - vmin)
-
-    return data
 
 
 class GlSegPatchDataset(Dataset):
@@ -191,9 +193,9 @@ class GlSegPatchDataset(Dataset):
         if self.standardize_data or self.minmax_scale_data:
             assert self.standardize_data != self.minmax_scale_data
         if self.standardize_data:
-            data = standardize_inputs(data, stats_df=self.data_stats_df, scale_each_band=self.scale_each_band)
+            standardize_inputs(data, stats_df=self.data_stats_df, scale_each_band=self.scale_each_band)
         if self.minmax_scale_data:
-            data = minmax_scale_inputs(data, stats_df=self.data_stats_df, scale_each_band=self.scale_each_band)
+            minmax_scale_inputs(data, stats_df=self.data_stats_df, scale_each_band=self.scale_each_band)
 
         return data
 

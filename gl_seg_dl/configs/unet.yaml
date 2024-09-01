@@ -42,10 +42,11 @@ model:
   inputs:
     bands_input: [ 'B4', 'B3', 'B2', 'B8', 'B12']
     bands_mask: [ '~FILL_MASK', '~CLOUDLESS_MASK']
-    elevation: True
+    dem: True
     dhdt: True
     optical_indices: True
     dem_features: True
+    velocity: False
   args:
 #    encoder_name: 'resnet50'
     encoder_name: 'resnet34'

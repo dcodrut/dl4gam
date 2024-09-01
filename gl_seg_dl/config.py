@@ -10,6 +10,7 @@ class BaseConfig:
     MIN_GLACIER_AREA = 0.1  # km2
     DEMS_DIR = Path('../data/external/copdem_eea10m')
     DHDT_DIR = Path('../data/external/dhdt_hugonnet/11_rgi60_2000-01-01_2020-01-01/dhdt')
+    VELOCITIES_DIR = Path('../data/external/velocity/its_live/2015')
     GLACIER_OUTLINES_FP = Path('../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp')
     DEBRIS_OUTLINES_FP = Path('../data/data_gmb/debris/combined_debris_s2_inv/combined_debris_s2_inv.shp')
     NODATA = -9999
@@ -115,8 +116,9 @@ class S2_PLUS(S2):
     WD = f'../data/external/wd/s2_plus'
 
     # csv file with the finals dates
-    CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'final_dates.csv'
+    CSV_DATES_ALLOWED = '../data/external/manually_checking/final_dates.csv'
     # CSV_DATES_ALLOWED = None
+    # VELOCITIES_DIR = Path('../data/external/velocity/its_live/2022')
 
     # raw -> rasters settings
     BANDS = (
