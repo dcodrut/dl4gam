@@ -266,7 +266,7 @@ if __name__ == "__main__":
             choose_best_auto = False
         else:
             dates_allowed = None
-            max_cloud_f = 0.25
+            max_cloud_f = 0.3
             choose_best_auto = True
         specific_settings = dict(
             buffer_px=C.PATCH_RADIUS,
@@ -279,7 +279,7 @@ if __name__ == "__main__":
         dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
         specific_settings = dict(
             choose_best_auto=True,
-            max_cloud_f=0.25,
+            max_cloud_f=0.3,
             buffer_px=C.PATCH_RADIUS,
             df_dates=dates_allowed
         )
@@ -298,6 +298,23 @@ if __name__ == "__main__":
         specific_settings = dict(
             buffer_px=C.PATCH_RADIUS,
             df_dates=final_dates
+        )
+    elif C.__name__ == 'KH9':
+        # KH9 data prep
+        # read the dataframe that links each glacier to the corresponding image file (only one image so far)
+        raw_fp_df = pd.read_csv(C.RAW_FP_CSV)
+
+        specific_settings = dict(
+            choose_best_auto=False,
+            raw_fp_df=raw_fp_df,
+            buffer_px=C.PATCH_RADIUS,
+        )
+    elif C.__name__ == 'S2_PERU':
+        # S2 data for the Peru glaciers
+        specific_settings = dict(
+            choose_best_auto=True,
+            max_cloud_f=0.3,
+            buffer_px=C.PATCH_RADIUS,
         )
 
     settings = base_settings.copy()

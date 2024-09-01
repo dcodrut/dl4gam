@@ -1,3 +1,5 @@
 /.idea/
 /gl_seg_dl/lightning_logs/
 /data/
+/gl_seg_dl/.pytest_cache/
+__pycache__/
