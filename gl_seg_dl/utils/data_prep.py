@@ -132,7 +132,7 @@ def prep_glacier_dataset(
     nc.close()
 
 
-def add_external_raster(fp_gl, extra_rasters_bb_dict, no_data):
+def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):
     """
         Adds extra rasters to the glacier dataset.
 

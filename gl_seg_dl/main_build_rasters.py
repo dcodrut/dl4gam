@@ -10,7 +10,7 @@ import xarray as xr
 
 # local imports
 from config import C, S2_PS, PS
-from utils.data_prep import prep_glacier_dataset, add_external_raster, add_dem_features
+from utils.data_prep import prep_glacier_dataset, add_external_rasters, add_dem_features
 from utils.data_stats import compute_qc_stats
 from utils.general import run_in_parallel
 
@@ -45,7 +45,6 @@ def prepare_all_rasters(
     if min_area is not None:
         # keep the glaciers of interest in a different dataframe
         gl_df_sel = gl_df_all[gl_df_all.Area >= min_area]
-        # gl_df_sel = gl_df_sel.sort_values('Area', ascending=False).iloc[:1]
         print(f"#glaciers = {len(gl_df_sel)} after area filtering")
     else:
         gl_df_sel = gl_df_all
@@ -143,7 +142,7 @@ def prepare_all_rasters(
             print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
             print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
                   f"({n / len(gid_list) * 100:.1f}%)")
-
+            print(f"len(gl_df_sel) = {len(gl_df_sel)}")
             # export the selected dataframe
             fp_sel = Path(out_rasters_dir).parent / 'aux_data' / 'selected_images.csv'
             gl_df_sel = gl_df_sel.sort_values(['entry_id', 'date'])
@@ -205,7 +204,7 @@ def prepare_all_rasters(
 
     # add the extra rasters to the glacier datasets by loading those that intersect each glacier using the previous bb
     run_in_parallel(
-        fun=add_external_raster,
+        fun=add_external_rasters,
         fp_gl=fp_out_list,
         extra_rasters_bb_dict=extra_rasters_bb_dict,
         num_cores=num_cores,
