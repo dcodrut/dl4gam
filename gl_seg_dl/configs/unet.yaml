@@ -15,7 +15,7 @@ data:
 
 task:
   seed: 42
-  loss: 'BCE'
+  loss: 'focal'
   optimization:
     optimizer:
       - name: 'Adam'
