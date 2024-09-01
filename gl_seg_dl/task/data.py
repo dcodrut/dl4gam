@@ -150,6 +150,11 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
         vmin[:] = vmin.min()
         vmax[:] = vmax.max()
 
+    # clip the values to the min and max
+    dtype = data['band_data'].dtype
+    data['band_data'] = np.clip(data['band_data'], vmin[:, None, None], vmax[:, None, None]).astype(dtype)
+
+    # scale to [0, 1]
     data['band_data'] -= vmin[:, None, None]
     data['band_data'] /= (vmax[:, None, None] - vmin[:, None, None])
 
@@ -161,6 +166,11 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
             assert len(sdf) == 1, f"Expecting one stats row for {v}"
             vmin = sdf.vmin.values[0]
             vmax = sdf.vmax.values[0]
+
+            # clip the values to the min and max
+            data[v] = np.clip(data[v], vmin, vmax).astype(dtype)
+
+            # scale to [0, 1]
             data[v] -= vmin
             data[v] /= (vmax - vmin)
 
