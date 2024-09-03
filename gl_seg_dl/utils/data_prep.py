@@ -96,9 +96,7 @@ def prep_glacier_dataset(
         assert len(bands_missing) == 0, f"Missing bands: {bands_missing}"
 
         all_bands = list(nc.band_data.long_name)
-        bands_to_drop = [b for b in all_bands if b not in bands_to_keep]
-        if len(bands_to_drop) > 0:
-            nc = nc.drop_isel(band=[all_bands.index(b) for b in bands_to_drop])
+        nc = nc.isel(band=[all_bands.index(b) for b in bands_to_keep])
         nc.band_data.attrs['long_name'] = tuple(bands_to_keep)
 
     # add the glacier masks
