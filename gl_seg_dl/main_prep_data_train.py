@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import geopandas as gpd
 import pandas as pd
-from pathlib import Path
 
 # local imports
 from config import C
@@ -12,18 +13,19 @@ if __name__ == "__main__":
     print(f'Reading S2-based glacier outlines from {outlines_fp}')
     gl_df = gpd.read_file(outlines_fp)
     initial_area = gl_df.Area.sum()
-    print(f'#glaciers = {len(gl_df)}; area = {initial_area} km2')
+    print(f'#glaciers = {len(gl_df)}; area = {initial_area:.2f} km2')
 
     print(f'Keeping only the glaciers above {C.MIN_GLACIER_AREA}')
     gl_df = gl_df[gl_df.Area >= C.MIN_GLACIER_AREA].copy()
     area = gl_df.Area.sum()
-    print(f'#glaciers = {len(gl_df)}; area = {area} km2 ({area / initial_area * 100:.2f}%)')
+    print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # remove the glaciers for which there is no data
     print(f'Keeping only the glaciers that have data in {C.DIR_GL_INVENTORY}')
     gl_entry_ids_ok = [x.parent.name for x in Path(C.DIR_GL_INVENTORY).glob('**/*.nc')]
     gl_df = gl_df[gl_df.entry_id.isin(gl_entry_ids_ok)]
-    print(f'#glaciers = {len(gl_df)}; area = {area} km2 ({area / initial_area * 100:.2f}%)')
+    area = gl_df.Area.sum()
+    print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # remove the glaciers that do not have a date in the allowed dates
     if C.__name__ == 'S2_PLUS' and C.CSV_DATES_ALLOWED is not None:
@@ -33,7 +35,7 @@ if __name__ == "__main__":
         # remove the glaciers that do not have a date in the allowed dates
         gl_df = gl_df[gl_df.entry_id.isin(dates_allowed[dates_allowed.date != '-'].entry_id)]
         area = gl_df.Area.sum()
-        print(f'#glaciers = {len(gl_df)}; area = {area} km2 ({area / initial_area * 100:.2f}%)')
+        print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # split the data regionally
     data_cv_split(
