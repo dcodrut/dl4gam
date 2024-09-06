@@ -88,7 +88,7 @@ def compute_qc_stats(gl_sdf, include_shadows=True):
     assert len(gl_sdf) == 1, 'Expecting a dataframe with a single entry.'
     row = gl_sdf.iloc[0]
     fp = Path(row.fp_img)
-    stats = {'fp_img': str(fp)}
+    stats = {'fp_img': str(fp), 'entry_id': row.entry_id}
     nc = xr.open_dataset(fp)
 
     # get the band names
@@ -102,7 +102,7 @@ def compute_qc_stats(gl_sdf, include_shadows=True):
     entry_id_i = row.entry_id_i
     nc = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=50)
 
-    # get the cloud percentage for the entire image which should be automatically computed by geedim
+    # get the cloud percentage for the entire image which geedim should automatically compute
     # if the image comes from multiple tiles, use the one with the highest coverage
     _fill_portion_list = [metadata['imgs_props'][k]['FILL_PORTION'] for k in metadata['imgs_props']]
     k = list(metadata['imgs_props'].keys())[np.argmax(_fill_portion_list)]
@@ -115,27 +115,20 @@ def compute_qc_stats(gl_sdf, include_shadows=True):
     #   or the one composed by the bands FILL_MASK | CLOUD_MASK | SHADOW_MASK (if required)
     fill_mask = nc.band_data.isel(band=band_names.index('FILL_MASK')).data
     fill_p = np.nansum(fill_mask == 1) / np.prod(fill_mask.shape)
-    cloud_mask_v1 = (nc.band_data.isel(band=band_names.index('CLOUDLESS_MASK')).data != 1)
-    cloud_p_v1 = np.nansum(cloud_mask_v1 == 1) / np.prod(cloud_mask_v1.shape)
+    stats['fill_p'] = fill_p
+    cloud_mask_scene_v1 = (nc.band_data.isel(band=band_names.index('CLOUDLESS_MASK')).data != 1)
     cloud_mask = nc.band_data.isel(band=band_names.index('CLOUD_MASK')).data
-    cloud_mask_v2 = (cloud_mask == 1) | (fill_mask != 1)
+    cloud_mask_scene_v2 = (cloud_mask == 1) | (fill_mask != 1)
     if include_shadows:
         shadow_mask = nc.band_data.isel(band=band_names.index('SHADOW_MASK')).data
-        cloud_mask_v2 |= (shadow_mask == 1)
-    cloud_p_v2 = np.nansum(cloud_mask_v2 == 1) / np.prod(cloud_mask_v2.shape)
-
-    # compute the glacier-level cloud percentage using the 50m buffer
-    gl_mask_50m_buffer = (nc.mask_crt_g_b50.values == 1)
-    cloud_mask_v1_gl_only = ((cloud_mask_v1 == 1) & gl_mask_50m_buffer)
-    cloud_mask_v2_gl_only = ((cloud_mask_v2 == 1) & gl_mask_50m_buffer)
-    cloud_p_v1_gl_only = np.sum(cloud_mask_v1_gl_only) / np.sum(gl_mask_50m_buffer)
-    cloud_p_v2_gl_only = np.sum(cloud_mask_v2_gl_only) / np.sum(gl_mask_50m_buffer)
+        cloud_mask_scene_v2 |= (shadow_mask == 1)
 
     # get the tile-level cloud percentage
     tile_level_cloud_p = metadata['imgs_props_extra'][k]['CLOUDY_PIXEL_PERCENTAGE'] / 100
+    stats['tile_level_cloud_p'] = tile_level_cloud_p
 
     # compute the albedo, NDSI & Red \ SWIR, over the unclouded surfaces (glacier & non-glacier & within 50m buffer)
-    for cloud_mask_v, cloud_mask in zip(['v1', 'v2'], [cloud_mask_v1_gl_only, cloud_mask_v2_gl_only]):
+    for cloud_mask_v, cloud_mask in zip(['v1', 'v2'], [cloud_mask_scene_v1, cloud_mask_scene_v2]):
         mask_clean = ~cloud_mask
         mask_gl_clean = (nc.mask_crt_g.values == 1) & mask_clean
         mask_gl_buffer_50m_clean = (nc.mask_crt_g_b50.values == 1) & mask_clean
@@ -171,13 +164,11 @@ def compute_qc_stats(gl_sdf, include_shadows=True):
             r_swir_avg = np.nanmean(r_swir) if np.sum(~np.isnan(r_swir)) > 0 else np.nan
             stats[f"r_swir_avg_{name}_{cloud_mask_v}"] = r_swir_avg
 
-    # save and return the stats
-    stats['fill_p'] = fill_p
-    stats['cloud_p_v1'] = cloud_p_v1
-    stats['cloud_p_v2'] = cloud_p_v2
-    stats['tile_level_cloud_p'] = tile_level_cloud_p
-    stats['cloud_p_v1_gl_only'] = cloud_p_v1_gl_only
-    stats['cloud_p_v2_gl_only'] = cloud_p_v2_gl_only
-    stats['entry_id'] = row.entry_id
+        # add also the cloud coverage stats
+        stats[f"cloud_p_scene_{cloud_mask_v}"] = np.sum(cloud_mask) / np.prod(cloud_mask.shape)
+        bg_mask = (nc.mask_crt_g.values == 1)
+        stats[f"cloud_p_gl_{cloud_mask_v}"] = np.sum(cloud_mask & bg_mask) / np.sum(bg_mask)
+        bg_mask = (nc.mask_crt_g_b50.values == 1)
+        stats[f"cloud_p_gl_b50m_{cloud_mask_v}"] = np.sum(cloud_mask & bg_mask) / np.sum(bg_mask)
 
     return stats
