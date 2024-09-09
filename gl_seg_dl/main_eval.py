@@ -212,7 +212,7 @@ if __name__ == "__main__":
             input_settings=all_settings['model']['inputs'],
         )
 
-        with multiprocessing.Pool(C.NUM_CORES_EVAL) as pool:
+        with multiprocessing.Pool(C.NUM_PROCS_EVAL) as pool:
             all_metrics = []
             for metrics in tqdm(
                     pool.imap_unordered(_compute_stats, fp_list, chunksize=1), total=len(fp_list),

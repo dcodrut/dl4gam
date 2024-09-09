@@ -22,7 +22,7 @@ def _fn_star(kwargs):
     return fun(**kwargs_others)
 
 
-def run_in_parallel(fun, num_cores=1, pbar=False, **kwargs):
+def run_in_parallel(fun, num_procs=1, pbar=False, **kwargs):
     # check if the arguments which are lists have the same length
     arg_lens = [len(x) for _, x in kwargs.items() if isinstance(x, list)]
     assert len(arg_lens) > 0, 'At least one argument is expected to be a list.'
@@ -35,9 +35,9 @@ def run_in_parallel(fun, num_cores=1, pbar=False, **kwargs):
 
     # run and collect the results
     all_res = []
-    with tqdm(total=arg_lens[0], desc=f'Running {fun} with {num_cores} core(s)', disable=not pbar) as pbar:
-        if num_cores > 1:
-            with multiprocessing.Pool(num_cores) as pool:
+    with tqdm(total=arg_lens[0], desc=f'Running {fun} with {num_procs} process(es)', disable=not pbar) as pbar:
+        if num_procs > 1:
+            with multiprocessing.Pool(num_procs) as pool:
                 for res in pool.imap_unordered(_fn_star, kwargs_flatten):
                     all_res.append(res)
                     pbar.update()

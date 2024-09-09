@@ -17,7 +17,7 @@ if __name__ == '__main__':
         fp_list = sorted(list(Path(data_dir_crt_split).glob('**/*.nc')))
 
         print(f'Computing normalization stats for split = {i_split}')
-        all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_cores=C.NUM_CORES, pbar=True)
+        all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_procs=C.NUM_PROCS, pbar=True)
         all_df = [pd.DataFrame(stats) for stats in all_stats]
 
         df = pd.concat(all_df)

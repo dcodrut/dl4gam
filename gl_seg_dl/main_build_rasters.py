@@ -23,7 +23,7 @@ def prepare_all_rasters(
         raw_fp_df=None,
         no_data=C.NODATA,
         dems_dir_per_gl=None,
-        num_cores=1,
+        num_procs=1,
         bands_to_keep=None,
         extra_shp_dict=None,
         extra_rasters_dict=None,
@@ -86,7 +86,7 @@ def prepare_all_rasters(
             all_cloud_stats = run_in_parallel(
                 fun=functools.partial(compute_qc_stats, include_shadows=False),
                 gl_sdf=gl_sdf_list,
-                num_cores=num_cores,
+                num_procs=num_procs,
                 pbar=True
             )
             cloud_stats_df = pd.DataFrame.from_records(all_cloud_stats)
@@ -190,7 +190,7 @@ def prepare_all_rasters(
         bands_to_keep=bands_to_keep,
         buffer_px=buffer_px,
         no_data=no_data,
-        num_cores=num_cores,
+        num_procs=num_procs,
         pbar=True
     )
 
@@ -207,7 +207,7 @@ def prepare_all_rasters(
         fun=add_external_rasters,
         fp_gl=fp_out_list,
         extra_rasters_bb_dict=extra_rasters_bb_dict,
-        num_cores=num_cores,
+        num_procs=num_procs,
         no_data=no_data,
         pbar=True
     )
@@ -217,7 +217,7 @@ def prepare_all_rasters(
         run_in_parallel(
             fun=add_dem_features,
             fp_gl=fp_out_list,
-            num_cores=num_cores,
+            num_procs=num_procs,
             no_data=no_data,
             pbar=True
         )
@@ -237,7 +237,7 @@ if __name__ == "__main__":
         min_area=C.MIN_GLACIER_AREA,
         bands_to_keep=C.BANDS,
         no_data=C.NODATA,
-        num_cores=C.NUM_CORES,
+        num_procs=C.NUM_PROCS,
         extra_shp_dict=extra_shp_dict,
         compute_dem_features=True
     )

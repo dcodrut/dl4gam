@@ -15,11 +15,11 @@ class BaseConfig:
     DEBRIS_OUTLINES_FP = Path('../data/data_gmb/debris/combined_debris_s2_inv/combined_debris_s2_inv.shp')
     NODATA = -9999
 
-    # how many cores to use when building the rasters
-    NUM_CORES = 16
+    # how many processes to use when building the rasters
+    NUM_PROCS = 16
 
-    # how many cores to use when evaluating the models per glacier
-    NUM_CORES_EVAL = 16
+    # how many processes to use when evaluating the models per glacier
+    NUM_PROCS_EVAL = 16
     PRELOAD_DATA_INFER = True  # whether to load the netcdf files in memory before patchifying them
 
     # the next properties have to be specified for each dataset
