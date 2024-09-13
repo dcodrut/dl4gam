@@ -97,9 +97,9 @@ def prepare_all_rasters(
         cloud_stats_df.fp_img = cloud_stats_df.fp_img.apply(lambda s: Path(s))
 
         # choose the least cloudy images and prepare the paths
-        col_clouds = 'cloud_p_v1_gl_only'
-        col_ndsi = 'ndsi_avg_scene_v1'
-        col_albedo = 'albedo_avg_gl_v1'
+        col_clouds = 'cloud_p_gl_b50m_v1'
+        col_ndsi = 'ndsi_avg_non_gl_b50m_v1'
+        col_albedo = 'albedo_avg_gl_b50m_v1'
         cols_qc = [col_clouds, col_ndsi, col_albedo]
         gl_df_sel = gl_df_sel.merge(cloud_stats_df[['fp_img'] + cols_qc], on='fp_img')
 
