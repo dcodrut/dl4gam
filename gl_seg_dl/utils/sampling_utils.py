@@ -121,7 +121,6 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
             test_valid_lims = (test_lims[0] - valid_fraction_adj, test_lims[1])
         else:
             test_valid_lims = (test_lims[0] - valid_fraction_adj / 2, test_lims[1] + valid_fraction_adj / 2)
-        print(test_lims, test_valid_lims)
         idx_test_valid = (test_valid_lims[0] <= area_cumsumf) & (area_cumsumf < test_valid_lims[1])
         idx_valid = idx_test_valid & (~idx_test)
         idx_train = ~idx_test_valid
