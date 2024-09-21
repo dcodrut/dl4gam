@@ -14,7 +14,7 @@ from utils.postprocessing import nn_interp, hypso_interp
 
 
 class GlSegTask(pl.LightningModule):
-    def __init__(self, model, task_params, outdir=None):
+    def __init__(self, model, task_params, outdir=None, interp='nn'):
         super().__init__()
 
         self.model = model
@@ -34,6 +34,8 @@ class GlSegTask(pl.LightningModule):
         self._logger = logging.getLogger('pytorch_lightning.core')
 
         self.outdir = outdir
+        assert interp in (None, 'nn', 'hypso')
+        self.interp = interp
 
         # initialize the train/val metrics accumulators
         self.training_step_outputs = []
@@ -267,18 +269,22 @@ class GlSegTask(pl.LightningModule):
         mask_to_fill &= mask_crt_g_b50
         mask_ok = (~mask_to_fill) & mask_crt_g_b50
 
-        n_px = 30  # how many pixels to use as source for interpolation value
-        if mask_to_fill.sum() > 0 and mask_ok.sum() >= n_px:
-            # use the nearest neighbours
-            data_interp = nn_interp(data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, num_nn=n_px)
-            nc_pred['pred_i_nn'] = (('y', 'x'), data_interp)
-            nc_pred['pred_i_nn_b'] = (('y', 'x'), data_interp >= self.thr)
-
-            # use the pixels with the closest elevations
-            dem = nc_pred.dem.values
-            data_interp = hypso_interp(data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, dem=dem, num_px=n_px)
-            nc_pred['pred_i_hypso'] = (('y', 'x'), data_interp)
-            nc_pred['pred_i_hypso_b'] = (('y', 'x'), data_interp >= self.thr)
+        if self.interp is not None:
+            n_px = 30  # how many pixels to use as source for interpolation value
+            if mask_to_fill.sum() > 0 and mask_ok.sum() >= n_px:
+                # use the nearest neighbours
+                if self.interp == 'nn':
+                    data_interp = nn_interp(data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, num_nn=n_px)
+                    nc_pred['pred_i_nn'] = (('y', 'x'), data_interp)
+                    nc_pred['pred_i_nn_b'] = (('y', 'x'), data_interp >= self.thr)
+                elif self.interp == 'hypso':
+                    # use the pixels with the closest elevations
+                    dem = nc_pred.dem.values
+                    data_interp = hypso_interp(
+                        data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, dem=dem, num_px=n_px
+                    )
+                    nc_pred['pred_i_hypso'] = (('y', 'x'), data_interp)
+                    nc_pred['pred_i_hypso_b'] = (('y', 'x'), data_interp >= self.thr)
 
         # add the CRS to the new data arrays
         for c in [_c for _c in nc_pred.data_vars if 'pred' in _c]:
