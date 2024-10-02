@@ -34,9 +34,9 @@ def band_ratio(filepath, thr_step=0.005):
     swir = nc.band_data.isel(band=nc.band_data.long_name.index('B12')).values
 
     # keep only the clean pixels
-    mask_no_data = extract_inputs(fp=filepath, ds=nc, input_settings=input_settings)
-    r = r[mask_no_data]
-    swir = swir[mask_no_data]
+    mask_no_data = extract_inputs(fp=filepath, ds=nc, input_settings=input_settings)['mask_no_data']
+    r = r[~mask_no_data]
+    swir = swir[~mask_no_data]
 
     # band ratio
     den = r + swir
@@ -44,10 +44,10 @@ def band_ratio(filepath, thr_step=0.005):
     ratio = r / den
 
     # ground truth
-    y_true = (~np.isnan(nc.mask_all_g_id.values)).flatten()
+    y_true = (~np.isnan(nc.mask_all_g_id.values))[~mask_no_data]
 
     for thr in np.arange(0, 1 + thr_step, thr_step):
-        y_pred = ratio > thr
+        y_pred = ratio >= thr
         tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
         iou = tp / (tp + fp + fn)
         stats['entry_id'].append(filepath.parent.name)
