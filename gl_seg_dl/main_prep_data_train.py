@@ -21,21 +21,12 @@ if __name__ == "__main__":
     print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # remove the glaciers for which there is no data
+    assert Path(C.DIR_GL_INVENTORY).exists(), f"{C.DIR_GL_INVENTORY} does not exist"
     print(f'Keeping only the glaciers that have data in {C.DIR_GL_INVENTORY}')
     gl_entry_ids_ok = [x.parent.name for x in Path(C.DIR_GL_INVENTORY).glob('**/*.nc')]
     gl_df = gl_df[gl_df.entry_id.isin(gl_entry_ids_ok)]
     area = gl_df.Area.sum()
     print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
-
-    # remove the glaciers that do not have a date in the allowed dates
-    if C.__name__ == 'S2_PLUS' and C.CSV_DATES_ALLOWED is not None:
-        print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
-        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
-
-        # remove the glaciers that do not have a date in the allowed dates
-        gl_df = gl_df[gl_df.entry_id.isin(dates_allowed[dates_allowed.date != '-'].entry_id)]
-        area = gl_df.Area.sum()
-        print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # split the data regionally
     data_cv_split(
@@ -70,4 +61,5 @@ if __name__ == "__main__":
         patches_dir=C.DIR_GL_PATCHES,
         patch_radius=C.PATCH_RADIUS,
         sampling_step=C.SAMPLING_STEP_TRAIN,
+        folds=('train', 'valid', 'test')
     )
