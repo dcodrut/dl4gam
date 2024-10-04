@@ -1,16 +1,16 @@
+import json
+import logging
 import os
 from argparse import ArgumentParser
 from pathlib import Path
 
 import pytorch_lightning as pl
 import pytorch_lightning.loggers
-import logging
 import yaml
-import json
 
 # local imports
-from config import C
 import models
+from config import C
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
 
