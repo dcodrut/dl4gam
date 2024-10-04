@@ -8,11 +8,6 @@ class BaseConfig:
     NUM_CV_FOLDS = 5
     VALID_FRACTION = 0.1
     MIN_GLACIER_AREA = 0.1  # km2
-    DEMS_DIR = Path('../data/external/copdem_eea10m')
-    DHDT_DIR = Path('../data/external/dhdt_hugonnet/11_rgi60_2000-01-01_2020-01-01/dhdt')
-    VELOCITIES_DIR = Path('../data/external/velocity/its_live/2015')
-    GLACIER_OUTLINES_FP = Path('../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp')
-    DEBRIS_OUTLINES_FP = Path('../data/data_gmb/debris/combined_debris_s2_inv/combined_debris_s2_inv.shp')
     NODATA = -9999
 
     # how many processes to use when building the rasters
@@ -20,9 +15,16 @@ class BaseConfig:
 
     # how many processes to use when evaluating the models per glacier
     NUM_PROCS_EVAL = 16
-    PRELOAD_DATA_INFER = True  # whether to load the netcdf files in memory before patchifying them
+    PRELOAD_DATA_INFER = True  # whether to load the netcdf files in memory before patchifying them (at inference time)
 
     # the next properties have to be specified for each dataset
+    # we raise a NotImplementedError for the properties that need to be implemented
+    @classmethod
+    @property
+    def GLACIER_OUTLINES_FP(cls):
+        # path to the glacier outlines (a shapefile); two columns (except 'geometry') are expected 'Area' and 'entry_id'
+        raise NotImplementedError
+
     @classmethod
     @property
     def RAW_DATA_DIR(cls):
@@ -85,13 +87,71 @@ class BaseConfig:
                 f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP_TRAIN}"
         )
 
+    @classmethod
+    @property
+    def EXTRA_RASTERS(cls):
+        """
+            A dictionary {name -> path} with the paths to various directories that contain additional raster data to be
+             added to the optical data. The data is expected to be in a raster format (e.g. tif) and it will be
+             automatically matched to the glacier directories. This means that we automatically find the files that
+             intersect the current glacier, merge them if needed, resample them to the same resolution as the optical
+             and finally add them to the glacier optical dataset.
+        """
+        return {}
 
-class S2(BaseConfig):
+    @classmethod
+    @property
+    def EXTRA_GEOMETRIES(cls):
+        """
+            A dictionary {name -> path} with the paths to various shape files to be rasterized as binary masks and added
+             to the optical data. The data is expected to be in a vector format (e.g. shp), with one file per feature.
+        """
+        return {}
+
+    @classmethod
+    @property
+    def CSV_DATES_ALLOWED(cls):
+        """
+            Path to a csv file containing which dates are allowed for each glacier.
+            If None, all the images from the raw image directory will be accessed and the best will be automatically
+             selected based on cloud coverage and the snow index.
+        """
+
+        return None
+
+
+class S2_ALPS(BaseConfig):
     """ Settings for Sentinel-2 data using the Paul. et al. 2020 outlines """
 
-    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2/inv'
-    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2/2023'
-    WD = f'../data/external/wd/s2'
+    # glacier outlines
+    GLACIER_OUTLINES_FP = Path('../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp')
+
+    _year = 'inv'  # inventory year (i.e. mainly 2015)
+    # _year = '2023'
+    assert _year in ('inv', '2023')
+
+    if _year == 'inv':
+        # extra rasters to be added to the optical data
+        EXTRA_RASTERS = {
+            'dem': Path('../data/external/copdem_eea10m'),
+            'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'),
+            'v': Path('../data/external/velocity/its_live/2015'),
+        }
+    elif _year == '2023':
+        # extra rasters to be added to the optical data
+        EXTRA_RASTERS = {
+            'dem': Path('../data/external/copdem_eea10m'),
+            'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2015-01-01_2020-01-01/dhdt'),
+            'v': Path('../data/external/velocity/its_live/2022'),
+        }
+
+    # extra vector data
+    EXTRA_GEOMETRIES = {
+        'debris': Path('../data/data_gmb/debris/combined_debris_s2_inv/combined_debris_s2_inv.shp'),
+    }
+
+    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/{_year}'
+    WD = f'../data/external/wd/s2_alps'
 
     # raw -> rasters settings
     BANDS = (
@@ -107,36 +167,24 @@ class S2(BaseConfig):
     SAMPLING_STEP_TRAIN = 128
 
 
-class S2_PLUS(S2):
-    """ Settings for Sentinel-2 data using the Paul. et al. 2020 outlines with manually checked images
-    (same images were replaced because they had too many clouds/shadows or had too much seasonal snow)"""
+class S2_ALPS_PLUS(S2_ALPS):
+    """
+        Settings for Sentinel-2 data using the Paul. et al. 2020 outlines with manually checked images.
+        Same inventory images were removed or replaced (when possible) because they had too many clouds/shadows or
+        had too much seasonal snow.
+    """
 
-    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2_plus/inv'
-    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/s2_plus/2023'
-    WD = f'../data/external/wd/s2_plus'
+    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps_plus/{S2_ALPS._year}'
+    WD = f'../data/external/wd/s2_alps_plus'
 
-    # csv file with the finals dates
-    CSV_DATES_ALLOWED = '../data/external/manually_checking/final_dates.csv'
-    # CSV_DATES_ALLOWED = None
-    # VELOCITIES_DIR = Path('../data/external/velocity/its_live/2022')
-
-    # raw -> rasters settings
-    BANDS = (
-        'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12',
-        'CLOUDLESS_MASK',
-        'FILL_MASK'
-    )
-
-    # patch sampling settings
-    PATCH_RADIUS = 128
-    SAMPLING_STEP_TRAIN = 128
+    # csv file with the finals inventory dates
+    CSV_DATES_ALLOWED = '../data/external/manually_checking/final_dates.csv' if S2_ALPS._year == 'inv' else None
 
 
-class S2_GLAMOS(S2):
+class S2_GLAMOS(S2_ALPS):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
-    # RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/inv'
-    RAW_DATA_DIR = '../data/sat_data_downloader/external/download/glamos/2023'
+    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/glamos/{S2_ALPS._year}'
 
     WD = '../data/external/wd/s2_glamos'
 
@@ -147,9 +195,6 @@ class S2_GLAMOS(S2):
     GLACIER_OUTLINES_FP = Path(
         '../data/data_gmb/glamos/inventory_sgi2016_r2020_rgi_format/SGI_2016_glaciers_rgi_format.shp'
     )
-
-    # we need specific DEMs given that the outlines are different
-    DEMS_DIR = Path('../data/external/oggm/s2_glamos')
 
 
 class PS(BaseConfig):
@@ -170,7 +215,7 @@ class PS(BaseConfig):
     DIR_GL_PATCHES = f'{WD}/inv/patches/r_{PATCH_RADIUS}_s_{SAMPLING_STEP_TRAIN}'
 
 
-class S2_PS(S2):
+class S2_PS(S2_ALPS):
     """
         Settings for Sentinel-2 data that matches the manually downloaded Planet data.
         Most of the settings are the same as in S2.
@@ -180,8 +225,8 @@ class S2_PS(S2):
     CSV_FINAL_DATES = '../data/sat_data_downloader/external/aux/s2_dates/dates_ps_s2.csv'
 
 # specify which dataset to use
-# C = S2
-C = S2_PLUS
+# C = S2_ALPS
+C = S2_ALPS_PLUS
 # C = S2_GLAMOS
 # C = S2_PS
 # C = PS

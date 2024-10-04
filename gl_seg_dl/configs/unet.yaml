@@ -1,13 +1,13 @@
 data:
-  data_root_dir: '../data/external/wd/s2_plus/inv/patches/r_128_s_128/split_1'
+  data_root_dir: '../data/external/wd/s2_alps_plus/inv/patches/r_128_s_128/split_1'
   train_dir_name: 'fold_train'
   val_dir_name: 'fold_valid'
   test_dir_name: 'fold_test'
-  rasters_dir: '../data/external/wd/s2_plus/inv/glacier_wide'
+  rasters_dir: '../data/external/wd/s2_alps_plus/inv/glacier_wide'
   minmax_scale_data: False
   standardize_data: True
   scale_each_band: True
-  data_stats_fp: '../data/external/wd/s2_plus/inv/aux_data/norm_stats/r_128_s_128/split_1/stats_train_patches_agg.csv'
+  data_stats_fp: '../data/external/wd/s2_alps_plus/inv/aux_data/norm_stats/r_128_s_128/split_1/stats_train_patches_agg.csv'
   train_batch_size: 16
   val_batch_size: 32
   test_batch_size: 32
@@ -24,7 +24,7 @@ task:
     lr_schedule: null
 
 logger:
-  save_dir: '../data/external/experiments_server/s2_plus'
+  save_dir: '../data/external/experiments_server/s2_alps_plus'
   name: 'unet/split_1'
 
 trainer:

@@ -25,7 +25,7 @@ def prepare_all_rasters(
         dems_dir_per_gl=None,
         num_procs=1,
         bands_to_keep=None,
-        extra_shp_dict=None,
+        extra_geometries_dict=None,
         extra_rasters_dict=None,
         min_area=None,
         choose_best_auto=False,
@@ -164,10 +164,10 @@ def prepare_all_rasters(
     else:
         fp_dem_list = None
 
-    # read the extra shapefiles if given
-    if extra_shp_dict is not None:
+    # read the extra shapefiles
+    if extra_geometries_dict is not None:
         extra_gdf_dict = {}
-        for k, fp in extra_shp_dict.items():
+        for k, fp in extra_geometries_dict.items():
             print(f"Reading the outlines {k} from {fp}")
             extra_gdf_dict[k] = gpd.read_file(fp)
     else:
@@ -224,9 +224,6 @@ def prepare_all_rasters(
 
 
 if __name__ == "__main__":
-    # specify which other outlines to use to build masks and add them to the final rasters
-    extra_shp_dict = {'debris': C.DEBRIS_OUTLINES_FP}
-
     # the next settings apply to all datasets
     base_settings = dict(
         raw_images_dir=C.RAW_DATA_DIR,
@@ -238,28 +235,22 @@ if __name__ == "__main__":
         bands_to_keep=C.BANDS,
         no_data=C.NODATA,
         num_procs=C.NUM_PROCS,
-        extra_shp_dict=extra_shp_dict,
+        extra_geometries_dict=C.EXTRA_GEOMETRIES,
+        extra_rasters_dict=C.EXTRA_RASTERS,
         compute_dem_features=True
     )
 
-    # add the extra rasters if specified in the config
-    extra_rasters_dict = {}
-    if C.DEMS_DIR is not None:
-        extra_rasters_dict['dem'] = C.DEMS_DIR
-    if C.DHDT_DIR is not None:
-        extra_rasters_dict['dhdt'] = C.DHDT_DIR
-    if C.VELOCITIES_DIR is not None:
-        extra_rasters_dict['v'] = C.VELOCITIES_DIR
-    base_settings['extra_rasters_dict'] = extra_rasters_dict
+    for k, v in {**C.EXTRA_GEOMETRIES, **C.EXTRA_RASTERS}.items():
+        assert Path(v).exists(), f"{k} filepath: {v} does not exist"
 
     # some dataset specific settings
     specific_settings = {}
-    if C.__name__ == 'S2':
+    if C.__name__ == 'S2_ALPS':
         specific_settings = dict(
             choose_best_auto=True,
             buffer_px=C.PATCH_RADIUS,
         )
-    elif C.__name__ == 'S2_PLUS':
+    elif C.__name__ == 'S2_ALPS_PLUS':
         if C.CSV_DATES_ALLOWED is not None:
             dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
             max_cloud_f = None
@@ -316,6 +307,8 @@ if __name__ == "__main__":
             max_cloud_f=0.3,
             buffer_px=C.PATCH_RADIUS,
         )
+    else:
+        raise NotImplementedError(f"Dataset {C.__name__} not implemented.")
 
     settings = base_settings.copy()
     settings.update(specific_settings)
