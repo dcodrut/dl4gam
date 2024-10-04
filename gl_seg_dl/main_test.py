@@ -35,7 +35,7 @@ def test_model(
     dm = GlSegDataModule(**data_params)
     dm.train_shuffle = False  # disable shuffling for the training dataloader
 
-    # Model
+    # Model & task
     model_class = getattr(models, settings['model']['class'])
     model = model_class(
         input_settings=settings['model']['inputs'] if 'inputs' in settings['model'] else None,
@@ -43,19 +43,15 @@ def test_model(
         model_name=settings['model']['name'],
         model_args=settings['model']['args'],
     )
-
-    # Task
-    task_params = settings['task']
-    task = GlSegTask(model=model, task_params=task_params)
     logger.info(f'Loading model from {checkpoint}')
+    task_params = settings['task']
     device = f"cuda:{settings['trainer']['devices'][0]}" if settings['trainer']['accelerator'] == 'gpu' else 'cpu'
-    if checkpoint is not None:  # allow using non-trainable models
-        task.load_from_checkpoint(
-            checkpoint_path=checkpoint,
-            map_location=device,
-            model=model,
-            task_params=task_params
-        )
+    task = GlSegTask.load_from_checkpoint(
+        checkpoint_path=checkpoint,
+        map_location=device,
+        model=model,
+        task_params=task_params
+    )
 
     # Trainer
     trainer_dict = settings['trainer']
