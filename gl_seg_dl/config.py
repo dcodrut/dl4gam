@@ -6,7 +6,7 @@ class BaseConfig:
 
     # the next properties are the same for all the datasets
     NUM_CV_FOLDS = 5
-    VALID_FRACTION = 0.15
+    VALID_FRACTION = 0.1
     MIN_GLACIER_AREA = 0.1  # km2
     DEMS_DIR = Path('../data/external/copdem_eea10m')
     DHDT_DIR = Path('../data/external/dhdt_hugonnet/11_rgi60_2000-01-01_2020-01-01/dhdt')
@@ -16,7 +16,7 @@ class BaseConfig:
     NODATA = -9999
 
     # how many processes to use when building the rasters
-    NUM_PROCS = 16
+    NUM_PROCS = 8
 
     # how many processes to use when evaluating the models per glacier
     NUM_PROCS_EVAL = 16

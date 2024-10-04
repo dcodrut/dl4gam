@@ -97,9 +97,9 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
     # make sure there is a column with the area
     assert 'Area' in gl_df.columns
 
-    # regional split, assuming W to E direction
+    # regional split, assuming W to E direction (train-valid-test)
     gl_df['bound_lim'] = gl_df.bounds.maxx
-    gl_df = gl_df.sort_values('bound_lim')
+    gl_df = gl_df.sort_values('bound_lim', ascending=False)
 
     split_lims = np.linspace(0, 1, num_folds + 1)
     split_lims[-1] += 1e-4  # to include the last glacier
@@ -111,16 +111,13 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
         idx_test = (test_lims[0] <= area_cumsumf) & (area_cumsumf < test_lims[1])
         sdf_test = gl_df[idx_test]
 
-        # compute the size of the validation relative to the entire set
-        valid_fraction_adj = valid_fraction * ((num_folds - 1) / num_folds)
-
         # choose the valid set s.t. it acts as a clear boundary between test and train
         if i_split == 0:
-            test_valid_lims = (test_lims[0], test_lims[1] + valid_fraction_adj)
+            test_valid_lims = (test_lims[0], test_lims[1] + valid_fraction)
         elif i_split == (num_folds - 1):
-            test_valid_lims = (test_lims[0] - valid_fraction_adj, test_lims[1])
+            test_valid_lims = (test_lims[0] - valid_fraction, test_lims[1])
         else:
-            test_valid_lims = (test_lims[0] - valid_fraction_adj / 2, test_lims[1] + valid_fraction_adj / 2)
+            test_valid_lims = (test_lims[0] - valid_fraction / 2, test_lims[1] + valid_fraction / 2)
         idx_test_valid = (test_valid_lims[0] <= area_cumsumf) & (area_cumsumf < test_valid_lims[1])
         idx_valid = idx_test_valid & (~idx_test)
         idx_train = ~idx_test_valid
