@@ -63,7 +63,8 @@ class BaseConfig:
     def SAMPLING_STEP_INFER(cls):
         """
             The step (in pixels) between two consecutive patches for inference.
-            By default, the step is the half of the one used in training (so double the overlap).
+            By default, the step is the half of the one used in training
+                (so double the overlap & ~four time more patches).
             These patches will be built in memory.
         """
         return cls.SAMPLING_STEP_TRAIN // 2
@@ -164,7 +165,7 @@ class S2_ALPS(BaseConfig):
 
     # patch sampling settings
     PATCH_RADIUS = 128
-    SAMPLING_STEP_TRAIN = 128
+    SAMPLING_STEP_TRAIN = 64
 
 
 class S2_ALPS_PLUS(S2_ALPS):

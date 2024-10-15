@@ -10,7 +10,7 @@ import xarray as xr
 def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_centroid=False, add_extremes=False):
     """
     Given a xarray dataset for one glacier, it returns a geopandas dataframe with the contours of square patches
-    extracted from the dataset. The patches are only generated if they have the center pixel on glacier.
+    extracted from the dataset. The patches are generated only if they have the center pixel on the glacier.
 
     :param nc: xarray dataset containing the image data and the glacier masks
     :param patch_radius: patch radius (in px)
@@ -18,12 +18,13 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
                           if smaller than 2 * patch_radius, then patches will overlap
     :param add_center: whether to add one patch centered in the middle of the glacier's box
     :param add_centroid: whether to add one patch centered in the centroid of the glacier
-    :param add_extremes: whether to add four patches centered in the corners of the glacier
+    :param add_extremes: whether to add four patches centered on the margin (in each direction) of the glacier
     :return: a geopandas dataframe with the contours of the generated patches
     """
 
-    if sampling_step is not None:
-        assert add_center or add_centroid
+    if sampling_step is None:
+        assert add_extremes or add_center or add_centroid, \
+            'Enable at least one of add_extremes, add_center or add_centroid to generate at least one patch'
 
     # get all feasible patch centers s.t. the center pixel is on glacier
     assert 'mask_crt_g' in nc.data_vars, nc.data_vars
@@ -41,18 +42,18 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
         idx = idx_x & idx_y
         x_centers = all_x_centers[idx]
         y_centers = all_y_centers[idx]
-
-        # on top of the previously sampled centers, add also the extreme corners
-        if add_extremes:
-            left = (minx, int(np.mean(all_y_centers[all_x_centers == minx])))
-            top = (int(np.mean(all_x_centers[all_y_centers == miny])), miny)
-            right = (maxx, int(np.mean(all_y_centers[all_x_centers == maxx])))
-            bottom = (int(np.mean(all_x_centers[all_y_centers == maxy])), maxy)
-            x_centers = np.concatenate([x_centers, [left[0], top[0], right[0], bottom[0]]])
-            y_centers = np.concatenate([y_centers, [left[1], top[1], right[1], bottom[1]]])
     else:
         x_centers = []
         y_centers = []
+
+    # add the four patches centered on the margin of the glacier
+    if add_extremes:
+        left = (minx, int(np.mean(all_y_centers[all_x_centers == minx])))
+        top = (int(np.mean(all_x_centers[all_y_centers == miny])), miny)
+        right = (maxx, int(np.mean(all_y_centers[all_x_centers == maxx])))
+        bottom = (int(np.mean(all_x_centers[all_y_centers == maxy])), maxy)
+        x_centers = np.concatenate([x_centers, [left[0], top[0], right[0], bottom[0]]])
+        y_centers = np.concatenate([y_centers, [left[1], top[1], right[1], bottom[1]]])
 
     if add_centroid:
         x_centers = np.concatenate([x_centers, [int(np.mean(all_x_centers))]]).astype(int)
@@ -181,7 +182,6 @@ def patchify_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, patch
                     add_centroid=True,
                     add_extremes=True
                 )
-
                 # build the patches
                 for i in range(len(patches_df)):
                     patch_shp = patches_df.iloc[i:i + 1]
