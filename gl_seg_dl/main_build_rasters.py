@@ -22,7 +22,6 @@ def prepare_all_rasters(
         raw_images_dir=None,
         raw_fp_df=None,
         no_data=C.NODATA,
-        dems_dir_per_gl=None,
         num_procs=1,
         bands_to_keep=None,
         extra_geometries_dict=None,
@@ -149,21 +148,6 @@ def prepare_all_rasters(
             pd.DataFrame(gl_df_sel.drop(columns='geometry')).to_csv(fp_sel, index=False)
             print(f"Selected images exported to {fp_sel}")
 
-    # prepare the DEMs filepaths
-    if dems_dir_per_gl is not None:
-        fp_dem_list_all = list(Path(dems_dir_per_gl).glob('**/dem.tif'))
-        dem_fp_df = pd.DataFrame({
-            'RGIId': [fp.parent.name for fp in fp_dem_list_all],
-            'fp_dem': fp_dem_list_all
-        })
-        print(f"#DEMs = {len(dem_fp_df)}")
-        rgi_ids_without_dems = set(gl_df_sel.RGIId) - set(dem_fp_df.RGIId)
-        assert len(rgi_ids_without_dems) == 0, f"No DEMs found for {rgi_ids_without_dems}"
-        gl_df_sel = gl_df_sel.merge(dem_fp_df, on='RGIId')
-        fp_dem_list = list(gl_df_sel.fp_dem)
-    else:
-        fp_dem_list = None
-
     # read the extra shapefiles
     if extra_geometries_dict is not None:
         extra_gdf_dict = {}
@@ -182,7 +166,6 @@ def prepare_all_rasters(
     run_in_parallel(
         fun=prep_glacier_dataset,
         fp_img=fp_img_list,
-        fp_dem=fp_dem_list,
         fp_out=fp_out_list,
         entry_id=list(gl_df_sel.entry_id),
         gl_df=gl_df_all,
@@ -228,7 +211,6 @@ if __name__ == "__main__":
     base_settings = dict(
         raw_images_dir=C.RAW_DATA_DIR,
         raw_fp_df=None,
-        dems_dir_per_gl=None,  # obsoleted (can be used when DEMs are provided per glacier)
         fp_gl_df_all=C.GLACIER_OUTLINES_FP,
         out_rasters_dir=C.DIR_GL_INVENTORY,
         min_area=C.MIN_GLACIER_AREA,

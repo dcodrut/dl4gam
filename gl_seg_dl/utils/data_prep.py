@@ -77,7 +77,7 @@ def add_extra_mask(nc_data, mask_name, gdf):
 
 
 def prep_glacier_dataset(
-        fp_img, fp_dem, fp_out, entry_id, gl_df, extra_gdf_dict, buffer_px, no_data, bands_to_keep=None
+        fp_img, fp_out, entry_id, gl_df, extra_gdf_dict, buffer_px, no_data, bands_to_keep=None
 ):
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
@@ -114,13 +114,6 @@ def prep_glacier_dataset(
     nc['band_data'] = nc.band_data.fillna(no_data).astype(np.int16)
     nc['band_data'].attrs['_FillValue'] = no_data
     nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)  # not sure why but needed for QGIS
-
-    # add the DEM
-    if fp_dem is not None:
-        nc_dem = xr.open_dataset(fp_dem, mask_and_scale=False).isel(band=0)
-        nc_dem = nc_dem.rio.reproject_match(nc, resampling=rasterio.enums.Resampling.bilinear)
-        nc_dem['band_data'].attrs['_FillValue'] = no_data
-        nc['dem'] = nc_dem.band_data
 
     # export
     fp_out.parent.mkdir(exist_ok=True, parents=True)
