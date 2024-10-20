@@ -136,6 +136,10 @@ def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):
         nc_gl.load()  # needed to be able to close the file and save the changes to the same file
         nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
 
+        # add a buffer to make sure we include all the rasters possibly intersecting the current glacier
+        # (otherwise we may miss some due to re-projection errors)
+        nc_gl_bbox = nc_gl_bbox.buffer(100)
+
         for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
             # check which raster files intersect the current glacier
             crt_nc_list = []
@@ -190,6 +194,9 @@ def add_dem_features(fp_gl, no_data):
                     transform=nc_gl.rio.transform(),
             ) as dataset:
                 dem_data = nc_gl.dem.data.copy()
+
+                # we expect DEMs without data gaps (NA values for the DEM features are not allowed in the data loading)
+                assert np.sum(np.isnan(dem_data)) == 0
 
                 # smooth the DEM with a 3x3 gaussian kernel
                 dem_data = oggm.core.gis.gaussian_blur(dem_data, size=1)
