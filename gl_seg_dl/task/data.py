@@ -370,7 +370,7 @@ class GlSegDataModule(pl.LightningDataModule):
             shuffle=self.train_shuffle,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            persistent_workers=True,
+            persistent_workers=True if self.num_workers > 0 else False,
             drop_last=True
         )
 
@@ -381,7 +381,7 @@ class GlSegDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            persistent_workers=True,
+            persistent_workers=True if self.num_workers > 0 else False,
             drop_last=False
         )
 
@@ -392,7 +392,7 @@ class GlSegDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            persistent_workers=True,
+            persistent_workers=True if self.num_workers > 0 else False,
             drop_last=False
         )
 
