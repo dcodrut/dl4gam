@@ -134,14 +134,14 @@ class S2_ALPS(BaseConfig):
     if _year == 'inv':
         # extra rasters to be added to the optical data
         EXTRA_RASTERS = {
-            'dem': Path('../data/external/copdem_eea10m'),
+            'dem': Path('../data/external/copdem_30m'),
             'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'),
             'v': Path('../data/external/velocity/its_live/2015'),
         }
     elif _year == '2023':
         # extra rasters to be added to the optical data
         EXTRA_RASTERS = {
-            'dem': Path('../data/external/copdem_eea10m'),
+            'dem': Path('../data/external/copdem_30m'),
             'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2015-01-01_2020-01-01/dhdt'),
             'v': Path('../data/external/velocity/its_live/2022'),
         }
