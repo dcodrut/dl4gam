@@ -93,7 +93,7 @@ def test_model(
         glacier_id_list_crt_dir = set([p.parent.name for p in fp_list])
         logger.info(f'#glaciers in the current rasters dir = {len(glacier_id_list_crt_dir)}')
 
-        glacier_id_list_final = set(glacier_id_list_crt_dir) & set(glacier_id_list)
+        glacier_id_list_final = sorted(set(glacier_id_list_crt_dir) & set(glacier_id_list))
         logger.info(f'#glaciers to test on = {len(glacier_id_list_final)}')
 
         # TODO: parallelize this and avoid loading everything in-memory at the beginning
@@ -173,10 +173,9 @@ if __name__ == "__main__":
         all_settings['trainer']['devices'] = [args.gpu_id]
 
     # set the raster directory to the command line argument if given, otherwise use the inference dirs from the config
-    if args.rasters_dir is not None:
-        infer_dir_list = [args.rasters_dir]
-    else:
-        infer_dir_list = [C.DIR_GL_INVENTORY]
+    rasters_dir = args.rasters_dir if args.rasters_dir is not None else C.DIR_GL_INVENTORY
+    assert Path(rasters_dir).exists(), f"rasters_dir = {rasters_dir} does not exist"
+    all_settings['data']['rasters_dir'] = rasters_dir
 
     # choose the glaciers for the specified fold using the given shapefile
     glacier_ids = None
@@ -195,16 +194,13 @@ if __name__ == "__main__":
         glacier_ids = sorted(list(split_df[split_df[split_name] == fold_name].entry_id))
         logger.info(f"split = {split_name}; fold = {fold_name}; #glaciers = {len(glacier_ids)}")
 
-    for infer_dir in infer_dir_list:
-        assert Path(infer_dir).exists(), f"{infer_dir} does not exist"
-        all_settings['data']['rasters_dir'] = infer_dir
-        test_model(
-            settings=all_settings,
-            checkpoint=checkpoint_file,
-            test_per_glacier=args.test_per_glacier,
-            glacier_id_list=glacier_ids,
-            fold=args.fold,
-            patch_radius=C.PATCH_RADIUS,
-            sampling_step=C.SAMPLING_STEP_INFER,
-            preload_data=C.PRELOAD_DATA_INFER
-        )
+    test_model(
+        settings=all_settings,
+        checkpoint=checkpoint_file,
+        test_per_glacier=args.test_per_glacier,
+        glacier_id_list=glacier_ids,
+        fold=args.fold,
+        patch_radius=C.PATCH_RADIUS,
+        sampling_step=C.SAMPLING_STEP_INFER,
+        preload_data=C.PRELOAD_DATA_INFER
+    )
