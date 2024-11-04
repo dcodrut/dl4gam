@@ -182,20 +182,19 @@ class S2_ALPS_PLUS(S2_ALPS):
     CSV_DATES_ALLOWED = '../data/external/manually_checking/final_dates.csv' if S2_ALPS._year == 'inv' else None
 
 
-class S2_GLAMOS(S2_ALPS):
+class S2_SGI(S2_ALPS):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
-    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/glamos/{S2_ALPS._year}'
+    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_sgi/{S2_ALPS._year}'
 
-    WD = '../data/external/wd/s2_glamos'
+    WD = '../data/external/wd/s2_sgi'
 
     # some dates are skipped when building the rasters because of seasonal snow
-    CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'dates_allowed.csv'
+    # CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'dates_allowed.csv'
+    CSV_DATES_ALLOWED = None
 
     # SGI2016 outlines in the RGI format
-    GLACIER_OUTLINES_FP = Path(
-        '../data/data_gmb/glamos/inventory_sgi2016_r2020_rgi_format/SGI_2016_glaciers_rgi_format.shp'
-    )
+    GLACIER_OUTLINES_FP = Path('../data/outlines/sgi/inventory_sgi2016_r2020_processed/SGI_2016_glaciers_processed.shp')
 
 
 class PS(BaseConfig):
@@ -228,6 +227,6 @@ class S2_PS(S2_ALPS):
 # specify which dataset to use
 # C = S2_ALPS
 C = S2_ALPS_PLUS
-# C = S2_GLAMOS
+# C = S2_SGI
 # C = S2_PS
 # C = PS

@@ -247,11 +247,16 @@ if __name__ == "__main__":
             max_cloud_f=max_cloud_f,
             choose_best_auto=choose_best_auto
         )
-    elif C.__name__ == 'S2_GLAMOS':
-        print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
-        dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
+    elif C.__name__ == 'S2_SGI':
+        if C.CSV_DATES_ALLOWED is not None:
+            print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
+            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
+            choose_best_auto = False
+        else:
+            dates_allowed = None
+            choose_best_auto = True
         specific_settings = dict(
-            choose_best_auto=True,
+            choose_best_auto=choose_best_auto,
             max_cloud_f=0.3,
             buffer_px=C.PATCH_RADIUS,
             df_dates=dates_allowed
