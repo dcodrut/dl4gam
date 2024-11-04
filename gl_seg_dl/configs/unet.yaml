@@ -1,5 +1,5 @@
 data:
-  data_root_dir: '../data/external/wd/s2_alps_plus/inv/patches/r_128_s_128/split_1'
+  data_root_dir: '../data/external/wd/s2_alps_plus/inv/patches/r_128_s_64/split_1'
   train_dir_name: 'fold_train'
   val_dir_name: 'fold_valid'
   test_dir_name: 'fold_test'
@@ -7,11 +7,12 @@ data:
   minmax_scale_data: False
   standardize_data: True
   scale_each_band: True
-  data_stats_fp: '../data/external/wd/s2_alps_plus/inv/aux_data/norm_stats/r_128_s_128/split_1/stats_train_patches_agg.csv'
+  data_stats_fp: '../data/external/wd/s2_alps_plus/inv/aux_data/norm_stats/r_128_s_64/split_1/stats_train_patches_agg.csv'
   train_batch_size: 16
   val_batch_size: 32
   test_batch_size: 32
   num_workers: 16
+  use_augmentation: False
 
 task:
   seed: 42
@@ -24,7 +25,7 @@ task:
     lr_schedule: null
 
 logger:
-  save_dir: '../data/external/experiments_server/s2_alps_plus'
+  save_dir: '../data/external/_experiments/s2_alps_plus'
   name: 'unet/split_1'
 
 trainer:
@@ -33,7 +34,7 @@ trainer:
 #  limit_train_batches: 8
 #  limit_val_batches: 4
   log_every_n_steps: 10
-  max_epochs: 50
+  max_epochs: 30
   deterministic: True
 
 model:
