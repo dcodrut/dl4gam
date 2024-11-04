@@ -108,6 +108,7 @@ def extract_inputs(ds, fp, input_settings):
         data['slope'] = ds.slope.values.astype(np.float32) / 90.  # scale the slope to [0, 1]
 
         # compute the sine and cosine of the aspect
+        # TODO: maybe remove when using geometric augmentation as the aspect doesn't physically make sense anymore)
         data['aspect_sin'] = np.sin(ds.aspect.values.astype(np.float32) * np.pi / 180)
         data['aspect_cos'] = np.cos(ds.aspect.values.astype(np.float32) * np.pi / 180)
 
@@ -177,7 +178,7 @@ def minmax_scale_inputs(data, stats_df, scale_each_band):
 
 class GlSegPatchDataset(Dataset):
     def __init__(self, input_settings, folder=None, fp_list=None, standardize_data=False, minmax_scale_data=False,
-                 scale_each_band=True, data_stats_df=None):
+                 scale_each_band=True, data_stats_df=None, use_augmentation=False):
         assert folder is not None or fp_list is not None
 
         if folder is not None:
@@ -195,7 +196,34 @@ class GlSegPatchDataset(Dataset):
         self.scale_each_band = scale_each_band
         self.data_stats_df = data_stats_df
 
+        if use_augmentation:
+            # D4: https://albumentations.ai/docs/api_reference/full_reference/?h=d4#albumentations.augmentations.geometric.transforms.D4
+            self.aug_transforms = [
+                # rotate_90 (note that transpose() is doing a flip along the main diagonal)
+                lambda ds: ds.transpose('band', 'x', 'y').isel(y=slice(None, None, -1)),
+                # rotate_180, i.e. flip_horizontal + flip_vertical
+                lambda ds: ds.isel(x=slice(None, None, -1), y=slice(None, None, -1)),
+                # rotate_270
+                lambda ds: ds.transpose('band', 'x', 'y').isel(x=slice(None, None, -1)),
+                # flip_horizontal
+                lambda ds: ds.isel(x=slice(None, None, -1)),
+                # flip_vertical
+                lambda ds: ds.isel(y=slice(None, None, -1)),
+                # flip along the main diagonal
+                lambda ds: ds.transpose('band', 'x', 'y'),
+                # flip along the counter diagonal (i.e. previous + rotate_180)
+                lambda ds: ds.transpose('band', 'x', 'y').isel(x=slice(None, None, -1), y=slice(None, None, -1))
+            ]
+        else:
+            self.aug_transforms = None
+
     def process_data(self, ds, fp):
+        # apply one of the augmentations if needed
+        # (directly on the xarray dataset s.t. all the variables are transformed)
+        if self.aug_transforms is not None and np.random.rand() < 0.5:
+            i = np.random.randint(0, len(self.aug_transforms))
+            ds = self.aug_transforms[i](ds)
+
         # extract the inputs
         data = extract_inputs(ds=ds, fp=fp, input_settings=self.input_settings)
 
@@ -272,6 +300,7 @@ class GlSegDataModule(pl.LightningDataModule):
                  val_batch_size: int = 32,
                  test_batch_size: int = 32,
                  train_shuffle: bool = True,
+                 use_augmentation: bool = False,
                  num_workers: int = 16,
                  pin_memory: bool = False):
         super().__init__()
@@ -288,6 +317,7 @@ class GlSegDataModule(pl.LightningDataModule):
         self.val_batch_size = val_batch_size
         self.test_batch_size = test_batch_size
         self.train_shuffle = train_shuffle
+        self.use_augmentation = use_augmentation
         self.num_workers = num_workers
         self.pin_memory = pin_memory
 
@@ -313,7 +343,8 @@ class GlSegDataModule(pl.LightningDataModule):
                 standardize_data=self.standardize_data,
                 minmax_scale_data=self.minmax_scale_data,
                 scale_each_band=self.scale_each_band,
-                data_stats_df=self.data_stats_df
+                data_stats_df=self.data_stats_df,
+                use_augmentation=self.use_augmentation
             )
             self.valid_ds = GlSegPatchDataset(
                 folder=self.data_root_dir / self.val_dir_name,
