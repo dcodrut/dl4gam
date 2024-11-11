@@ -12,7 +12,7 @@ import xarray as xr
 import xdem
 
 
-def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
+def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0, buffers_masks=(-20, -10, 0, 10, 20, 50)):
     # project the glaciers' outlines on the same CRS as the given dataset
     gl_proj_df = gl_df.to_crs(nc_data.rio.crs)
 
@@ -45,7 +45,7 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0):
     nc_data_crop['mask_all_g_id'].rio.write_crs(nc_data.rio.crs, inplace=True)
 
     # 2. binary mask only for the current glacier, also with various buffers (in meters)
-    for buffer_mask in [-20, -10, 0, 10, 20, 50]:
+    for buffer_mask in buffers_masks:
         _crt_g_shp = crt_g_shp.buffer(buffer_mask)
         if not _crt_g_shp.iloc[0].is_empty:
             tmp_raster = nc_data_crop.band_data.isel(band=0).fillna(0).rio.clip(_crt_g_shp.geometry, drop=False).values
