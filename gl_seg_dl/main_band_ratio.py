@@ -20,7 +20,7 @@ from utils.general import run_in_parallel
 from utils.postprocessing import nn_interp
 
 input_settings = {
-    'bands_input': ['B4', 'B3', 'B2', 'B8', 'B12'],
+    'bands_input': ['B4', 'B3', 'B2', 'B8', 'B11'],
     'bands_mask': ['~FILL_MASK', '~CLOUDLESS_MASK'],
     'dem': False,
     'dhdt': False,
@@ -30,29 +30,27 @@ input_settings = {
 }
 
 
-def band_ratio(filepath, thr_step=0.005):
+def band_ratio(filepath, r_swir_thr_step=0.1):
     nc = xr.open_dataset(filepath)
     stats = {'entry_id': [], 'glacier_area': [], 'thr': [], 'iou': []}
 
     # compute the band ratio (red / SWIR)
     r = nc.band_data.isel(band=nc.band_data.long_name.index('B4')).values
-    swir = nc.band_data.isel(band=nc.band_data.long_name.index('B12')).values
+    swir = nc.band_data.isel(band=nc.band_data.long_name.index('B11')).values
 
     # keep only the clean pixels
     mask_no_data = extract_inputs(fp=filepath, ds=nc, input_settings=input_settings)['mask_no_data']
     r = r[~mask_no_data]
     swir = swir[~mask_no_data]
 
-    # band ratio
-    den = r + swir
-    den[den == 0] = 1  # avoid division by zero
-    ratio = r / den
+    # R/SWIR ratio
+    ratio = r / np.maximum(swir, 1)
 
     # ground truth
     y_true = (~np.isnan(nc.mask_all_g_id.values))[~mask_no_data]
 
-    for thr in np.arange(0, 1 + thr_step, thr_step):
-        y_pred = ratio >= thr
+    for thr in np.arange(0.5, 5.5 + r_swir_thr_step, r_swir_thr_step):
+        y_pred = (ratio >= thr)
         tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
         iou = tp / (tp + fp + fn)
         stats['entry_id'].append(filepath.parent.name)
@@ -63,7 +61,7 @@ def band_ratio(filepath, thr_step=0.005):
     return pd.DataFrame(stats)
 
 
-def compute_regional_thresholds(root_dir_patches, num_cv_folds, thr_step=0.005, num_procs=1):
+def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=0.1, num_procs=1):
     """
         Compute the best threshold for the R/SWIR ratio regionally, using the combined training and validation patches,
         independently for each validation split.
@@ -80,7 +78,7 @@ def compute_regional_thresholds(root_dir_patches, num_cv_folds, thr_step=0.005, 
 
         # compute the best threshold for each patch in parallel
         all_df_stats = run_in_parallel(
-            fun=functools.partial(band_ratio, thr_step=thr_step),
+            fun=functools.partial(band_ratio, r_swir_thr_step=r_swir_thr_step),
             filepath=fp_list,
             num_procs=num_procs,
             pbar=True
@@ -107,7 +105,7 @@ def compute_regional_thresholds(root_dir_patches, num_cv_folds, thr_step=0.005, 
     return pd.DataFrame(best_thrs)
 
 
-def compute_glacier_wide_thresholds(root_dir_patches, num_cv_folds, thr_step=0.005, num_procs=1):
+def compute_glacier_wide_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=0.005, num_procs=1):
     """
         Compute the best threshold for the R/SWIR ratio independently for each glacier, using the testing fold patches.
     """
@@ -122,7 +120,7 @@ def compute_glacier_wide_thresholds(root_dir_patches, num_cv_folds, thr_step=0.0
 
         # compute the best threshold for each patch in parallel
         all_df_stats = run_in_parallel(
-            fun=functools.partial(band_ratio, thr_step=thr_step),
+            fun=functools.partial(band_ratio, r_swir_thr_step=r_swir_thr_step),
             filepath=fp_list,
             num_procs=num_procs,
             pbar=True
@@ -149,18 +147,18 @@ if __name__ == "__main__":
                 df_best_thrs = compute_regional_thresholds(
                     root_dir_patches=C.DIR_GL_PATCHES,
                     num_cv_folds=C.NUM_CV_FOLDS,
-                    thr_step=0.005,
+                    r_swir_thr_step=0.1,
                     num_procs=C.NUM_PROCS
                 )
             else:
                 df_best_thrs = compute_glacier_wide_thresholds(
                     root_dir_patches=C.DIR_GL_PATCHES,
                     num_cv_folds=C.NUM_CV_FOLDS,
-                    thr_step=0.005,
+                    r_swir_thr_step=0.1,
                     num_procs=C.NUM_PROCS
                 )
+                df_best_thrs = df_best_thrs.sort_values('entry_id')
             fp_out.parent.mkdir(parents=True, exist_ok=True)
-            df_best_thrs = df_best_thrs.sort_values('entry_id')
             df_best_thrs.to_csv(fp_out, index=False)
             print(f"Best thresholds saved to {fp_out}")
         else:
@@ -213,10 +211,8 @@ if __name__ == "__main__":
 
                     # get the predictions
                     r = nc.band_data.isel(band=nc.band_data.long_name.index('B4')).values
-                    swir = nc.band_data.isel(band=nc.band_data.long_name.index('B12')).values
-                    den = r + swir
-                    den[den == 0] = 1  # avoid division by zero
-                    ratio = r / den
+                    swir = nc.band_data.isel(band=nc.band_data.long_name.index('B11')).values
+                    ratio = r / np.maximum(swir, 1)
                     preds_b = ratio > thr
 
                     # store the predictions as xarray based on the original nc
