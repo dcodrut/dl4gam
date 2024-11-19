@@ -30,18 +30,20 @@ input_settings = {
 }
 
 
-def band_ratio(filepath, r_swir_thr_step=0.1):
+def band_ratio(filepath, r_swir_thr_step=0.1, b_thr_step=None):
     nc = xr.open_dataset(filepath)
-    stats = {'entry_id': [], 'glacier_area': [], 'thr': [], 'iou': []}
+    stats = {'entry_id': [], 'glacier_area': [], 'r_swir_thr': [], 'b_thr': [], 'iou': []}
 
     # compute the band ratio (red / SWIR)
     r = nc.band_data.isel(band=nc.band_data.long_name.index('B4')).values
+    b = nc.band_data.isel(band=nc.band_data.long_name.index('B2')).values
     swir = nc.band_data.isel(band=nc.band_data.long_name.index('B11')).values
 
     # keep only the clean pixels
     mask_no_data = extract_inputs(fp=filepath, ds=nc, input_settings=input_settings)['mask_no_data']
     r = r[~mask_no_data]
     swir = swir[~mask_no_data]
+    b = b[~mask_no_data]
 
     # R/SWIR ratio
     ratio = r / np.maximum(swir, 1)
@@ -49,25 +51,39 @@ def band_ratio(filepath, r_swir_thr_step=0.1):
     # ground truth
     y_true = (~np.isnan(nc.mask_all_g_id.values))[~mask_no_data]
 
-    for thr in np.arange(0.5, 5.5 + r_swir_thr_step, r_swir_thr_step):
-        y_pred = (ratio >= thr)
-        tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
-        iou = tp / (tp + fp + fn)
-        stats['entry_id'].append(filepath.parent.name)
-        stats['glacier_area'].append(nc.attrs['glacier_area'])
-        stats['thr'].append(thr)
-        stats['iou'].append(iou)
+    # TODO: make this more efficient
+    for r_swir_thr in np.arange(0.5, 5.5 + r_swir_thr_step, r_swir_thr_step):
+        # apply the second threshold (on the B band) if needed
+        if b_thr_step is not None:
+            for b_thr in np.arange(0, 1500 + b_thr_step, b_thr_step):
+                y_pred = (ratio >= r_swir_thr) & (b >= b_thr)
+                tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
+                iou = tp / (tp + fp + fn)
+                stats['entry_id'].append(filepath.parent.name)
+                stats['glacier_area'].append(nc.attrs['glacier_area'])
+                stats['r_swir_thr'].append(r_swir_thr)
+                stats['b_thr'].append(b_thr)
+                stats['iou'].append(iou)
+        else:
+            y_pred = (ratio >= r_swir_thr)
+            tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
+            iou = tp / (tp + fp + fn)
+            stats['entry_id'].append(filepath.parent.name)
+            stats['glacier_area'].append(nc.attrs['glacier_area'])
+            stats['r_swir_thr'].append(r_swir_thr)
+            stats['b_thr'].append(-1)
+            stats['iou'].append(iou)
 
     return pd.DataFrame(stats)
 
 
-def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=0.1, num_procs=1):
+def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=0.1, b_thr_step=None, num_procs=1):
     """
         Compute the best threshold for the R/SWIR ratio regionally, using the combined training and validation patches,
         independently for each validation split.
     """
 
-    best_thrs = {'split': [], 'thr': [], 'iou': [], 'w_iou': []}
+    best_thrs = {'split': [], 'r_swir_thr': [], 'b_thr': [], 'iou': [], 'w_iou': []}
     for i_split in range(1, num_cv_folds + 1):
         dir_patches_crt_split = Path(root_dir_patches) / f'split_{i_split}'
 
@@ -78,7 +94,7 @@ def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=
 
         # compute the best threshold for each patch in parallel
         all_df_stats = run_in_parallel(
-            fun=functools.partial(band_ratio, r_swir_thr_step=r_swir_thr_step),
+            fun=functools.partial(band_ratio, r_swir_thr_step=r_swir_thr_step, b_thr_step=b_thr_step),
             filepath=fp_list,
             num_procs=num_procs,
             pbar=True
@@ -86,7 +102,7 @@ def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=
         df_stats = pd.concat(all_df_stats)
 
         # compute the average per glacier
-        df_stats = df_stats.groupby(['entry_id', 'thr']).mean().reset_index()
+        df_stats = df_stats.groupby(['entry_id', 'r_swir_thr', 'b_thr']).mean().reset_index()
 
         # weight the IOU based on the glaciers' areas
         total_area = df_stats.groupby('entry_id').first().glacier_area.sum()
@@ -94,23 +110,27 @@ def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=
         df_stats['w_iou'] = df_stats.iou * df_stats.w
 
         # compute the best threshold using the weighted IOU
-        thr_best = df_stats.groupby('thr').w_iou.mean().idxmax()
+        r_swir_thr_best, b_thr_best = df_stats.groupby(['r_swir_thr', 'b_thr']).w_iou.mean().idxmax()
 
         # save the best threshold and the corresponding IOU
         best_thrs['split'].append(f'split_{i_split}')
-        best_thrs['thr'].append(thr_best)
-        best_thrs['iou'].append(df_stats[df_stats.thr == thr_best].iou.mean())
-        best_thrs['w_iou'].append(df_stats[df_stats.thr == thr_best].w_iou.mean())
+        best_thrs['r_swir_thr'].append(r_swir_thr_best)
+        best_thrs['b_thr'].append(b_thr_best)
+        idx = (df_stats.r_swir_thr == r_swir_thr_best) & (df_stats.b_thr == b_thr_best)
+        best_thrs['iou'].append(df_stats[idx].iou.mean())
+        best_thrs['w_iou'].append(df_stats[idx].w_iou.mean())
 
     return pd.DataFrame(best_thrs)
 
 
-def compute_glacier_wide_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=0.005, num_procs=1):
+def compute_glacier_wide_thresholds(
+        root_dir_patches, num_cv_folds, r_swir_thr_step=0.005, b_thr_step=None, num_procs=1
+):
     """
         Compute the best threshold for the R/SWIR ratio independently for each glacier, using the testing fold patches.
     """
     # we will compute a threshold independently for each glacier in the test fold
-    best_thrs = {'entry_id': [], 'thr': [], 'iou': []}
+    best_thrs = {'entry_id': [], 'r_swir_thr': [], 'b_thr': [], 'iou': []}
 
     for i_split in range(1, num_cv_folds + 1):
         dir_patches_crt_split = Path(root_dir_patches) / f'split_{i_split}'
@@ -120,7 +140,7 @@ def compute_glacier_wide_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_s
 
         # compute the best threshold for each patch in parallel
         all_df_stats = run_in_parallel(
-            fun=functools.partial(band_ratio, r_swir_thr_step=r_swir_thr_step),
+            fun=functools.partial(band_ratio, r_swir_thr_step=r_swir_thr_step, b_thr_step=b_thr_step),
             filepath=fp_list,
             num_procs=num_procs,
             pbar=True
@@ -129,7 +149,8 @@ def compute_glacier_wide_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_s
         df_stats_best_iou = df_stats.sort_values('iou', ascending=False).groupby('entry_id').first()
 
         best_thrs['entry_id'].extend(df_stats_best_iou.index)
-        best_thrs['thr'].extend(df_stats_best_iou.thr)
+        best_thrs['r_swir_thr'].extend(df_stats_best_iou.r_swir_thr)
+        best_thrs['b_thr'].extend(df_stats_best_iou.b_thr)
         best_thrs['iou'].extend(df_stats_best_iou.iou)
 
     return pd.DataFrame(best_thrs)
@@ -148,6 +169,7 @@ if __name__ == "__main__":
                     root_dir_patches=C.DIR_GL_PATCHES,
                     num_cv_folds=C.NUM_CV_FOLDS,
                     r_swir_thr_step=0.1,
+                    b_thr_step=25,
                     num_procs=C.NUM_PROCS
                 )
             else:
@@ -155,6 +177,7 @@ if __name__ == "__main__":
                     root_dir_patches=C.DIR_GL_PATCHES,
                     num_cv_folds=C.NUM_CV_FOLDS,
                     r_swir_thr_step=0.1,
+                    b_thr_step=25,
                     num_procs=C.NUM_PROCS
                 )
                 df_best_thrs = df_best_thrs.sort_values('entry_id')
@@ -207,13 +230,15 @@ if __name__ == "__main__":
                     else:
                         idx = (df_best_thrs.entry_id == entry_id)
                     assert sum(idx) == 1, "There should be a single entry here."
-                    thr = df_best_thrs[idx].thr.values[0]
+                    r_swir_thr = df_best_thrs[idx].r_swir_thr.values[0]
+                    b_thr = df_best_thrs[idx].b_thr.values[0]
 
                     # get the predictions
                     r = nc.band_data.isel(band=nc.band_data.long_name.index('B4')).values
+                    b = nc.band_data.isel(band=nc.band_data.long_name.index('B2')).values
                     swir = nc.band_data.isel(band=nc.band_data.long_name.index('B11')).values
                     ratio = r / np.maximum(swir, 1)
-                    preds_b = ratio > thr
+                    preds_b = (ratio >= r_swir_thr) & (b >= b_thr)
 
                     # store the predictions as xarray based on the original nc
                     nc_pred = nc.copy()
