@@ -41,7 +41,7 @@ model:
   class: 'SegModel'
   name: 'Unet'
   inputs:
-    bands_input: [ 'B4', 'B3', 'B2', 'B8', 'B12']
+    bands_input: [ 'B4', 'B3', 'B2', 'B8', 'B11']
     bands_mask: [ '~FILL_MASK', '~CLOUDLESS_MASK']
     dem: True
     dhdt: True

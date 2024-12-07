@@ -84,7 +84,7 @@ def extract_inputs(ds, fp, input_settings):
         # NDSI = (Green - SWIR) / (Green + SWIR)
         # NDVI = (NIR - Red) / (NIR + Red)
         # NDWI = (Green - NIR) / (Green + NIR)
-        swir = band_data[input_settings['bands_input'].index('B12')]
+        swir = band_data[input_settings['bands_input'].index('B11')]
         r = band_data[input_settings['bands_input'].index('B4')]
         g = band_data[input_settings['bands_input'].index('B3')]
         nir = band_data[input_settings['bands_input'].index('B8')]
