@@ -12,12 +12,12 @@ if __name__ == "__main__":
     outlines_fp = C.GLACIER_OUTLINES_FP
     print(f'Reading S2-based glacier outlines from {outlines_fp}')
     gl_df = gpd.read_file(outlines_fp)
-    initial_area = gl_df.Area.sum()
+    initial_area = gl_df.area_km2.sum()
     print(f'#glaciers = {len(gl_df)}; area = {initial_area:.2f} km2')
 
     print(f'Keeping only the glaciers above {C.MIN_GLACIER_AREA}')
-    gl_df = gl_df[gl_df.Area >= C.MIN_GLACIER_AREA].copy()
-    area = gl_df.Area.sum()
+    gl_df = gl_df[gl_df.area_km2 >= C.MIN_GLACIER_AREA].copy()
+    area = gl_df.area_km2.sum()
     print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # remove the glaciers for which there is no data
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     print(f'Keeping only the glaciers that have data in {C.DIR_GL_INVENTORY}')
     gl_entry_ids_ok = [x.parent.name for x in Path(C.DIR_GL_INVENTORY).glob('**/*.nc')]
     gl_df = gl_df[gl_df.entry_id.isin(gl_entry_ids_ok)]
-    area = gl_df.Area.sum()
+    area = gl_df.area_km2.sum()
     print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
 
     # split the data regionally

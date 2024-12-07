@@ -125,7 +125,7 @@ class S2_ALPS(BaseConfig):
     """ Settings for Sentinel-2 data using the Paul. et al. 2020 outlines """
 
     # glacier outlines
-    GLACIER_OUTLINES_FP = Path('../data/outlines/s2/rgi_format/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp')
+    GLACIER_OUTLINES_FP = Path('../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp')
 
     _year = 'inv'  # inventory year (i.e. mainly 2015)
     # _year = '2023'
@@ -148,7 +148,7 @@ class S2_ALPS(BaseConfig):
 
     # extra vector data
     EXTRA_GEOMETRIES = {
-        'debris': Path('../data/data_gmb/debris/combined_debris_s2_inv/combined_debris_s2_inv.shp'),
+        'debris': Path('../data/outlines/debris_multisource/debris_multisource.shp'),
     }
 
     RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/{_year}'

@@ -43,7 +43,7 @@ def prepare_all_rasters(
 
     if min_area is not None:
         # keep the glaciers of interest in a different dataframe
-        gl_df_sel = gl_df_all[gl_df_all.Area >= min_area]
+        gl_df_sel = gl_df_all[gl_df_all.area_km2 >= min_area]
         print(f"#glaciers = {len(gl_df_sel)} after area filtering")
     else:
         gl_df_sel = gl_df_all
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         )
     elif C.__name__ == 'S2_ALPS_PLUS':
         if C.CSV_DATES_ALLOWED is not None:
-            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
+            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
             max_cloud_f = None
             choose_best_auto = False
         else:
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     elif C.__name__ == 'S2_SGI':
         if C.CSV_DATES_ALLOWED is not None:
             print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
-            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED, converters={'entry_id': str})
+            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
             choose_best_auto = False
         else:
             dates_allowed = None
@@ -272,7 +272,7 @@ if __name__ == "__main__":
         # in this case multiple rasters per glacier were initially produced, then manually chose the best, as for Planet
         # the dates for the final rasters were saved in the provided csv file
         print(f"Reading the final dates csv from {C.CSV_FINAL_DATES}")
-        final_dates = pd.read_csv(C.CSV_FINAL_DATES, converters={'entry_id': str})
+        final_dates = pd.read_csv(C.CSV_FINAL_DATES)
         specific_settings = dict(
             buffer_px=C.PATCH_RADIUS,
             df_dates=final_dates

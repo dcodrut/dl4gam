@@ -96,7 +96,7 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
     """
 
     # make sure there is a column with the area
-    assert 'Area' in gl_df.columns
+    assert 'area_km2' in gl_df.columns
 
     # regional split, assuming W to E direction (train-valid-test)
     gl_df['bound_lim'] = gl_df.bounds.maxx
@@ -108,7 +108,7 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
     for i_split in range(num_folds):
         # first extract the test fold and the combined train & valid fold
         test_lims = (split_lims[i_split], split_lims[i_split + 1])
-        area_cumsumf = gl_df.Area.cumsum() / gl_df.Area.sum()
+        area_cumsumf = gl_df.area_km2.cumsum() / gl_df.area_km2.sum()
         idx_test = (test_lims[0] <= area_cumsumf) & (area_cumsumf < test_lims[1])
         sdf_test = gl_df[idx_test]
 
@@ -139,8 +139,8 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
             print(
                 f'Exported {len(df_crt_fold)} glaciers '
                 f'out of {len(gl_df)} ({len(df_crt_fold) / len(gl_df) * 100:.2f}%);'
-                f' actual area percentage = {df_crt_fold.Area.sum() / gl_df.Area.sum() * 100:.2f}%'
-                f' ({df_crt_fold.Area.sum():.2f} km^2 from a total of {gl_df.Area.sum():.2f} km^2)')
+                f' actual area percentage = {df_crt_fold.area_km2.sum() / gl_df.area_km2.sum() * 100:.2f}%'
+                f' ({df_crt_fold.area_km2.sum():.2f} km^2 from a total of {gl_df.area_km2.sum():.2f} km^2)')
 
 
 def patchify_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, patch_radius, sampling_step,

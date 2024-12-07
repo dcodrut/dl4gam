@@ -118,7 +118,7 @@ def prep_glacier_dataset(
     # export
     fp_out.parent.mkdir(exist_ok=True, parents=True)
     nc.attrs['fn'] = fp_img.name
-    nc.attrs['glacier_area'] = row_crt_g.Area.iloc[0]
+    nc.attrs['glacier_area'] = row_crt_g.area_km2.iloc[0]
     nc.to_netcdf(fp_out)
     nc.close()
 

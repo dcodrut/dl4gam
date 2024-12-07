@@ -17,6 +17,7 @@ def run_task(cmd, gpu_id):
 if __name__ == '__main__':
     num_gpus = 4  # number of GPUs available
     max_tasks_per_gpu = 2  # maximum number of tasks per GPU
+    base_settings_file = './configs/unet.yaml'
 
     # generate all the commands
     ensemble_size = 5
@@ -25,7 +26,7 @@ if __name__ == '__main__':
     for seed in range(seed, seed + ensemble_size):
         for i_split in range(1, 6):
             # get the settings from the environment
-            cmd = f"python main_train.py --setting={os.environ['SETTINGS']} --split=split_{i_split} --seed={seed}"
+            cmd = f"python main_train.py --setting={base_settings_file} --split=split_{i_split} --seed={seed}"
             commands.append(cmd)
     print(f"Generated {len(commands)} commands")
 
