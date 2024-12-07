@@ -127,8 +127,9 @@ class S2_ALPS(BaseConfig):
     # glacier outlines
     GLACIER_OUTLINES_FP = Path('../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp')
 
-    _year = 'inv'  # inventory year (i.e. mainly 2015)
-    # _year = '2023'
+    # get the year from the environment variables if exists, otherwise assume it's the inventory year (i.e. mainly 2015)
+    import os
+    _year = os.environ.get('S2_ALPS_YEAR', 'inv')
     assert _year in ('inv', '2023')
 
     if _year == 'inv':
