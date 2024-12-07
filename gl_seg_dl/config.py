@@ -179,7 +179,7 @@ class S2_ALPS_PLUS(S2_ALPS):
     WD = f'../data/external/wd/s2_alps_plus'
 
     # csv file with the finals inventory dates
-    CSV_DATES_ALLOWED = '../data/external/manually_checking/final_dates.csv' if S2_ALPS._year == 'inv' else None
+    CSV_DATES_ALLOWED = '../data/inv_images_qc/final_dates.csv' if S2_ALPS._year == 'inv' else None
 
 
 class S2_SGI(S2_ALPS):
