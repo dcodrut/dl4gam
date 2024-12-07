@@ -173,10 +173,9 @@ class S2_ALPS_PLUS(S2_ALPS):
     """
         Settings for Sentinel-2 data using the Paul. et al. 2020 outlines with manually checked images.
         Same inventory images were removed or replaced (when possible) because they had too many clouds/shadows or
-        had too much seasonal snow.
+        had too much seasonal snow. The final dates are read from a csv file (CSV_DATES_ALLOWED).
     """
 
-    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps_plus/{S2_ALPS._year}'
     WD = f'../data/external/wd/s2_alps_plus'
 
     # csv file with the finals inventory dates
