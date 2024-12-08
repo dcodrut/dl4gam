@@ -1,10 +1,11 @@
-import shapely
-import shapely.geometry
+from pathlib import Path
+
 import geopandas as gpd
 import numpy as np
-from pathlib import Path
-from tqdm import tqdm
+import shapely
+import shapely.geometry
 import xarray as xr
+from tqdm import tqdm
 
 
 def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_centroid=False, add_extremes=False):
@@ -143,54 +144,55 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
                 f' ({df_crt_fold.area_km2.sum():.2f} km^2 from a total of {gl_df.area_km2.sum():.2f} km^2)')
 
 
-def patchify_data(rasters_dir, outlines_split_dir, num_folds, patches_dir, patch_radius, sampling_step,
-                  folds=('train', 'valid')):
+def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
     """
-    Using the get_patches_gdf function, it exports patches to disk for each cross-validation split, with each split
-    separated into training-validation-test.
+    Using the get_patches_gdf function, it exports patches to disk for all glaciers.
+    The patches will be later split into training, validation and test sets.
     When generating the patches, add_centroid and add_extremes will be set to True (see get_patches_gdf), which means
     at least five patches will be generated per glacier.
 
     :param rasters_dir: directory containing the raster netcdf files
-    :param outlines_split_dir: directory containing the cross-validation splits
-    :param num_folds: number of cross-validation folds
     :param patches_dir: output directory where the extracted patches will be saved
     :param patch_radius: patch radius (in px)
     :param sampling_step: sampling step applied both on x and y (in px);
                           if smaller than 2 * patch_radius, then patches will overlap
-    :param folds: which folds to patchify
     :return:
     """
-    for i_split in range(1, num_folds + 1):
-        for crt_fold in folds:
-            outlines_split_fp = Path(outlines_split_dir) / f'split_{i_split}' / f'fold_{crt_fold}.shp'
-            gl_df_crt_fold = gpd.read_file(outlines_split_fp)
-            entry_id_list = list(gl_df_crt_fold.entry_id)
 
-            for entry_id in tqdm(entry_id_list, desc=f'split = {i_split} / {num_folds}; fold = {crt_fold}'):
-                fp_list = sorted(list(((Path(rasters_dir) / entry_id).glob('**/*.nc'))))
-                assert len(fp_list) == 1, f'Expected one netcdf file for entry_id = {entry_id} in {rasters_dir}'
-                g_fp = fp_list[0]
-                nc = xr.open_dataset(g_fp, decode_coords='all').load()
+    fp_list_all_g = sorted(list((Path(rasters_dir).rglob('*.nc'))))
+    entry_id_list = sorted(set([fp.parent.name for fp in fp_list_all_g]))
+    entry_id_to_fp = {x: [fp for fp in fp_list_all_g if fp.parent.name == x] for x in entry_id_list}
 
-                # get the locations of the sampled patches
-                patches_df = get_patches_gdf(
-                    nc=nc,
-                    sampling_step=sampling_step,
-                    patch_radius=patch_radius,
-                    add_center=False,
-                    add_centroid=True,
-                    add_extremes=True
-                )
-                # build the patches
-                for i in range(len(patches_df)):
-                    patch_shp = patches_df.iloc[i:i + 1]
-                    nc_patch = nc.rio.clip(patch_shp.geometry)
+    if len(fp_list_all_g) > len(entry_id_list):
+        # check which glaciers have more than one netcdf file
+        print('The following glaciers have more than one netcdf file:')
+        for entry_id, fp_list in entry_id_to_fp.items():
+            if len(fp_list) > 1:
+                print(f'{entry_id}: {len(fp_list)} files')
+        raise ValueError(f"Expected one netcdf file per glacier in {rasters_dir}")
 
-                    r = patch_shp.iloc[0]
-                    fn = f'{entry_id}_patch_{i}_xc_{r.x_center}_yc_{r.y_center}.nc'
+    for entry_id in tqdm(entry_id_list, desc='Patchifying'):
+        g_fp = entry_id_to_fp[entry_id][0]
+        nc = xr.open_dataset(g_fp, decode_coords='all').load()
 
-                    patch_fp = Path(patches_dir) / f'split_{i_split}' / f'fold_{crt_fold}' / entry_id / fn
-                    patch_fp.parent.mkdir(parents=True, exist_ok=True)
+        # get the locations of the sampled patches
+        patches_df = get_patches_gdf(
+            nc=nc,
+            sampling_step=sampling_step,
+            patch_radius=patch_radius,
+            add_center=False,
+            add_centroid=True,
+            add_extremes=True
+        )
+        # build the patches
+        for i in range(len(patches_df)):
+            patch_shp = patches_df.iloc[i:i + 1]
+            nc_patch = nc.rio.clip(patch_shp.geometry)
 
-                    nc_patch.to_netcdf(patch_fp)
+            r = patch_shp.iloc[0]
+            fn = f'{entry_id}_patch_{i}_xc_{r.x_center}_yc_{r.y_center}.nc'
+
+            patch_fp = Path(patches_dir) / entry_id / fn
+            patch_fp.parent.mkdir(parents=True, exist_ok=True)
+
+            nc_patch.to_netcdf(patch_fp)

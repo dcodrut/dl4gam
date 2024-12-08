@@ -1,3 +1,12 @@
+"""
+    Script for preparing the training data:
+
+    1. Script which extracts patches from the glacier-wide NetCDF files.
+    2. Builds the splits for the cross-validation and the corresponding training, validation and test folds.
+    3. Computes the normalization statistics for the training patches of each cross-validation split.
+
+"""
+
 from pathlib import Path
 
 import geopandas as gpd
@@ -6,8 +15,21 @@ import pandas as pd
 # local imports
 from config import C
 from utils.sampling_utils import patchify_data, data_cv_split
+from utils.general import run_in_parallel
+from utils.data_stats import compute_normalization_stats, aggregate_normalization_stats
 
 if __name__ == "__main__":
+    # 1. patchify the data
+    dir_patches = Path(C.DIR_GL_PATCHES)
+    patchify_data(
+        rasters_dir=C.DIR_GL_INVENTORY,
+        patches_dir=dir_patches,
+        patch_radius=C.PATCH_RADIUS,
+        sampling_step=C.SAMPLING_STEP_TRAIN,
+    )
+
+    # 2. build the splits for the cross-validation
+
     # import the constants corresponding to the desired dataset
     outlines_fp = C.GLACIER_OUTLINES_FP
     print(f'Reading S2-based glacier outlines from {outlines_fp}')
@@ -53,13 +75,37 @@ if __name__ == "__main__":
     df_all.to_csv(fp, index=False)
     print(f"Dataframe with the split-fold mapping saved to {fp}")
 
-    # extract patches
-    patchify_data(
-        rasters_dir=C.DIR_GL_INVENTORY,
-        outlines_split_dir=C.DIR_OUTLINES_SPLIT,
-        num_folds=C.NUM_CV_FOLDS,
-        patches_dir=C.DIR_GL_PATCHES,
-        patch_radius=C.PATCH_RADIUS,
-        sampling_step=C.SAMPLING_STEP_TRAIN,
-        folds=('train', 'valid', 'test')
-    )
+    # 3. compute the normalization statistics for the training patches of each cross-validation split
+    # get the list of all patches and group them by glacier
+    fp_all_patches = sorted(list(Path(dir_patches).glob('**/*.nc')))
+    print(f'Found {len(fp_all_patches)} patches')
+    gl_to_patches = {x.parent.name: [] for x in fp_all_patches}
+    for fp in fp_all_patches:
+        gl_to_patches[fp.parent.name].append(fp)
+    out_dir_root = dir_patches.parent.parent / 'aux_data' / 'norm_stats' / dir_patches.name
+    for i_split in range(1, C.NUM_CV_FOLDS + 1):
+        # get the list of patches for the training fold of the current cross-validation split
+        gl_entry_ids_train = set(df_all[df_all[f"split_{i_split}"] == 'fold_train'].entry_id)
+        fp_list = [x for gl, lst in gl_to_patches.items() if gl in gl_entry_ids_train for x in lst]
+
+        print(
+            f'Computing normalization stats for the training fold of the split = {i_split} '
+            f'(#glaciers = {len(gl_entry_ids_train)}, '
+            f'#patches = {len(fp_list)})'
+        )
+        all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_procs=C.NUM_PROCS, pbar=True)
+        all_df = [pd.DataFrame(stats) for stats in all_stats]
+
+        df = pd.concat(all_df)
+        df = df.sort_values('fn')
+        out_dir_crt_split = out_dir_root / f'split_{i_split}'
+        out_dir_crt_split.mkdir(parents=True, exist_ok=True)
+        fp_out = Path(out_dir_crt_split) / 'stats_train_patches.csv'
+        df.to_csv(fp_out, index=False)
+        print(f'Stats (per patch) saved to {fp_out}')
+
+        # aggregate the statistics
+        df_stats_agg = aggregate_normalization_stats(df)
+        fp_out = Path(out_dir_crt_split) / 'stats_train_patches_agg.csv'
+        df_stats_agg.to_csv(fp_out, index=False)
+        print(f'Aggregated stats saved to {fp_out}')
