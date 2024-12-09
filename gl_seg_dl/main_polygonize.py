@@ -13,10 +13,8 @@ import shapely.ops
 import xarray as xr
 from tqdm import tqdm
 
-# local imports
-
 if __name__ == "__main__":
-    results_root_dir = Path('../data/external/experiments_server/s2_alps_plus/unet')
+    results_root_dir = Path('../data/external/_experiments/s2_alps_plus/unet')
 
     seed = 'all'
     split_list = [1, 2, 3, 4, 5]
