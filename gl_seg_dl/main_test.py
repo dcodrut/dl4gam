@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import numpy as np
-import geopandas as gpd
+import pandas as pd
 import pytorch_lightning as pl
 import yaml
 from tqdm import tqdm
@@ -177,17 +177,16 @@ if __name__ == "__main__":
     assert Path(rasters_dir).exists(), f"rasters_dir = {rasters_dir} does not exist"
     all_settings['data']['rasters_dir'] = rasters_dir
 
-    # choose the glaciers for the specified fold using the given shapefile
-    glacier_ids = None
-    if args.test_per_glacier:
-        assert args.split_fp is not None
-        fp = Path(args.split_fp)
-        assert fp.suffix in ('.csv', '.shp')
-        logger.info(f"Reading the split dataframe from {fp}")
-        split_df = gpd.read_file(fp, dtype={'entry_id': str})
+    # choose the glaciers for the specified fold using the split csv file (use the cl-one if provided)
+    if args.split_fp is not None:
+        split_fp = Path(args.split_fp)
+    else:
+        split_fp = Path(all_settings['data']['all_splits_fp'])
+    logger.info(f"Reading the split dataframe from {split_fp}")
+    split_df = pd.read_csv(split_fp)
 
-        # get the split on which the current model was trained on
-        split_name = f"split_{str(checkpoint_file).split('split_')[1].split('/')[0]}"
+    # get the split on which the current model was trained on
+    split_name = f"split_{str(checkpoint_file).split('split_')[1].split('/')[0]}"
 
         # get the list of glaciers for the specified fold
         fold_name = f"fold_{args.fold[2:]}"

@@ -287,9 +287,8 @@ class GlSegDataset(GlSegPatchDataset):
 class GlSegDataModule(pl.LightningDataModule):
     def __init__(self,
                  data_root_dir: Union[Path, str],
-                 train_dir_name: str,
-                 val_dir_name: str,
-                 test_dir_name: str,
+                 all_splits_fp: Union[Path, str],
+                 split: str,
                  rasters_dir: str,
                  input_settings: dict,
                  standardize_data: bool,
@@ -305,9 +304,6 @@ class GlSegDataModule(pl.LightningDataModule):
                  pin_memory: bool = False):
         super().__init__()
         self.data_root_dir = Path(data_root_dir)
-        self.train_dir_name = train_dir_name
-        self.val_dir_name = val_dir_name
-        self.test_dir_name = test_dir_name
         self.rasters_dir = rasters_dir
         self.input_settings = input_settings
         self.standardize_data = standardize_data
@@ -320,6 +316,28 @@ class GlSegDataModule(pl.LightningDataModule):
         self.use_augmentation = use_augmentation
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+
+        # read the filepaths for all the patches
+        fp_list = sorted(list(self.data_root_dir.rglob('*.nc')))
+
+        # read the split and the corresponding train/valid/test files
+        split_df = pd.read_csv(all_splits_fp)
+
+        # get the list of glaciers for each fold of the current split
+        fp_list_per_fold = {}
+        for fold_name in ['fold_train', 'fold_valid', 'fold_test']:
+            glacier_ids = sorted(list(split_df[split_df[split] == fold_name].entry_id))
+            fp_list_per_fold[fold_name] = sorted([fp for fp in fp_list if fp.parent.name in glacier_ids])
+        self.fp_list_train = fp_list_per_fold['fold_train']
+        self.fp_list_valid = fp_list_per_fold['fold_valid']
+        self.fp_list_test = fp_list_per_fold['fold_test']
+
+        # sanity checks
+        assert len(set(self.fp_list_train) & set(self.fp_list_valid)) == 0, 'Train and valid overlap'
+        assert len(set(self.fp_list_train) & set(self.fp_list_test)) == 0, 'Train and test overlap'
+        assert len(set(self.fp_list_valid) & set(self.fp_list_test)) == 0, 'Valid and test overlap'
+        assert len(fp_list) == len(self.fp_list_train) + len(self.fp_list_valid) + len(self.fp_list_test), \
+            'Some files are missing.'
 
         # the following will be set when calling setup
         self.train_ds = None
@@ -338,7 +356,7 @@ class GlSegDataModule(pl.LightningDataModule):
     def setup(self, stage: str = None):
         if stage == 'fit' or stage is None:
             self.train_ds = GlSegPatchDataset(
-                folder=self.data_root_dir / self.train_dir_name,
+                fp_list=self.fp_list_train,
                 input_settings=self.input_settings,
                 standardize_data=self.standardize_data,
                 minmax_scale_data=self.minmax_scale_data,
@@ -347,7 +365,7 @@ class GlSegDataModule(pl.LightningDataModule):
                 use_augmentation=self.use_augmentation
             )
             self.valid_ds = GlSegPatchDataset(
-                folder=self.data_root_dir / self.val_dir_name,
+                fp_list=self.fp_list_valid,
                 input_settings=self.input_settings,
                 standardize_data=self.standardize_data,
                 minmax_scale_data=self.minmax_scale_data,
@@ -356,7 +374,7 @@ class GlSegDataModule(pl.LightningDataModule):
             )
         if stage == 'test':
             self.test_ds = GlSegPatchDataset(
-                folder=self.data_root_dir / self.test_dir_name,
+                fp_list=self.fp_list_test,
                 input_settings=self.input_settings,
                 standardize_data=self.standardize_data,
                 minmax_scale_data=self.minmax_scale_data,

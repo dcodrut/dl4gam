@@ -77,20 +77,24 @@ def band_ratio(filepath, r_swir_thr_step=0.1, b_thr_step=None):
     return pd.DataFrame(stats)
 
 
-def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=0.1, b_thr_step=None, num_procs=1):
+def compute_regional_thresholds(
+        root_dir_patches, split_df, num_cv_folds, r_swir_thr_step=0.1, b_thr_step=None, num_procs=1
+):
     """
         Compute the best threshold for the R/SWIR ratio regionally, using the combined training and validation patches,
         independently for each validation split.
     """
 
+    # get the paths to all the patches
+    fp_list_all = list(Path(root_dir_patches).rglob('*.nc'))
+
     best_thrs = {'split': [], 'r_swir_thr': [], 'b_thr': [], 'iou': [], 'w_iou': []}
     for i_split in range(1, num_cv_folds + 1):
-        dir_patches_crt_split = Path(root_dir_patches) / f'split_{i_split}'
+        # get the glacier IDs for the train and validation folds of the current split
+        glacier_ids = sorted(list(split_df[split_df[f'split_{i_split}'].isin(['fold_train', 'fold_valid'])].entry_id))
 
         # get all the training and validation patches for the current split
-        fp_list_train = list(Path(dir_patches_crt_split / 'fold_train').rglob('*.nc'))
-        fp_list_valid = list(Path(dir_patches_crt_split / 'fold_valid').rglob('*.nc'))
-        fp_list = sorted(fp_list_train + fp_list_valid)
+        fp_list = [fp for fp in fp_list_all if fp.parent.name in glacier_ids]
 
         # compute the best threshold for each patch in parallel
         all_df_stats = run_in_parallel(
@@ -124,19 +128,24 @@ def compute_regional_thresholds(root_dir_patches, num_cv_folds, r_swir_thr_step=
 
 
 def compute_glacier_wide_thresholds(
-        root_dir_patches, num_cv_folds, r_swir_thr_step=0.005, b_thr_step=None, num_procs=1
+        root_dir_patches, split_df, num_cv_folds, r_swir_thr_step=0.005, b_thr_step=None, num_procs=1
 ):
     """
         Compute the best threshold for the R/SWIR ratio independently for each glacier, using the testing fold patches.
     """
+
+    # get the paths to all the patches
+    fp_list_all = list(Path(root_dir_patches).rglob('*.nc'))
+
     # we will compute a threshold independently for each glacier in the test fold
     best_thrs = {'entry_id': [], 'r_swir_thr': [], 'b_thr': [], 'iou': []}
 
     for i_split in range(1, num_cv_folds + 1):
-        dir_patches_crt_split = Path(root_dir_patches) / f'split_{i_split}'
+        # get the glacier IDs for the train and validation folds of the current split
+        glacier_ids = sorted(list(split_df[split_df[f'split_{i_split}'] == 'fold_test'].entry_id))
 
         # get all the testing patches for the current split
-        fp_list = sorted(list(Path(dir_patches_crt_split / 'fold_test').rglob('*.nc')))
+        fp_list = [fp for fp in fp_list_all if fp.parent.name in glacier_ids]
 
         # compute the best threshold for each patch in parallel
         all_df_stats = run_in_parallel(
@@ -160,6 +169,11 @@ if __name__ == "__main__":
     results_dir_root = Path('../data/external/_experiments')
     out_dir_root = Path(C.DIR_GL_PATCHES).parent.parent / 'aux_data' / 'band_ratio_stats' / Path(C.DIR_GL_PATCHES).name
     print(f"out_dir_root = {out_dir_root}")
+
+    split_fp = Path(C.DIR_OUTLINES_SPLIT) / 'map_all_splits_all_folds.csv'
+    print(f"Reading the split dataframe from {split_fp}")
+    split_df = pd.read_csv(split_fp)
+
     for thr_type in ('regional', 'glacier-wide'):
         fp_out = out_dir_root / f'best_band_ratio_thrs_{thr_type}.csv'
 
@@ -167,6 +181,7 @@ if __name__ == "__main__":
             if thr_type == 'regional':
                 df_best_thrs = compute_regional_thresholds(
                     root_dir_patches=C.DIR_GL_PATCHES,
+                    split_df=split_df,
                     num_cv_folds=C.NUM_CV_FOLDS,
                     r_swir_thr_step=0.1,
                     b_thr_step=25,
@@ -175,6 +190,7 @@ if __name__ == "__main__":
             else:
                 df_best_thrs = compute_glacier_wide_thresholds(
                     root_dir_patches=C.DIR_GL_PATCHES,
+                    split_df=split_df,
                     num_cv_folds=C.NUM_CV_FOLDS,
                     r_swir_thr_step=0.1,
                     b_thr_step=25,

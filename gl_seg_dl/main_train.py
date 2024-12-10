@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
     # overwrite the split if provided
     if args.split is not None:
-        all_settings['data']['data_root_dir'] = str(Path(all_settings['data']['data_root_dir']).parent / args.split)
+        all_settings['data']['split'] = args.split
         all_settings['data']['data_stats_fp'] = str(
             Path(all_settings['data']['data_stats_fp']).parent.parent / args.split / 'stats_train_patches_agg.csv')
         all_settings['logger']['name'] = str(Path(all_settings['logger']['name']).parent / args.split)
