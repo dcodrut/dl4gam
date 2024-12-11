@@ -43,7 +43,7 @@ if __name__ == "__main__":
         print(df_all)
 
         # polygonize the predictions
-        geom_all = {'entry_id': [], 'geometry': [], 'image_id': [], 'image_date': [], 'label': [], 'split': []}
+        geom_all = {k: [] for k in ['entry_id', 'geometry', 'nc_crs', 'image_id', 'image_date', 'label', 'split']}
         for i in tqdm(range(len(df_all)), desc=f"Polygonizing predictions"):
             fp = df_all.fp.iloc[i]
             nc = xr.open_dataset(fp, decode_coords='all')
@@ -79,6 +79,7 @@ if __name__ == "__main__":
                 multipoly = shapely.ops.unary_union(geometries)
                 geom_all['entry_id'].append(fp.parent.name)
                 geom_all['geometry'].append(multipoly)
+                geom_all['nc_crs'].append(nc.rio.crs)
                 geom_all['image_id'].append(fp.stem)
                 geom_all['image_date'].append(pd.to_datetime(fp.stem[:8], format='%Y%m%d').strftime('%Y-%m-%d'))
                 geom_all['label'].append(k)
@@ -86,7 +87,12 @@ if __name__ == "__main__":
 
         # export the geodataframe(s), separated by the label
         gdf = gpd.GeoDataFrame(geom_all)
-        gdf.set_crs(crs=nc.rio.crs, inplace=True)
+
+        # reproject to WGS84 (from the raster crs)
+        gdf = gdf.groupby('nc_crs', group_keys=False, sort=False)[[c for c in gdf.columns]].apply(
+            lambda sdf: sdf.set_crs(crs=sdf.nc_crs.iloc[0]).to_crs(epsg=4326)
+        )
+        gdf = gdf.drop(columns=['nc_crs'])
         for k in gdf.label.unique():
             gdf_crt = gdf[gdf.label == k]
             fp_out = (
