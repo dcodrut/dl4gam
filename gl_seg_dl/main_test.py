@@ -55,7 +55,7 @@ def test_model(
 
     # Trainer
     trainer_dict = settings['trainer']
-    trainer = pl.Trainer(**trainer_dict)
+    trainer = pl.Trainer(**trainer_dict, logger=False)
 
     logger.info(f'test_per_glacier = {test_per_glacier}')
     checkpoint_root_dir = Path(checkpoint).parent.parent
@@ -188,10 +188,10 @@ if __name__ == "__main__":
     # get the split on which the current model was trained on
     split_name = f"split_{str(checkpoint_file).split('split_')[1].split('/')[0]}"
 
-        # get the list of glaciers for the specified fold
-        fold_name = f"fold_{args.fold[2:]}"
-        glacier_ids = sorted(list(split_df[split_df[split_name] == fold_name].entry_id))
-        logger.info(f"split = {split_name}; fold = {fold_name}; #glaciers = {len(glacier_ids)}")
+    # get the list of glaciers for the specified fold
+    fold_name = f"fold_{args.fold[2:]}"
+    glacier_ids = sorted(list(split_df[split_df[split_name] == fold_name].entry_id))
+    logger.info(f"split = {split_name}; fold = {fold_name}; #glaciers = {len(glacier_ids)}")
 
     test_model(
         settings=all_settings,
