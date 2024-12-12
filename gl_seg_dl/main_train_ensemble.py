@@ -20,8 +20,8 @@ if __name__ == '__main__':
     base_settings_file = './configs/unet.yaml'
 
     # generate all the commands
-    ensemble_size = 5
-    seed = 42
+    ensemble_size = 10
+    seed = 1
     commands = []
     for seed in range(seed, seed + ensemble_size):
         for i_split in range(1, 6):

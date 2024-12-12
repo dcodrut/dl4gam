@@ -14,7 +14,7 @@ data:
   use_augmentation: False
 
 task:
-  seed: 42
+  seed: 1
   loss: 'focal'
   optimization:
     optimizer:
