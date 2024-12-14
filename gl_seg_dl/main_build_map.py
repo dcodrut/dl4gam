@@ -8,6 +8,26 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from folium.plugins import MarkerCluster
 
+
+# keep only n decimals from the coordinates to save space (manually)
+def round_coords(geom, num_decimals=5):
+    if geom is None or geom.is_empty:
+        return geom
+    if geom.geom_type == 'Polygon':
+        # round the coordinates
+        new_coords = [(round(x, num_decimals), round(y, num_decimals)) for x, y in zip(*geom.exterior.xy)]
+
+        # remove the duplicates
+        new_coords = [new_coords[0]] + [p for i, p in enumerate(new_coords[1:]) if p != new_coords[i]]
+
+        # rebuild the polygon
+        return geom.__class__(tuple(new_coords))
+    elif geom.geom_type == 'MultiPolygon':
+        return geom.__class__([round_coords(poly, num_decimals) for poly in geom.geoms])
+    else:
+        raise ValueError(f"Unexpected geometry type: {geom.geom_type}")
+
+
 if __name__ == "__main__":
     # read the inventory
     gdf_inv = gpd.read_file('../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp')
@@ -53,6 +73,10 @@ if __name__ == "__main__":
     assert covered_glaciers == set(gdf_pred_1_unc.entry_id)
     assert covered_glaciers.issubset(set(df_rates.entry_id))  # the rates also include the extrapolations
 
+    # round the coordinates to save space
+    for i, df in enumerate([gdf_inv, gdf_pred_0, gdf_pred_1, gdf_pred_0_unc, gdf_pred_1_unc]):
+        df['geometry'] = df.geometry.apply(lambda x: round_coords(x, num_decimals=(5 if i < 3 else 4)))
+
     aletsch_loc = (46.50410, 8.03522)
     m = leafmap.Map(height=600, center=aletsch_loc, zoom=12, scroll_wheel_zoom=True, draw_control=False)
 
@@ -97,7 +121,7 @@ if __name__ == "__main__":
     )
     folium.GeoJson(
         gdf_inv,
-        name='Inventory 2015/16/17 (Paul et al. 2020)',
+        name=,
         style_function=lambda x: style_inv,
         highlight_function=lambda feat: {
             "weight": 4,
