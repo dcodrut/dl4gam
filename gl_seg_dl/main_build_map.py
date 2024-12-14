@@ -73,8 +73,22 @@ if __name__ == "__main__":
     assert covered_glaciers == set(gdf_pred_1_unc.entry_id)
     assert covered_glaciers.issubset(set(df_rates.entry_id))  # the rates also include the extrapolations
 
+    # give a layer name to each dataframe (will be used for the layer control)
+    gdf_layer_names = {
+        'gdf_inv': 'Inventory 2015/16/17 (Paul et al. 2020)',
+        'gdf_pred_0': 'DL4GAM prediction 2015/16/17',
+        'gdf_pred_1': 'DL4GAM prediction 2023',
+        'gdf_pred_0_unc': 'DL4GAM 1σ-uncertainty 2015/16/17',
+        'gdf_pred_1_unc': 'DL4GAM 1σ-uncertainty 2023',
+    }
+
+    # add the layer names in the first column (s.t. it will be shown when mouse-over)
+    gdf_list = [gdf_inv, gdf_pred_0, gdf_pred_1, gdf_pred_0_unc, gdf_pred_1_unc]
+    for i in range(len(gdf_list)):
+        gdf_list[i].insert(0, 'source', gdf_layer_names[list(gdf_layer_names.keys())[i]])
+
     # round the coordinates to save space
-    for i, df in enumerate([gdf_inv, gdf_pred_0, gdf_pred_1, gdf_pred_0_unc, gdf_pred_1_unc]):
+    for i, df in enumerate(gdf_list):
         df['geometry'] = df.geometry.apply(lambda x: round_coords(x, num_decimals=(5 if i < 3 else 4)))
 
     aletsch_loc = (46.50410, 8.03522)
@@ -119,47 +133,55 @@ if __name__ == "__main__":
         fields=list(gdf_inv.columns)[:-3],
         style=("background-color: white; color: black; font-size: 16px;")
     )
+    hightlight_style = {
+        'weight': style_inv['weight'] + 2,
+        'fillOpacity': style_inv['fillOpacity'] + 0.2
+    }
     folium.GeoJson(
         gdf_inv,
-        name=,
+        name=gdf_layer_names['gdf_inv'],
         style_function=lambda x: style_inv,
-        highlight_function=lambda feat: {
-            "weight": 4,
-            "fillOpacity": 0.5
-        },
+        highlight_function=lambda x: hightlight_style,
         tooltip=tooltip,
     ).add_to(m)
 
-    style_pred_0 = style_inv.copy()
-    style_pred_0['color'] = color_list[0]
-    style_pred_0['fillColor'] = color_list[0]
-    m.add_gdf(gdf_pred_0, layer_name='DL4GAM prediction 2015/16/17', style=style_pred_0, zoom_to_layer=False)
-
-    style_pred_unc = style_pred_0.copy()
-    # hide the border & increase the fill opacity
-    style_pred_unc['opacity'] = 0.0
-    style_pred_unc['fillOpacity'] = 0.4
+    style_pred_0 = {**style_inv, 'color': color_list[0], 'fillColor': color_list[0]}
     m.add_gdf(
-        gdf_pred_0_unc[['entry_id', 'geometry']],
-        layer_name='DL4GAM 1σ-uncertainty 2015/16/17',
+        gdf_pred_0,
+        layer_name=gdf_layer_names['gdf_pred_0'],
+        style=style_pred_0,
+        highlight_function=lambda x: hightlight_style,
+        zoom_to_layer=False
+    )
+
+    # hide the border & increase the fill opacity
+    style_pred_unc = {**style_pred_0, 'opacity': 0.0, 'fillOpacity': 0.4}
+    hightlight_style_unc = {'opacity': 0.0, 'fillOpacity': 0.6}
+    m.add_gdf(
+        gdf_pred_0_unc[['source', 'entry_id', 'geometry']],
+        layer_name=gdf_layer_names['gdf_pred_0_unc'],
         style=style_pred_unc,
+        highlight_function=lambda x: hightlight_style_unc,
         zoom_to_layer=False,
         show=False
     )
 
     # add the predictions and the uncertainty for 2023
-    style_pred1 = style_pred_0.copy()
-    style_pred1['color'] = color_list[1]
-    style_pred1['fillColor'] = color_list[1]
-    m.add_gdf(gdf_pred_1, layer_name='DL4GAM prediction 2023', style=style_pred1, zoom_to_layer=False)
-
-    style_pred_unc1 = style_pred1.copy()
-    style_pred_unc1['opacity'] = 0.0
-    style_pred_unc1['fillOpacity'] = 0.4
+    style_pred1 = {**style_pred_0, 'color': color_list[1], 'fillColor': color_list[1]}
     m.add_gdf(
-        gdf_pred_1_unc,
-        layer_name='DL4GAM 1σ-uncertainty 2023',
+        gdf_pred_1,
+        layer_name=gdf_layer_names['gdf_pred_1'],
+        style=style_pred1,
+        highlight_function=lambda x: hightlight_style,
+        zoom_to_layer=False
+    )
+
+    style_pred_unc1 = {**style_pred1, 'opacity': 0.0, 'fillOpacity': 0.4}
+    m.add_gdf(
+        gdf_pred_1_unc[['source', 'entry_id', 'geometry']],
+        layer_name=gdf_layer_names['gdf_pred_1_unc'],
         style=style_pred_unc1,
+        highlight_function=lambda x: hightlight_style_unc,
         zoom_to_layer=False,
         show=False
     )
