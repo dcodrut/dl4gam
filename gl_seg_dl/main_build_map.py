@@ -12,6 +12,10 @@ if __name__ == "__main__":
     # read the inventory
     gdf_inv = gpd.read_file('../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp')
 
+    # keep only the glaciers covered in our dataset
+    df_final_dates = pd.read_csv('../data/inv_images_qc/final_dates.csv')
+    gdf_inv = gdf_inv[gdf_inv.entry_id.isin(df_final_dates.entry_id)]
+
     # read the predictions
     polys_root_dir = Path(
         '../data/external/_experiments/s2_alps_plus/unet/gdf_all_splits/seed_all/version_0/s2_alps_plus')
@@ -40,6 +44,14 @@ if __name__ == "__main__":
 
     # read the processed rates
     df_rates = pd.read_csv('../data/external/_experiments/s2_alps_plus/unet/stats_rates_s2_alps_plus_version_0.csv')
+
+    # make sure all the dataframes have the same glaciers
+    covered_glaciers = set(gdf_inv.entry_id)
+    assert covered_glaciers == set(gdf_pred_0.entry_id)
+    assert covered_glaciers == set(gdf_pred_1.entry_id)
+    assert covered_glaciers == set(gdf_pred_0_unc.entry_id)
+    assert covered_glaciers == set(gdf_pred_1_unc.entry_id)
+    assert covered_glaciers.issubset(set(df_rates.entry_id))  # the rates also include the extrapolations
 
     aletsch_loc = (46.50410, 8.03522)
     m = leafmap.Map(height=600, center=aletsch_loc, zoom=12, scroll_wheel_zoom=True, draw_control=False)
