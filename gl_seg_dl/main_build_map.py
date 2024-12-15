@@ -191,10 +191,12 @@ if __name__ == "__main__":
     for entry_id in gdf_pred_0.entry_id:
         r_inv = gdf_inv[gdf_inv.entry_id == entry_id].iloc[0]
         r = df_rates[df_rates.entry_id == entry_id].iloc[0]
+        image_date_t0 = gdf_pred_0[gdf_pred_0.entry_id == entry_id].iloc[0].image_date
+        image_date_t1 = gdf_pred_1[gdf_pred_1.entry_id == entry_id].iloc[0].image_date
         desc = {
             f"Area {r.year_t0} (inventory):": f"{r.area_inv:.4f} km²",
-            f'Area {r.year_t0} (DL4GAM):': f"{r.area_t0:.4f} ± {r.area_t0_std:.4f} km²",
-            f'Area {r.year_t1} (DL4GAM):': f"{r.area_t1:.4f} ± {r.area_t1_std:.4f} km²",
+            f'Area {r.year_t0} (DL4GAM):': f'{r.area_t0:.4f} ± {r.area_t0_std:.4f} km² (<a href="https://huggingface.co/datasets/dcodrut/dl4gam_alps/resolve/main/preds/{entry_id}_{image_date_t0}.png">Visualize image with predictions</a>)',
+            f'Area {r.year_t1} (DL4GAM):': f'{r.area_t1:.4f} ± {r.area_t1_std:.4f} km² (<a href="https://huggingface.co/datasets/dcodrut/dl4gam_alps/resolve/main/preds/{entry_id}_{image_date_t1}.png">Visualize image with predictions</a>)',
             f'Annual area change rate:': f"{r.area_rate:.4f} ± {r.area_rate_std:.4f} km² y⁻¹",
             ';'.join(['&nbsp'] * 42): f"({r.area_rate_prc * 100:.2f} ± {r.area_rate_std / r.area_t0 * 100:.2f} % y⁻¹)",
         }
