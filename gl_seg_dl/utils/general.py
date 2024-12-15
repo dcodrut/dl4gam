@@ -35,7 +35,8 @@ def run_in_parallel(fun, num_procs=1, pbar=False, **kwargs):
 
     # run and collect the results
     all_res = []
-    with tqdm(total=arg_lens[0], desc=f'Running {fun} with {num_procs} process(es)', disable=not pbar) as pbar:
+    fun_name = fun.func.__name__ if hasattr(fun, 'func') else fun.__name__
+    with tqdm(total=arg_lens[0], desc=f'Running {fun_name} with {num_procs} process(es)', disable=not pbar) as pbar:
         if num_procs > 1:
             with multiprocessing.Pool(num_procs) as pool:
                 for res in pool.imap_unordered(_fn_star, kwargs_flatten):
