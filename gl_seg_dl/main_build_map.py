@@ -107,10 +107,14 @@ if __name__ == "__main__":
     for c in base_maps:
         m.add_basemap(c, show=(c == 'Esri.WorldImagery'))
 
-    # change each tile layer to overlay=False
+    # change each tile layer to overlay=False & rename the Swiss maps
     for k, v in m._children.items():
         if isinstance(v, folium.raster_layers.TileLayer):
             v.overlay = False
+            if v.layer_name == 'SwissFederalGeoportal.JourneyThroughTime':
+                v.layer_name = 'Swisstopo - Journey Through Time 1864'
+            elif v.layer_name == 'SwissFederalGeoportal.SWISSIMAGE':
+                v.layer_name = 'Swisstopo - Swissimage'
 
     with plt.style.context('tableau-colorblind10'):
         color_list = plt.rcParams['axes.prop_cycle'].by_key()['color']
