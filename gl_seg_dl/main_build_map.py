@@ -9,21 +9,43 @@ import pandas as pd
 from folium.plugins import MarkerCluster
 
 
-# keep only n decimals from the coordinates to save space (manually)
-def round_coords(geom, num_decimals=5):
+def simplify_geoms(geom, num_decimals=5):
+    """
+    Simplify the geometries by rounding the coordinates to a certain number of decimals.
+    Then remove the duplicates (either on x or y) and rebuild the polygon.
+    """
+
     if geom is None or geom.is_empty:
         return geom
     if geom.geom_type == 'Polygon':
         # round the coordinates
-        new_coords = [(round(x, num_decimals), round(y, num_decimals)) for x, y in zip(*geom.exterior.xy)]
+        new_exterior = [(round(x, num_decimals), round(y, num_decimals)) for x, y in zip(*geom.exterior.xy)]
 
-        # remove the duplicates
-        new_coords = [new_coords[0]] + [p for i, p in enumerate(new_coords[1:]) if p != new_coords[i]]
+        # round the interiors and save them in a separate list
+        new_interiors = []
+        for interior in geom.interiors:
+            new_interiors.append([(round(x, num_decimals), round(y, num_decimals)) for x, y in zip(*interior.xy)])
+
+        # remove the duplicates (either on x or y), if we have more than 4 points
+        def remove_duplicates(coords):
+            coords_small = [coords[0]]
+            for i in range(1, len(coords)):
+                if coords[i][0] != coords[i - 1][0] and coords[i][1] != coords[i - 1][1]:
+                    coords_small.append(coords[i])
+
+            # if we have less than 4 points, return the original coordinates
+            if len(coords_small) < 4:
+                return coords
+
+            return coords_small
+
+        new_exterior = remove_duplicates(new_exterior)
+        new_interiors = [remove_duplicates(interior) for interior in new_interiors]
 
         # rebuild the polygon
-        return geom.__class__(tuple(new_coords))
+        return geom.__class__(shell=new_exterior, holes=new_interiors)
     elif geom.geom_type == 'MultiPolygon':
-        return geom.__class__([round_coords(poly, num_decimals) for poly in geom.geoms])
+        return geom.__class__([simplify_geoms(poly, num_decimals) for poly in geom.geoms])
     else:
         raise ValueError(f"Unexpected geometry type: {geom.geom_type}")
 
@@ -89,7 +111,7 @@ if __name__ == "__main__":
 
     # round the coordinates to save space
     for i, df in enumerate(gdf_list):
-        df['geometry'] = df.geometry.apply(lambda x: round_coords(x, num_decimals=(5 if i < 3 else 4)))
+        df['geometry'] = df.geometry.apply(lambda x: simplify_geoms(x, num_decimals=(6 if i < 3 else 5)))
 
     aletsch_loc = (46.50410, 8.03522)
     m = leafmap.Map(height=600, center=aletsch_loc, zoom=12, scroll_wheel_zoom=True, draw_control=False)
