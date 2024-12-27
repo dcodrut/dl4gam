@@ -219,12 +219,24 @@ if __name__ == "__main__":
         r = df_rates[df_rates.entry_id == entry_id].iloc[0]
         image_date_t0 = gdf_pred_0[gdf_pred_0.entry_id == entry_id].iloc[0].image_date
         image_date_t1 = gdf_pred_1[gdf_pred_1.entry_id == entry_id].iloc[0].image_date
+        qc_filter_info = f"{'No' if r.filtered else 'Yes'}"
+        if r.filtered_by_unc:
+            qc_filter_info += f" (uncertainty too high)"
+        elif r.filtered_by_recall:
+            qc_filter_info += f" (recall too low)"
         desc = {
             f"Area {r.year_t0} (inventory):": f"{r.area_inv:.4f} km²",
-            f'Area {r.year_t0} (DL4GAM):': f'{r.area_t0:.4f} ± {r.area_t0_std:.4f} km² (<a href="https://huggingface.co/datasets/dcodrut/dl4gam_alps/resolve/main/preds/{entry_id}_{image_date_t0}.png">Visualize image with predictions</a>)',
-            f'Area {r.year_t1} (DL4GAM):': f'{r.area_t1:.4f} ± {r.area_t1_std:.4f} km² (<a href="https://huggingface.co/datasets/dcodrut/dl4gam_alps/resolve/main/preds/{entry_id}_{image_date_t1}.png">Visualize image with predictions</a>)',
+            f'Area {r.year_t0} (DL4GAM):':
+                f'{r.area_t0:.4f} ± {r.area_t0_std:.4f} km² '
+                f'(<a href="https://huggingface.co/datasets/dcodrut/dl4gam_alps/resolve/main/preds/'
+                f'{entry_id}_{image_date_t0}.png">Visualize image with predictions</a>)',
+            f'Area {r.year_t1} (DL4GAM):':
+                f'{r.area_t1:.4f} ± {r.area_t1_std:.4f} km² '
+                f'(<a href="https://huggingface.co/datasets/dcodrut/dl4gam_alps/resolve/main/preds/'
+                f'{entry_id}_{image_date_t1}.png">Visualize image with predictions</a>)',
             f'Annual area change rate:': f"{r.area_rate:.4f} ± {r.area_rate_std:.4f} km² y⁻¹",
             ';'.join(['&nbsp'] * 42): f"({r.area_rate_prc * 100:.2f} ± {r.area_rate_std / r.area_t0 * 100:.2f} % y⁻¹)",
+            f'Passed QC filter:': qc_filter_info
         }
         folium.Marker(
             location=[r_inv.LAT, r_inv.LON],
@@ -237,6 +249,22 @@ if __name__ == "__main__":
 
     # Add layer controls
     folium.LayerControl(position='topright', collapsed=False, autoZIndex=True, draggable=True).add_to(m)
+
+    # Add an information box
+    info_html = """
+    <div id="info-box" style="position: fixed; top: 10px; left: 50px; width: auto; 
+    background-color: white; border: 2px solid black; padding: 10px; z-index: 1000;">
+        <button onclick="document.getElementById('info-box').style.display='none'" style="float: right;">x</button>
+        <b>Information:</b><br><br>
+        <ul>
+            <li>Use the layer control to switch between the different map layers
+                <br> or to show the 1σ-uncertainty as a shaded area for the DL4GAM predictions.</li>
+            <li>Click on the markers for more information on each glacier.</li>
+            <li>Note that the contours were slightly undersampled to save space.</li>
+        </ul>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(info_html))
 
     out_fp = Path('../data/maps/index.html')
     out_fp.parent.mkdir(parents=True, exist_ok=True)
