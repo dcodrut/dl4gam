@@ -1,31 +1,42 @@
-name: glsegenv2
+name: dl4gam
 channels:
   - pytorch
+  - nvidia
   - conda-forge
   - defaults
 dependencies:
-  - pip==24.2
-  - python==3.12.5
+  - pip=24.3.1
+  - pytorch-cuda=12.1
+  - pytorch=2.5.1
+  - torchvision=0.20
   - pip:
-      - torch==2.4.1
-      - torchvision==0.19.1
       - segmentation-models-pytorch==0.3.4
       - pytorch-lightning==2.4.0
-      - tensorboard==2.17.1
-      - torchmetrics==1.4.2
-      - pandas==2.2.2
+      - torchmetrics==1.6.0
+      - tensorboard==2.18.0
+      - pandas==2.2.3
       - geopandas==1.0.1
-      - xarray==2024.9.0
-      - rioxarray==0.17.0
-      - h5netcdf==1.3.0
-      - netCDF4==1.7.1.post2
-      - tqdm==4.66.5
-      - matplotlib==3.9.2
+      - xarray==2024.11.0
+      - rioxarray==0.18.1
+      - h5netcdf==1.4.1
+      - netCDF4==1.7.2
+      - tqdm==4.67.1
+      - matplotlib==3.9.3
       - opencv-python==4.10.0.84
-      - protobuf==5.28.1
-      - pyproj==3.6.1
+      - protobuf==5.29.1
+      - pyproj==3.7.0
       - scikit-learn==1.5.2
-      - numpy==1.26.4
+      - numpy==1.26.4  # version required by xdem
       - oggm==1.6.2
-      - xdem==0.0.20
+      - xdem==0.1.0
       - salem==0.3.11
+      - statsmodels==0.14.4
+      - plotnine==0.14.3
+      - seaborn==0.13.2
+      - scipy==1.14.1
+      - tables==3.10.1
+      - notebook==7.3.1
+      - cartopy==0.24.1
+      - earthpy==0.9.4
+      - matplotlib_scalebar==0.8.1
+      - leafmap==0.42.5
