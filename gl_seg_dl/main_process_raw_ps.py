@@ -1,29 +1,30 @@
+import gc
 from pathlib import Path
-import xarray as xr
+
+import geopandas as gpd
 import numpy as np
+import pandas as pd
 import shapely
 import shapely.ops
-import pandas as pd
-import geopandas as gpd
+import xarray as xr
 from tqdm import tqdm
-import gc
 
 # local imports
 from config import PS as C
 
 
 def main_process_inv_data():
-    input_dir = Path('../data/data_gmb/data_gl_seg/external/planet/inv/raw/')
-    output_dir = Path('../data/data_gmb/data_gl_seg/external/planet/raw_processed/inv/')
+    input_dir = Path('../data/external/planet/inv/raw/')
+    output_dir = Path('../data/external/planet/raw_processed/inv/')
 
     # prepare the glacier outlines and their buffers
-    outlines_fp = '../data/data_gmb/outlines_2015/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp'
+    outlines_fp = '../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp'
     s2_df = gpd.read_file(outlines_fp)
-    s2_df['year'] = s2_df.Date.apply(lambda s: pd.to_datetime(s).year)
-    s2_df['month'] = s2_df.Date.apply(lambda s: pd.to_datetime(s).month)
-    s2_df['day'] = s2_df.Date.apply(lambda s: pd.to_datetime(s).day)
+    s2_df['year'] = s2_df.date_inv.apply(lambda s: pd.to_datetime(s).year)
+    s2_df['month'] = s2_df.date_inv.apply(lambda s: pd.to_datetime(s).month)
+    s2_df['day'] = s2_df.date_inv.apply(lambda s: pd.to_datetime(s).day)
     buffer_m = 1280
-    s2_df_buffer = s2_df[s2_df.AREA_KM2 >= 0.1].copy()
+    s2_df_buffer = s2_df[s2_df.area_km2 >= 0.1].copy()
     print(f"without any buffer; total area = {s2_df_buffer.area.sum() / 1e6:.3f} km2")
 
     # draw a rectangle box with a buffer around each glacier
@@ -45,8 +46,8 @@ def main_process_inv_data():
     print(s2_df_buffer)
 
     # prepare the Planet image path for each glacier
-    shp_list = list(
-        Path('../data/data_gmb/data_gl_seg/external/planet/inv/outlines_boxes_buffer_1280m/').glob('**/*.shp'))
+    raw_imgs_dir = '../data/data_gmb/data_gl_seg/external/planet/inv/outlines_boxes_buffer_1280m/'
+    shp_list = list(Path(raw_imgs_dir).glob('**/*.shp'))
     gdf_boxes = []
     for fp in shp_list:
         crt_gdf = gpd.read_file(fp)
@@ -54,20 +55,21 @@ def main_process_inv_data():
         gdf_boxes.append(crt_gdf)
     gdf_boxes = gpd.GeoDataFrame(pd.concat(gdf_boxes))
     gdf_boxes = gdf_boxes.sort_values(['date', 's2_tile', 'group', 'id'])
-    print(gdf_boxes)
+    # fix the wrong date originating from the inventory
+    gdf_boxes.loc[gdf_boxes.date == '2017-07-10', 'date'] = '2017-10-07'
 
     gl_to_box = {}
     for _, row in gdf_boxes.iterrows():
         # get the glaciers (with their buffers) for the current date & tile
-        s2_sdf_buffer = s2_df_buffer[(s2_df_buffer.Date == row.date) & (s2_df_buffer.Tile_Name == row.s2_tile)]
+        s2_sdf_buffer = s2_df_buffer[(s2_df_buffer.date_inv == row.date) & (s2_df_buffer.Tile_Name == row.s2_tile)]
 
         # keep only those contained by the current boxes
         s2_sdf_buffer = s2_sdf_buffer[row.geometry.buffer(1e-5).contains(s2_sdf_buffer.geometry)]
 
-        for gid in s2_sdf_buffer.GLACIER_NR:
+        for gid in s2_sdf_buffer.entry_id:
             gl_to_box[gid] = row.fn
-    gl_to_box_df = pd.Series(gl_to_box).reset_index().rename(columns={'index': 'gl_num', 0: 'fn'})
-    gl_to_box_df = gl_to_box_df.sort_values('gl_num')
+    gl_to_box_df = pd.Series(gl_to_box).reset_index().rename(columns={'index': 'entry_id', 0: 'fn'})
+    gl_to_box_df = gl_to_box_df.sort_values('entry_id')
     gl_to_box_df.to_csv('../data/data_gmb/data_gl_seg/external/planet/inv/gl_to_box_df.csv')
 
     # manually compose a few images which were not downloaded as composite
@@ -108,7 +110,7 @@ def main_process_inv_data():
         fp_list_merge.append(x[0])
     gl_to_box_df['fp'] = fp_list_merge
     print(gl_to_box_df)
-    s2_df_buffer_box = s2_df_buffer.rename(columns={'GLACIER_NR': 'gl_num'}).merge(gl_to_box_df)
+    s2_df_buffer_box = s2_df_buffer.merge(gl_to_box_df)
     print(s2_df_buffer_box)
 
     # build a pandas dataframe with the corresponding image data for each glacier
@@ -124,7 +126,7 @@ def main_process_inv_data():
     for raw_fp in tqdm(sorted(set(s2_df_buffer_box.fp))):
         # get all the glaciers from the current box
         box_name = Path(str(raw_fp).split('_pss')[0]).name
-        gid_list = list(s2_df_buffer_box[s2_df_buffer_box.fn == box_name].gl_num)
+        gid_list = list(s2_df_buffer_box[s2_df_buffer_box.fn == box_name].entry_id)
 
         # get the acquisition dates using the metadata file names
         meta_files = list(filter(lambda s: 'composite' not in s.name, list(raw_fp.parent.glob('*_metadata.json'))))
@@ -132,15 +134,16 @@ def main_process_inv_data():
 
         if box_name in boxes_with_mixed_dates:
             _fp = dates_shp_dir / box_name / f"{dates[0]}.shp"
-            gid_list_first_date = list(gpd.read_file(_fp).GLACIER_NR)
+            gid_list_first_date = [f"g_{int(x):04d}" for x in list(gpd.read_file(_fp).GLACIER_NR)]
             assert len(set(gid_list_first_date) - set(gid_list)) == 0
             gl_to_date.update({gid: dates[0] for gid in gid_list_first_date})
             gl_to_date.update({gid: dates[1] for gid in set(gid_list) - set(gid_list_first_date)})
         else:
             assert len(dates) == 1
             gl_to_date.update({gid: dates[0] for gid in gid_list})
-    gl_to_date_df = pd.Series(gl_to_date).reset_index().rename(columns={'index': 'GLACIER_NR', 0: 'date_ps'})
-    gl_to_date_df = gl_to_date_df.sort_values('GLACIER_NR')
+
+    gl_to_date_df = pd.Series(gl_to_date).reset_index().rename(columns={'index': 'entry_id', 0: 'date_ps'})
+    gl_to_date_df = gl_to_date_df.sort_values('entry_id')
     assert len(gl_to_date_df) == len(gl_to_box_df)
     gl_to_date_df.to_csv('../data/data_gmb/data_gl_seg/external/planet/inv/dates.csv', index=False)
 
@@ -170,8 +173,8 @@ def main_process_inv_data():
         s2_sdf_buffer_box = s2_df_buffer_box[s2_df_buffer_box.fp == raw_fp].to_crs(img_planet_with_mask.rio.crs)
         for j in tqdm(range(len(s2_sdf_buffer_box)), desc=box_name):
             r = s2_sdf_buffer_box.iloc[j]
-            date = gl_to_date[r.gl_num]
-            fp_out = output_dir / f"{r.gl_num:04d}" / f"{date}.tif"
+            date = gl_to_date[r.entry_id]
+            fp_out = output_dir / r.entry_id / f"{date}.tif"
             if fp_out.exists():
                 continue
             img_crt_g = img_planet_with_mask.rio.clip([r.geometry])
@@ -183,14 +186,14 @@ def main_process_inv_data():
 
 
 def main_process_2023_data():
-    input_dir = Path('../data/data_gmb/data_gl_seg/external/planet/manual_mapping/2023')
-    output_dir = Path('../data/data_gmb/data_gl_seg/external/planet/raw_processed/2023/')
+    input_dir = Path('../data/external/planet/manual_mapping/2023')
+    output_dir = Path('../data/external/planet/raw_processed/2023/')
 
     # prepare the glacier outlines and their buffers
-    outlines_fp = '../data/data_gmb/outlines_2015/c3s_gi_rgi11_s2_2015_v2/c3s_gi_rgi11_s2_2015_v2.shp'
+    outlines_fp = '../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp'
     s2_df = gpd.read_file(outlines_fp)
     buffer_m = 1280
-    s2_df_buffer = s2_df[s2_df.AREA_KM2 >= 0.1].copy()
+    s2_df_buffer = s2_df[s2_df.area_km2 >= 0.1].copy()
     print(f"total area = {s2_df_buffer.area.sum() / 1e6:.3f} km2")
 
     # draw a rectangle box with a buffer around each glacier
@@ -208,9 +211,8 @@ def main_process_2023_data():
     # add the corresponding raw filenames to each glacier
     fp_list = list(input_dir.glob('**/*.tif'))
     fp_list = list(filter(lambda x: 'udm2' not in x.name, fp_list))  # remove the Unusable Data Masks
-    gid_to_fp = {fp.relative_to(input_dir).parts[0].split('_')[0]: fp for fp in fp_list}
-    gid_to_fp_df = pd.Series(gid_to_fp).reset_index().rename(columns={'index': 'GLACIER_NR', 0: 'fp'})
-    gid_to_fp_df.GLACIER_NR = gid_to_fp_df.GLACIER_NR.astype(int)
+    gid_to_fp = {f"g_{int(fp.relative_to(input_dir).parts[0].split('_')[0]):04d}": fp for fp in fp_list}
+    gid_to_fp_df = pd.Series(gid_to_fp).reset_index().rename(columns={'index': 'entry_id', 0: 'fp'})
     print(gid_to_fp_df)
 
     # keep only the glaciers with corresponding images
@@ -242,7 +244,7 @@ def main_process_2023_data():
 
         s2_sdf_buffer_local = s2_df_buffer.iloc[i:i + 1].to_crs(img_planet_with_mask.rio.crs)
         date = raw_fp.name.split('_')[0].replace('-', '')
-        fp_out = output_dir / f"{r.GLACIER_NR:04d}" / f"{date}.tif"
+        fp_out = output_dir / r.entry_id / f"{date}.tif"
         if fp_out.exists():
             continue
         img_crt_g = img_planet_with_mask.rio.clip(s2_sdf_buffer_local.geometry)
@@ -254,5 +256,5 @@ def main_process_2023_data():
 
 
 if __name__ == "__main__":
-    # main_process_inv_data()
-    main_process_2023_data()
+    main_process_inv_data()
+    # main_process_2023_data()
