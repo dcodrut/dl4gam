@@ -71,32 +71,37 @@ def plot_glacier(
         )
     ]
 
-    # get the stats for the current glacier
-    stats = df_results[(df_results.entry_id == entry_id) & (df_results.year == img_date.year)]
-    assert len(stats) == 1
-    stats = stats.iloc[0]
-    recall_debris = stats.recall_debris if (
-            (stats.Country == 'CH') & (stats.area_debris / stats.area_inv > 0.01)) else np.nan
-    recall_debris_txt = f"{recall_debris * 100:.2f}%" if not np.isnan(recall_debris) else "NA"
     title = (
         f"{img_date.strftime('%Y-%m-%d')} (Copernicus Sentinel-2, B4-B3-B2)\n"
-        f"$A_{{inv}}$ = {stats.area_inv:.2f} km$^2$; "
-        f"$A_{{pred}}$ = {stats.area_pred:.2f} ± {stats.area_pred_std:.3f} km$^2$\n"
-        f"$FPR_{{20-50m}}$ = {stats['area_non_g_pred_b20_50'] / stats['area_non_g_b20_50'] * 100:.2f}%; "
-        f"$recall_{{debris}}$ (CH only) = {recall_debris_txt}"
+        f"$A_{{inv}}$ = {r_gl.area_km2:.2f} km$^2$; "
     )
+
+    # get the stats for the current glacier if predictions are available
+    if df_results is not None:
+        stats = df_results[(df_results.entry_id == entry_id) & (df_results.year == img_date.year)]
+        assert len(stats) == 1
+        stats = stats.iloc[0]
+        recall_debris = stats.recall_debris if (
+                (stats.Country == 'CH') & (stats.area_debris / stats.area_inv > 0.01)) else np.nan
+        recall_debris_txt = f"{recall_debris * 100:.2f}%" if not np.isnan(recall_debris) else "NA"
+        title += (
+            f"$A_{{pred}}$ = {stats.area_pred:.2f} ± {stats.area_pred_std:.3f} km$^2$\n"
+            f"$FPR_{{20-50m}}$ = {stats['area_non_g_pred_b20_50'] / stats['area_non_g_b20_50'] * 100:.2f}%; "
+            f"$recall_{{debris}}$ (CH only) = {recall_debris_txt}"
+        )
     ax.set_title(title, fontsize=fontsize)
 
-    # plot the predicted glacier outline
-    gl_sdf_pred = gl_df_pred[gl_df_pred.entry_id == entry_id].to_crs(nc.rio.crs)
-    gl_sdf_pred.plot(ax=ax, edgecolor=color_list[1], linewidth=line_thickness, facecolor='none')
-    legend_handles.append(
-        matplotlib.lines.Line2D(
-            [0], [0],
-            color=color_list[1],
-            label=f'DL4GAM prediction ({img_date.year})'
+    # plot the predicted glacier outline if available
+    if gl_df_pred is not None:
+        gl_sdf_pred = gl_df_pred[gl_df_pred.entry_id == entry_id].to_crs(nc.rio.crs)
+        gl_sdf_pred.plot(ax=ax, edgecolor=color_list[1], linewidth=line_thickness, facecolor='none')
+        legend_handles.append(
+            matplotlib.lines.Line2D(
+                [0], [0],
+                color=color_list[1],
+                label=f'DL4GAM prediction ({img_date.year})'
+            )
         )
-    )
 
     # add the legend
     ax.legend(handles=legend_handles, loc='upper left', prop={'size': fontsize - 2})
@@ -165,10 +170,10 @@ def plot_glacier(
 
 if __name__ == "__main__":
     num_cores = 10
-    import socket
+    plot_preds = False
 
-    if socket.gethostname() == 'wimpil':
-        num_cores = 1
+    # output root directory
+    plot_root_dir = Path('../data/external/scratch_partition/plots/')
 
     # read the inventory
     print(f"Loading the glacier outlines from {C.GLACIER_OUTLINES_FP}")
@@ -182,24 +187,29 @@ if __name__ == "__main__":
     fp_list = sorted(list(rasters_dir.rglob('*.nc')))
     print(f"rasters_dir = {rasters_dir}; #glaciers = {len(fp_list)}")
 
-    # read the predicted areas and their uncertainties
-    model_root_dir = Path(f'../data/external/_experiments/{ds_name}/unet/')
-    model_version = 'version_0'
-    fp_results = model_root_dir / f'df_glacier_agg_{ds_name}_{model_version}.csv'
-    print(f"Loading the results from {fp_results}")
-    df_results = pd.read_csv(fp_results)
+    # read the predicted areas and their uncertainties if we want to plot the results
+    if plot_preds:
+        model_root_dir = Path(f'../data/external/_experiments/{ds_name}/unet/')
+        model_version = 'version_0'
+        fp_results = model_root_dir / f'df_glacier_agg_{ds_name}_{model_version}.csv'
+        print(f"Loading the results from {fp_results}")
+        df_results = pd.read_csv(fp_results)
 
-    # read the predicted contours
-    fp_pred_outlines = model_root_dir / f'gdf_all_splits/seed_all/{model_version}/{ds_name}/{year}/{year}_pred.shp'
-    print(f"Loading the predicted glacier outlines from {fp_pred_outlines}")
-    gl_df_pred = gpd.read_file(fp_pred_outlines)
+        # read the predicted contours
+        fp_pred_outlines = model_root_dir / f'gdf_all_splits/seed_all/{model_version}/{ds_name}/{year}/{year}_pred.shp'
+        print(f"Loading the predicted glacier outlines from {fp_pred_outlines}")
+        gl_df_pred = gpd.read_file(fp_pred_outlines)
 
-    # keep only the rasters for which we have predictions
-    fp_list = [fp for fp in fp_list if fp.parent.name in gl_df_pred.entry_id.values]
+        # keep only the rasters for which we have predictions
+        fp_list = [fp for fp in fp_list if fp.parent.name in gl_df_pred.entry_id.values]
+
+        plot_dir = plot_root_dir / ds_name / model_root_dir.name / model_version / year
+    else:
+        df_results = None
+        gl_df_pred = None
+        plot_dir = plot_root_dir / ds_name / year
 
     # plot
-    plot_root_dir = Path('../data/external/scratch_partition/plots/')
-    plot_dir = plot_root_dir / ds_name / model_root_dir.name / model_version / year
     print(f"plot_dir = {plot_dir}")
     _plot_results = partial(
         plot_glacier,
