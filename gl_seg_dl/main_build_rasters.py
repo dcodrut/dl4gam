@@ -19,11 +19,12 @@ def prepare_all_rasters(
         fp_gl_df_all,
         out_rasters_dir,
         buffer_px,
+        check_data_coverage=True,
         raw_images_dir=None,
         raw_fp_df=None,
         no_data=C.NODATA,
         num_procs=1,
-        bands_to_keep=None,
+        bands_to_keep='all',
         extra_geometries_dict=None,
         extra_rasters_dict=None,
         min_area=None,
@@ -172,6 +173,7 @@ def prepare_all_rasters(
         extra_gdf_dict=extra_gdf_dict,
         bands_to_keep=bands_to_keep,
         buffer_px=buffer_px,
+        check_data_coverage=check_data_coverage,
         no_data=no_data,
         num_procs=num_procs,
         pbar=True
@@ -265,7 +267,10 @@ if __name__ == "__main__":
         specific_settings = dict(
             choose_best_auto=False,
             # increase the buffer even if it's unnecessary, just to have the same spatial extend as S2 data
+            # but disable the test that checks if the raw image has a large enough spatial extent
             buffer_px=int(PS.PATCH_RADIUS * (S2_PS.PATCH_RADIUS * S2_PS.GSD) / (PS.PATCH_RADIUS * PS.GSD)),
+            check_data_coverage=False,
+            compute_dem_features=False
         )
     elif C.__name__ == 'S2_PS':
         # S2 data prep that matches the Planet data

@@ -197,10 +197,15 @@ class S2_SGI(S2_ALPS):
     GLACIER_OUTLINES_FP = Path('../data/outlines/sgi/inventory_sgi2016_r2020_processed/SGI_2016_glaciers_processed.shp')
 
 
-class PS(BaseConfig):
+class PS(S2_ALPS):
     """ Settings for manually downloaded Planet data """
 
-    WD = f'../data/external/wd/ps'
+    # extra rasters to be added to the optical data
+    EXTRA_RASTERS = {
+        'dem': Path('../data/external/copdem_30m')
+    }
+
+    WD = f'../data/external/wd/ps_alps'
     RAW_DATA_DIR = '../data/external/planet/raw_processed/inv'
     # RAW_DATA_DIR = '../data/external/planet/raw_processed/2023'
 

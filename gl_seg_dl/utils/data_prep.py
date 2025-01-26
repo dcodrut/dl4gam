@@ -12,7 +12,32 @@ import xarray as xr
 import xdem
 
 
-def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0, buffers_masks=(-20, -10, 0, 10, 20, 50)):
+def add_glacier_masks(
+        nc_data,
+        gl_df,
+        entry_id_int,
+        buffer=0,
+        check_data_coverage=True,
+        buffers_masks=(-20, -10, 0, 10, 20, 50)
+):
+    """
+    Adds glacier masks to the given dataset after cropping it using the given buffer.
+
+    The masks are:
+        * mask_all_g_id: a mask with the IDs of all the glaciers in the current glacier's bounding box
+        * mask_crt_g: a binary mask with the current glacier
+        * mask_crt_g_bX: a binary mask with the current glacier and a buffer of X meters around it
+
+    :param nc_data: the xarray dataset with the (raw) image data
+    :param gl_df: the geopandas dataframe with all the glaciers' outlines
+    :param entry_id_int: the integer ID of the current glacier
+    :param buffer: the buffer around the current glacier (in meters); it is used to crop the image data
+    :param check_data_coverage: whether to check if the data covers the current glacier + buffer
+    :param buffers_masks: the buffers around the current glacier (in meters) for which binary masks are created
+
+    :return: the (cropped) dataset with the added masks
+    """
+
     # project the glaciers' outlines on the same CRS as the given dataset
     gl_proj_df = gl_df.to_crs(nc_data.rio.crs)
 
@@ -26,7 +51,8 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0, buffers_masks=(-20
 
     # check if the bounding box with the buffer is completely contained in the data boundaries
     data_bbox = shapely.geometry.box(*nc_data.rio.bounds())
-    assert data_bbox.contains(g_buff_bbox), f"The data does not include the current glacier and a {buffer}m buffer"
+    assert not check_data_coverage or data_bbox.contains(g_buff_bbox), \
+        f"The data does not include the current glacier {crt_g_shp.entry_id.iloc[0]} and a {buffer}m buffer"
 
     # keep only the current glacier and its neighbours
     nc_data_crop = nc_data.rio.clip([g_buff_bbox])
@@ -63,6 +89,14 @@ def add_glacier_masks(nc_data, gl_df, entry_id_int, buffer=0, buffers_masks=(-20
 
 
 def add_extra_mask(nc_data, mask_name, gdf):
+    """
+    Add an extra mask to the given dataset.
+    :param nc_data: the xarray dataset with the (raw) image data
+    :param mask_name: the name of the mask to be added
+    :param gdf: the geopandas dataframe with the mask's outlines
+    :return: None
+    """
+
     # project the outlines on the same CRS as the image data
     gdf_proj = gdf.to_crs(nc_data.rio.crs)
 
@@ -73,12 +107,31 @@ def add_extra_mask(nc_data, mask_name, gdf):
     nc_data[mask_name].attrs['_FillValue'] = -1
     nc_data[mask_name].rio.write_crs(nc_data.rio.crs, inplace=True)
 
-    return nc_data
-
 
 def prep_glacier_dataset(
-        fp_img, fp_out, entry_id, gl_df, extra_gdf_dict, buffer_px, no_data, bands_to_keep=None
+        fp_img,
+        fp_out,
+        entry_id,
+        gl_df, extra_gdf_dict,
+        buffer_px,
+        no_data,
+        bands_to_keep='all',
+        check_data_coverage=True
 ):
+    """
+    Prepare a glacier dataset by adding the glacier masks and possibly extra masks (see add_glacier_masks).
+
+    :param fp_img: the path to the raw image
+    :param fp_out: the path to the output glacier dataset
+    :param entry_id: the ID of the current glacier
+    :param gl_df: the geopandas dataframe with all the glacier outlines
+    :param extra_gdf_dict: a dictionary with the extra masks to be added
+    :param buffer_px: the buffer around the current glacier (in pixels) to be used when cropping the image data
+    :param no_data: the value to be used as NODATA
+    :param bands_to_keep: the image bands to keep (if 'all', all the bands will be kept)
+    :param check_data_coverage: whether to check if the data covers the current glacier + buffer
+    :return: None
+    """
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
 
@@ -90,7 +143,7 @@ def prep_glacier_dataset(
         nc.band_data.attrs['long_name'] = [f'B{i + 1}' for i in range(len(nc.band_data))]
 
     # keep only the bands we need later if specified
-    if bands_to_keep is not None:
+    if bands_to_keep == 'all':
         # ensure the bands to keep are in the image
         bands_missing = [b for b in bands_to_keep if b not in nc.band_data.long_name]
         assert len(bands_missing) == 0, f"Missing bands: {bands_missing}"
@@ -103,12 +156,18 @@ def prep_glacier_dataset(
     entry_id_int = row_crt_g.iloc[0].entry_id_i
     dx = nc.rio.resolution()[0]
     buffer = buffer_px * dx
-    nc = add_glacier_masks(nc_data=nc, gl_df=gl_df, entry_id_int=entry_id_int, buffer=buffer)
+    nc = add_glacier_masks(
+        nc_data=nc,
+        gl_df=gl_df,
+        entry_id_int=entry_id_int,
+        buffer=buffer,
+        check_data_coverage=check_data_coverage
+    )
 
     # add the extra masks if given
     if extra_gdf_dict is not None:
         for k, gdf in extra_gdf_dict.items():
-            nc = add_extra_mask(nc_data=nc, mask_name=f"mask_{k}", gdf=gdf)
+            add_extra_mask(nc_data=nc, mask_name=f"mask_{k}", gdf=gdf)
 
     # convert the image data to int16
     nc['band_data'] = nc.band_data.fillna(no_data).astype(np.int16)
