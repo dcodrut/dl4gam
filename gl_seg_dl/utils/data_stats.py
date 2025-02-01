@@ -100,7 +100,7 @@ def compute_qc_stats(gl_sdf, include_shadows=True):
 
     # get the glacier ID
     entry_id_i = row.entry_id_i
-    add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=50)
+    nc = add_glacier_masks(nc_data=nc, gl_df=gl_sdf, entry_id_int=entry_id_i, buffer=50)
 
     # get the cloud percentage for the entire image which geedim should automatically compute
     # if the image comes from multiple tiles, use the one with the highest coverage
