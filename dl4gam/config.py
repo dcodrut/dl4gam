@@ -197,59 +197,7 @@ class S2_SGI(S2_ALPS):
     GLACIER_OUTLINES_FP = Path('../data/outlines/sgi/inventory_sgi2016_r2020_processed/SGI_2016_glaciers_processed.shp')
 
 
-class PS(S2_ALPS):
-    """ Settings for manually downloaded Planet data """
-
-    # extra rasters to be added to the optical data
-    EXTRA_RASTERS = {
-        'dem': Path('../data/external/copdem_30m')
-    }
-
-    WD = f'../data/external/wd/ps_alps'
-    RAW_DATA_DIR = '../data/external/planet/raw_processed/inv'
-    # RAW_DATA_DIR = '../data/external/planet/raw_processed/2023'
-
-    # raw -> rasters settings
-    BANDS = ('B', 'G', 'R', 'NIR', 'cloud', 'shadow')
-
-    GSD = 3  # ground sampling distance in meters
-
-    # patch sampling settings
-    PATCH_RADIUS = 256
-    SAMPLING_STEP_TRAIN = 256
-    DIR_GL_PATCHES = f'{WD}/inv/patches/r_{PATCH_RADIUS}_s_{SAMPLING_STEP_TRAIN}'
-
-
-class S2_PS(S2_ALPS):
-    """
-        Settings for Sentinel-2 data that matches the manually downloaded Planet data.
-        Most of the settings are the same as in S2.
-    """
-
-    # extra rasters to be added to the optical data
-    EXTRA_RASTERS = {
-        'dem': Path('../data/external/copdem_30m')
-    }
-
-    _year = 'inv'
-    # _year = '2016'
-
-    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/{_year}'
-
-    MAX_N_IMGS_PER_G = 1  # maximum number of images per glacier (in case the dates are not specified)
-
-    if _year == 'inv':
-        # we use the dates that were manually checked to match the Planet data as much as possible
-        WD = '../data/external/wd/s2_ps_alps'
-        CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'dates_allowed.csv'
-    else:
-        WD = f'../data/external/wd/s2_ps_alps_auto_{MAX_N_IMGS_PER_G}'
-        CSV_DATES_ALLOWED = None
-
-
 # specify which dataset to use
 # C = S2_ALPS
 C = S2_ALPS_PLUS
 # C = S2_SGI
-# C = S2_PS
-# C = PS

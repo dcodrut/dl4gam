@@ -9,7 +9,7 @@ import shapely.ops
 import xarray as xr
 
 # local imports
-from config import C, S2_PS, PS
+from config import C
 from utils.data_prep import prep_glacier_dataset, add_external_rasters, add_dem_features
 from utils.data_stats import compute_qc_stats
 from utils.general import run_in_parallel
@@ -346,33 +346,6 @@ if __name__ == "__main__":
             max_cloud_f=0.3,
             buffer_px=C.PATCH_RADIUS,
             df_dates=dates_allowed
-        )
-    elif C.__name__ == 'PS':
-        specific_settings = dict(
-            choose_best_auto=False,
-            # increase the buffer even if it's unnecessary, just to have the same spatial extend as S2 data
-            # but disable the test that checks if the raw image has a large enough spatial extent
-            buffer_px=int(PS.PATCH_RADIUS * (S2_PS.PATCH_RADIUS * S2_PS.GSD) / (PS.PATCH_RADIUS * PS.GSD)),
-            check_data_coverage=False,
-            compute_dem_features=False
-        )
-    elif C.__name__ == 'S2_PS':
-        # S2 data prep that matches the Planet data
-        if C.CSV_DATES_ALLOWED is not None:
-            print(f"Reading the allowed dates csv from {C.CSV_DATES_ALLOWED}")
-            dates_allowed = pd.read_csv(C.CSV_DATES_ALLOWED)
-            choose_best_auto = False
-            num_imgs_per_g = None
-        else:
-            dates_allowed = None
-            choose_best_auto = True
-            num_imgs_per_g = C.MAX_N_IMGS_PER_G
-        specific_settings = dict(
-            choose_best_auto=choose_best_auto,
-            max_cloud_f=0.3,
-            buffer_px=C.PATCH_RADIUS,
-            df_dates=dates_allowed,
-            max_n_imgs_per_g=num_imgs_per_g
         )
 
     settings = base_settings.copy()
