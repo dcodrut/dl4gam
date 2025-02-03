@@ -118,7 +118,7 @@ def plot_glacier(
     ax.imshow(img, extent=extent, interpolation='none')
     ax.set_title('B11-B8-B4', fontsize=fontsize)
 
-    # Subplot 3) plot the dh/dt and the elevation contours
+    # Subplot 3) plot the dh/dt (if exists) and the elevation contours
     ax = axes[2]
     img = nc.dhdt.values
     img = contrast_stretch(img=img, q_lim_clip=0.025, scale_to_01=False)

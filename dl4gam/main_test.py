@@ -168,7 +168,7 @@ if __name__ == "__main__":
     with open(settings_fp, 'r') as fp:
         all_settings = yaml.load(fp, Loader=yaml.FullLoader)
 
-    # overwrite the gpu id if provided
+    # overwrite the gpu ID if provided
     if args.gpu_id is not None:
         all_settings['trainer']['devices'] = [args.gpu_id]
 

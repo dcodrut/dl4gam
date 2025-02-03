@@ -1,5 +1,5 @@
 /.idea/
-/gl_seg_dl/lightning_logs/
+/dl4gam/lightning_logs/
 /data/
-/gl_seg_dl/.pytest_cache/
+/dl4gam/.pytest_cache/
 __pycache__/

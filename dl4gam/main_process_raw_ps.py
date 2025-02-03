@@ -43,7 +43,6 @@ def main_process_inv_data():
     # set the desired buffers
     s2_df_buffer.geometry = rectangle_buffers
     s2_df_buffer = s2_df_buffer.to_crs(epsg=4326)
-    print(s2_df_buffer)
 
     # prepare the Planet image path for each glacier
     raw_imgs_dir = '../data/data_gmb/data_gl_seg/external/planet/inv/outlines_boxes_buffer_1280m/'
@@ -109,9 +108,7 @@ def main_process_inv_data():
         assert len(x) == 1
         fp_list_merge.append(x[0])
     gl_to_box_df['fp'] = fp_list_merge
-    print(gl_to_box_df)
     s2_df_buffer_box = s2_df_buffer.merge(gl_to_box_df)
-    print(s2_df_buffer_box)
 
     # build a pandas dataframe with the corresponding image data for each glacier
     # in most of the cases, there should be one single date; treat the exceptions manually

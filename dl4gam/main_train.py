@@ -122,7 +122,7 @@ if __name__ == '__main__':
     # add the seed as a subfolder
     all_settings['logger']['name'] = str(Path(all_settings['logger']['name']) / f'seed_{all_settings["task"]["seed"]}')
 
-    # overwrite the gpu id if provided
+    # overwrite the gpu ID if provided
     if args.gpu_id is not None:
         all_settings['trainer']['devices'] = [args.gpu_id]
 
