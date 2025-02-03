@@ -26,6 +26,10 @@ def plot_glacier(
         gl_df_pred,
         df_results,
         plot_dir,
+        bands_img_1=('B4', 'B3', 'B2'),
+        bands_img_2=('B11', 'B8', 'B4'),
+        plot_dhdt=True,
+        source_name='Copernicus Sentinel-2',
         fig_w_px=1920,
         dpi=150,
         line_thickness=1,
@@ -53,7 +57,7 @@ def plot_glacier(
     # Subplot 1) plot the RGB image with the glacier outlines
     ax = axes[0]
     band_names = nc.band_data.long_name
-    img = nc.band_data.isel(band=[band_names.index(b) for b in ('B4', 'B3', 'B2')]).transpose('y', 'x', 'band').values
+    img = nc.band_data.isel(band=[band_names.index(b) for b in bands_img_1]).transpose('y', 'x', 'band').values
     img = contrast_stretch(img=img, q_lim_clip=0.025)
     ax.imshow(img, extent=extent, interpolation='none')
 
@@ -72,8 +76,8 @@ def plot_glacier(
     ]
 
     title = (
-        f"{img_date.strftime('%Y-%m-%d')} (Copernicus Sentinel-2, B4-B3-B2)\n"
-        f"$A_{{inv}}$ = {r_gl.area_km2:.2f} km$^2$; "
+        f"{img_date.strftime('%Y-%m-%d')} ({source_name}, {'-'.join(bands_img_1)})\n"
+        f"$A_{{inv}}$ = {r_gl.area_km2:.2f} km$^2$"
     )
 
     # get the stats for the current glacier if predictions are available
@@ -85,7 +89,7 @@ def plot_glacier(
                 (stats.Country == 'CH') & (stats.area_debris / stats.area_inv > 0.01)) else np.nan
         recall_debris_txt = f"{recall_debris * 100:.2f}%" if not np.isnan(recall_debris) else "NA"
         title += (
-            f"$A_{{pred}}$ = {stats.area_pred:.2f} ± {stats.area_pred_std:.3f} km$^2$\n"
+            f"; $A_{{pred}}$ = {stats.area_pred:.2f} ± {stats.area_pred_std:.3f} km$^2$\n"
             f"$FPR_{{20-50m}}$ = {stats['area_non_g_pred_b20_50'] / stats['area_non_g_b20_50'] * 100:.2f}%; "
             f"$recall_{{debris}}$ (CH only) = {recall_debris_txt}"
         )
@@ -113,28 +117,36 @@ def plot_glacier(
 
     # Subplot 2) plot the SWIR-NIR-R image
     ax = axes[1]
-    img = nc.band_data.isel(band=[band_names.index(b) for b in ('B11', 'B8', 'B4')]).transpose('y', 'x', 'band').values
+    img = nc.band_data.isel(band=[band_names.index(b) for b in bands_img_2]).transpose('y', 'x', 'band').values
     img = contrast_stretch(img=img, q_lim_clip=0.025)
     ax.imshow(img, extent=extent, interpolation='none')
-    ax.set_title('B11-B8-B4', fontsize=fontsize)
+    ax.set_title('-'.join(bands_img_2), fontsize=fontsize)
 
     # Subplot 3) plot the dh/dt (if exists) and the elevation contours
     ax = axes[2]
-    img = nc.dhdt.values
-    img = contrast_stretch(img=img, q_lim_clip=0.025, scale_to_01=False)
-    vmax_abs = max(abs(np.nanmin(img)), abs(np.nanmax(img)))
+    if plot_dhdt:
+        assert 'dhdt' in nc.data_vars, f"dhdt not found in {fp_raster}"
+        img = nc.dhdt.values
+        img = contrast_stretch(img=img, q_lim_clip=0.025, scale_to_01=False)
+        vmax_abs = max(abs(np.nanmin(img)), abs(np.nanmax(img)))
+    else:
+        img = np.zeros_like(nc.mask_crt_g, dtype=np.float32) + np.nan
+        vmax_abs = 0
+
     p = ax.imshow(img, extent=extent, interpolation='none', cmap='seismic_r', vmin=-vmax_abs, vmax=vmax_abs)
     ax.set_facecolor('gray')  # for the missing data
-    cbar = fig.colorbar(p, ax=axes[3], label='dh/dt (m $\\cdot y^{-1}$)', fraction=0.9)
-    cbar.ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-    cbar.ax.tick_params(labelsize=fontsize - 2)
-    range_dhdt = '-'.join([x[-4:] for x in C.EXTRA_RASTERS['dhdt'].parent.name.split('-01-01')[:2]])
-    ax.set_title(
-        f'dh/dt {range_dhdt} (Hugonnet et al. 2021)\n'
-        '(gray = missing)\n'
-        ' + COPDEM GLO-30 contours',
-        fontsize=fontsize
-    )
+    title = ''
+    if plot_dhdt:
+        cbar = fig.colorbar(p, ax=axes[3], label='dh/dt (m $\\cdot y^{-1}$)', fraction=0.9)
+        cbar.ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        cbar.ax.tick_params(labelsize=fontsize - 2)
+        range_dhdt = '-'.join([x[-4:] for x in C.EXTRA_RASTERS['dhdt'].parent.name.split('-01-01')[:2]])
+        title = (
+            f'dh/dt {range_dhdt} (Hugonnet et al. 2021)\n'
+            '(gray = missing)\n+ '
+        )
+    title += 'COPDEM GLO-30 contours'
+    ax.set_title(title, fontsize=fontsize)
 
     # plot the DEM contours
     z = nc.where(nc.mask_crt_g_b20).dem.values
@@ -218,6 +230,10 @@ if __name__ == "__main__":
         gl_df_pred=gl_df_pred,
         df_results=df_results,
         plot_dir=plot_dir,
+        bands_img_1=('B4', 'B3', 'B2') if ds_name != 'ps_alps' else ('R', 'G', 'B'),
+        bands_img_2=('B11', 'B8', 'B4') if ds_name != 'ps_alps' else ('NIR', 'G', 'B'),
+        source_name='Copernicus Sentinel-2' if ds_name != 'ps_alps' else 'PlanetScope',
+        plot_dhdt=False,
         line_thickness=1,
         fontsize=9,
     )
