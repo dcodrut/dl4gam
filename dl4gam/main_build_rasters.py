@@ -15,11 +15,18 @@ from utils.data_stats import compute_qc_stats
 from utils.general import run_in_parallel
 
 
-def add_stats(gl_df, fp_stats, num_procs, col_clouds, col_ndsi, col_albedo):
+def add_stats(
+        gl_df: gpd.GeoDataFrame,
+        fp_stats: Path,
+        num_procs: int,
+        col_clouds: str,
+        col_ndsi: str,
+        col_albedo: str
+) -> gpd.GeoDataFrame:
     """
-        Add the image statistics (i.e. cloud and/or shadow, NDSI and albedo) to the selected glacier dataframe.
-        The function calls the compute_qc_stats function in parallel for each glacier which computes various statistics,
-        both for the glacier and the surrounding area.
+    Add the image statistics (i.e. cloud and/or shadow, NDSI and albedo) to the selected glacier dataframe.
+    The function calls the compute_qc_stats function in parallel for each glacier which computes various statistics,
+    both for the glacier and the surrounding area.
 
     :param gl_df: the glaciers dataframe
     :param fp_stats: the filepath to the csv file where to save the QC statistics (or read them from if it exists)
@@ -27,6 +34,7 @@ def add_stats(gl_df, fp_stats, num_procs, col_clouds, col_ndsi, col_albedo):
     :param col_clouds: the column name for the cloud coverage (including shadows and missing pixels)
     :param col_ndsi: the column name for the NDSI
     :param col_albedo: the column name for the albedo
+
     :return: the updated dataframe with the QC statistics
     """
 
@@ -56,7 +64,15 @@ def add_stats(gl_df, fp_stats, num_procs, col_clouds, col_ndsi, col_albedo):
     return gl_df
 
 
-def select_best_images(gl_df, fp_stats_all, fp_stats_selected, col_clouds, col_ndsi, col_albedo, max_n_imgs_per_g):
+def select_best_images(
+        gl_df: gpd.GeoDataFrame,
+        fp_stats_all: Path,
+        fp_stats_selected: Path,
+        col_clouds: str,
+        col_ndsi: str,
+        col_albedo: str,
+        max_n_imgs_per_g: int
+) -> gpd.GeoDataFrame:
     """
     Select the best images based on the cloud coverage and the NDSI, plus the albedo as a tie-breaker.
 
@@ -67,7 +83,8 @@ def select_best_images(gl_df, fp_stats_all, fp_stats_selected, col_clouds, col_n
     :param col_ndsi: the column name for the NDSI
     :param col_albedo: the column name for the albedo
     :param max_n_imgs_per_g: the maximum number of images to keep per glacier
-    :return:
+
+    :return: a subset of the input dataframe containing the selected images and their statistics
     """
     # give an index to each image based on the cloud coverage and the NDSI
     for c in [col_clouds, col_ndsi]:
@@ -100,46 +117,83 @@ def select_best_images(gl_df, fp_stats_all, fp_stats_selected, col_clouds, col_n
 
     return gl_sdf
 
-
 def prepare_all_rasters(
-        fp_gl_df_all,
-        out_rasters_dir,
-        buffer_px,
-        check_data_coverage=True,
-        raw_images_dir=None,
-        raw_fp_df=None,
-        no_data=C.NODATA,
-        num_procs=1,
-        bands_to_keep='all',
-        extra_geometries_dict=None,
-        extra_rasters_dict=None,
-        min_area=None,
-        df_dates=None,
-        choose_best_auto=False,
-        max_cloud_f=None,
-        max_n_imgs_per_g=1,
-        compute_dem_features=False
-):
+        fp_gl_df_all: gpd.GeoDataFrame,
+        out_rasters_dir: str | Path,
+        raw_images_dir: str | Path = None,
+        date_indices: tuple = (0, 8),
+        date_format: str = '%Y%m%d',
+        raw_fp_df: pd.DataFrame = None,
+        buffer_px: int = 10,
+        check_data_coverage: bool = True,
+        no_data: int = C.NODATA,
+        num_procs: int = 1,
+        bands_to_keep: str = 'all',
+        extra_geometries_dict: dict = None,
+        extra_rasters_dict: dict = None,
+        min_area: float = None,
+        df_dates: pd.DataFrame = None,
+        choose_best_auto: bool = False,
+        max_cloud_f: float = None,
+        max_n_imgs_per_g: int = 1,
+        compute_dem_features: bool = False
+) -> None:
     """
-        Prepare the rasters for all the glaciers in the given dataframe.
+    Prepare the rasters for all the glaciers in the given shapefile, with additional features.
 
-    :param fp_gl_df_all: the filepath to the shapefile containing the glacier outlines
-    :param out_rasters_dir: the directory where to save the glacier-wide raster files
-    :param buffer_px: the buffer in pixels to add around the glacier outlines
-    :param check_data_coverage: if True, check if the raw image has a large enough spatial extent
-    :param raw_images_dir: the directory containing the raw images (optional, if raw_fp_df is not given)
-    :param raw_fp_df: the dataframe containing the list of images for each glacier (optional, if raw_images_dir is not given)
-    :param no_data: the no data value to use for the output rasters
-    :param num_procs: the number of parallel processes to use
-    :param bands_to_keep: the bands to keep from the raw images
-    :param extra_geometries_dict: a dictionary containing the extra shapefiles to add to the glacier datasets as binary masks
-    :param extra_rasters_dict: a dictionary containing the extra rasters to add to the glacier datasets
-    :param min_area: the minimum glacier area to consider (only the rasters for these glaciers will be built but the main binary masks will contain all glaciers)
-    :param df_dates: a dataframe containing the allowed dates for each glacier (if None, all the images will be used)
-    :param choose_best_auto: if True, keep the best images based on the cloud coverage and the NDSI
-    :param max_cloud_f: the maximum cloud coverage allowed for each image
-    :param max_n_imgs_per_g: the maximum number of images to keep per glacier
-    :param compute_dem_features: if True, compute the features from the DEM (see the add_dem_features function)
+    We need at least the following data sources:
+    - a path to the shapefile containing the glacier outlines; the shapefile must contain the following columns:
+        - entry_id: the glacier ID
+        - geometry: the glacier outline
+    - either:
+        - a *directory* containing the raw images (e.g. Sentinel-2) for each glacier, structured in subdirectories as
+        follows: raw_images_dir/glacier_id/image_name.tif. Note that the image name must contain the date of the image
+        (e.g. 20190701.tif). The date is extracted from the image name using the date_indices and date_format
+        parameters. The glacier_id is extracted from the directory name.
+
+        or
+
+        - a pandas *dataframe* containing the list of images for each glacier & date. The dataframe must contain the
+        following columns:
+            - entry_id: the glacier ID
+            - fp_img: the filepath to the image
+            - date: the date of the image in the format YYYY-MM-DD
+
+        TODO: allow multiple images per date and glacier and stitch them together
+
+    Each glacier-wide raster will contain:
+    - the main data modality (e.g. optical data from Sentinel-2)
+    - the current glacier outline as a binary mask, including a few masks with various buffers (see
+    add_glacier_masks) around the main glacier which will be later used for evaluation statistics
+    - a mask with all the glaciers in the image (where integer IDs are used)
+    - the extra geometries (e.g. the debris cover) as binary masks, see the extra_geometries_dict parameter
+    - the extra rasters (e.g. the DEM) which intersect the glacier outlines, see the extra_rasters_dict parameter
+    - the features derived from the DEM, see the compute_dem_features parameter
+
+    :param fp_gl_df_all: The filepath to the shapefile containing the glacier outlines.
+    :param out_rasters_dir: The directory where to save the glacier-wide raster files.
+    :param raw_images_dir: The directory containing the raw images (optional, see also *raw_fp_df*).
+    :param date_indices: The range of where the date is located in the image filename (optional, see also *raw_fp_df*).
+    :param date_format: The format of the date in the image filename (optional, see also *raw_fp_df*).
+    :param raw_fp_df: The dataframe containing the list of images for each glacier (optional, if raw_images_dir is
+    not given).
+    :param buffer_px: The buffer in pixels to consider around the glacier outlines when cutting the raw images.
+    :param check_data_coverage: If True, check if the raw image has a large enough spatial extent to cover the
+    glacier + the buffer.
+    :param no_data: The no data value to use for the output rasters.
+    :param num_procs: The number of parallel processes to use.
+    :param bands_to_keep: The bands to keep from the raw images.
+    :param extra_geometries_dict: A dictionary containing the extra shapefiles to add to the glacier datasets as
+    binary masks.
+    :param extra_rasters_dict: A dictionary containing the extra rasters to add to the glacier datasets.
+    :param min_area: The minimum glacier area to consider (only the rasters for these glaciers will be built but the
+    main binary masks will contain all glaciers).
+    :param df_dates: A dataframe containing the allowed dates for each glacier (if None, all the images will be used).
+    :param choose_best_auto: If True, keep the best images based on the cloud coverage and the NDSI.
+    :param max_cloud_f: The maximum cloud coverage allowed for each image.
+    :param max_n_imgs_per_g: The maximum number of images to keep per glacier.
+    :param compute_dem_features: If True, compute the features from the DEM (see the add_dem_features function).
+
     :return: None
     """
 
@@ -148,8 +202,10 @@ def prepare_all_rasters(
     print(f"#glaciers = {len(gl_df_all)}")
 
     # check if the dataframes have the required ID columns
-    assert 'entry_id' in gl_df_all.columns
-    assert 'entry_id_i' in gl_df_all.columns
+    assert 'entry_id' in gl_df_all.columns, "`entry_id` column not found in the glacier dataframe"
+    if 'entry_id_i' not in gl_df_all.columns:
+        print("Assigning an integer ID to each glacier, starting from 1, which will be used for the mask construction.")
+        gl_df_all['entry_id_i'] = np.arange(len(gl_df_all)) + 1
 
     if min_area is not None:
         # keep the glaciers of interest in a different dataframe
@@ -159,17 +215,22 @@ def prepare_all_rasters(
         gl_df_sel = gl_df_all
 
     assert (raw_images_dir is not None) or (raw_fp_df is not None), \
-        "Either raw_images_dir or raw_fp_df must be given (the latter has priority)."
+        "Either raw_images_dir or raw_fp_df must be given."
 
     if raw_fp_df is None:
         # get all the raw images and match them to the corresponding glaciers if the raw_fp_df is not given
         raw_images_dir = Path(raw_images_dir)
         assert raw_images_dir.exists(), f"raw_images_dir = {raw_images_dir} not found."
-        fp_img_list_all = sorted(list(raw_images_dir.glob('**/*.tif')))
+        fp_img_list_all = sorted(list(raw_images_dir.rglob('*.tif')))
+        assert len(fp_img_list_all) > 0, f"No (tif) images found in {raw_images_dir}"
+
         raw_fp_df = pd.DataFrame({
             'entry_id': [fp.parent.name for fp in fp_img_list_all],
             'fp_img': fp_img_list_all,
-            'date': [pd.to_datetime(fp.stem[:8]).strftime('%Y-%m-%d') for fp in fp_img_list_all]
+            'date': [
+                pd.to_datetime(fp.stem[date_indices[0]:date_indices[1]], format=date_format).strftime('%Y-%m-%d')
+                for fp in fp_img_list_all
+            ]
         })
     print(f"#total raw images = {len(raw_fp_df)}")
 
