@@ -25,10 +25,12 @@ For reproducing the results, please follow the steps below. Please open an issue
 #### Data downloading (the processed NetCDF rasters):
 1. Download and process the glacier outlines: check the notebook `notebooks/prepare_glacier_outlines.ipynb` 
 2. Download the glacier rasters: `bash ./scripts/download_data.sh`  
-   The archived rasters have ~3Gb for each year (inventory one & 2023). After extracting the NetCDF rasters, we will need 20Gb for each year.
+   The archived rasters have ~10Gb for each year (inventory one & 2023). After extracting the NetCDF rasters, we will need ~17Gb for each year.
 
 #### Data processing (patchifying, cross-validation splits & data statistics for normalization): 
-`python main_data_prep.py`
+`python main_data_prep.py`  
+
+*Note that the generated patches need around 50Gb of disk space.*
 
 #### Model training, testing and area estimation:
 1. Train ten U-Net models for each of the five cross-validation iteration: `python main_train_ensemble.py`
