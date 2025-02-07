@@ -41,6 +41,10 @@ def add_stats(
     if fp_stats.exists():
         print(f"Reading the cloud & shadow stats from {fp_stats}")
         cloud_stats_df = pd.read_csv(fp_stats)
+
+        # make sure all the glacier IDs are present in the stats dataframe
+        assert set(gl_df.entry_id).issubset(set(cloud_stats_df.entry_id)), \
+            "Some glacier IDs are missing from the stats dataframe. Delete the file and rerun the script."
     else:
         gl_sdf_list = list(
             gl_df.apply(lambda r: gpd.GeoDataFrame(pd.DataFrame(r).T, crs=gl_df.crs), axis=1)
