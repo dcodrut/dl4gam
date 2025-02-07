@@ -192,7 +192,7 @@ if __name__ == "__main__":
     gl_df = gpd.read_file(C.GLACIER_OUTLINES_FP)
 
     # read the paths to the rasters
-    rasters_dir = Path(C.DIR_GL_INVENTORY)
+    rasters_dir = Path(C.DIR_GL_RASTERS)
     year = rasters_dir.parent.name
     ds_name = rasters_dir.parent.parent.name
     print(f"Reading the raster paths from {rasters_dir}")

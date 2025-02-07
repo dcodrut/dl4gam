@@ -359,7 +359,7 @@ if __name__ == "__main__":
         raw_images_dir=C.RAW_DATA_DIR,
         raw_fp_df=None,
         fp_gl_df_all=C.GLACIER_OUTLINES_FP,
-        out_rasters_dir=C.DIR_GL_INVENTORY,
+        out_rasters_dir=C.DIR_GL_RASTERS,
         min_area=C.MIN_GLACIER_AREA,
         bands_to_keep=C.BANDS,
         no_data=C.NODATA,

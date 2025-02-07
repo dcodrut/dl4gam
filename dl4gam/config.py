@@ -39,6 +39,12 @@ class BaseConfig:
 
     @classmethod
     @property
+    def SUBDIR(cls):
+        # subdirectory of the WD where the data is stored (for separating the data by years e.g. 'inv', '2023')
+        raise NotImplementedError
+
+    @classmethod
+    @property
     def BANDS(cls):
         # which bands to keep from the original raw files (used when building the glacier-wide rasters)
         raise NotImplementedError
@@ -77,16 +83,13 @@ class BaseConfig:
 
     @classmethod
     @property
-    def DIR_GL_INVENTORY(cls):
-        return Path(cls.WD) / Path(cls.RAW_DATA_DIR).name / 'glacier_wide'
+    def DIR_GL_RASTERS(cls):
+        return Path(cls.WD) / cls.SUBDIR / 'glacier_wide'
 
     @classmethod
     @property
     def DIR_GL_PATCHES(cls):
-        return (
-                Path(cls.WD) / Path(cls.RAW_DATA_DIR).name / 'patches' /
-                f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP_TRAIN}"
-        )
+        return Path(cls.WD) / cls.SUBDIR / 'patches' / f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP_TRAIN}"
 
     @classmethod
     @property
@@ -129,17 +132,17 @@ class S2_ALPS(BaseConfig):
 
     # get the year from the environment variables if exists, otherwise assume it's the inventory year (i.e. mainly 2015)
     import os
-    _year = os.environ.get('S2_ALPS_YEAR', 'inv')
-    assert _year in ('inv', '2023')
+    SUBDIR = os.environ.get('S2_ALPS_YEAR', 'inv')
+    assert SUBDIR in ('inv', '2023')
 
-    if _year == 'inv':
+    if SUBDIR == 'inv':
         # extra rasters to be added to the optical data
         EXTRA_RASTERS = {
             'dem': Path('../data/external/copdem_30m'),
             'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'),
             'v': Path('../data/external/velocity/its_live/2015'),
         }
-    elif _year == '2023':
+    elif SUBDIR == '2023':
         # extra rasters to be added to the optical data
         EXTRA_RASTERS = {
             'dem': Path('../data/external/copdem_30m'),
@@ -152,7 +155,7 @@ class S2_ALPS(BaseConfig):
         'debris': Path('../data/outlines/debris_multisource/debris_multisource.shp'),
     }
 
-    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/{_year}'
+    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/{SUBDIR}'
     WD = f'../data/external/wd/s2_alps'
 
     # raw -> rasters settings
@@ -179,13 +182,13 @@ class S2_ALPS_PLUS(S2_ALPS):
     WD = f'../data/external/wd/s2_alps_plus'
 
     # csv file with the finals inventory dates
-    CSV_DATES_ALLOWED = '../data/inv_images_qc/final_dates.csv' if S2_ALPS._year == 'inv' else None
+    CSV_DATES_ALLOWED = '../data/inv_images_qc/final_dates.csv' if S2_ALPS.SUBDIR == 'inv' else None
 
 
 class S2_SGI(S2_ALPS):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
-    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_sgi/{S2_ALPS._year}'
+    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_sgi/{S2_ALPS.SUBDIR}'
 
     WD = '../data/external/wd/s2_sgi'
 

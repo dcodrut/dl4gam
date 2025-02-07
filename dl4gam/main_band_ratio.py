@@ -209,7 +209,7 @@ if __name__ == "__main__":
         # now apply the thresholds to the test set; save the "predictions" in the same format as for the trained models
 
         # first, prepare the testing glaciers using the split dataframe
-        split_fp = Path(C.DIR_GL_INVENTORY).parent.parent / 'cv_split_outlines' / 'map_all_splits_all_folds.csv'
+        split_fp = Path(C.DIR_GL_RASTERS).parent.parent / 'cv_split_outlines' / 'map_all_splits_all_folds.csv'
         split_df = pd.read_csv(split_fp, dtype={'entry_id': str})
 
         model_name = f"band_ratio_{thr_type}"
@@ -226,7 +226,7 @@ if __name__ == "__main__":
                 input_settings_fp.parent.mkdir(parents=True, exist_ok=True)
                 with open(input_settings_fp, 'w') as fp:
                     yaml.dump({
-                        'data': {'rasters_dir': str(C.DIR_GL_INVENTORY)},
+                        'data': {'rasters_dir': str(C.DIR_GL_RASTERS)},
                         'model': {'inputs': input_settings}
                     }, fp, sort_keys=False)
 

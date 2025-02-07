@@ -178,7 +178,7 @@ if __name__ == "__main__":
     if args.rasters_dir is not None:
         rasters_dir = args.rasters_dir
     else:
-        rasters_dir = C.DIR_GL_INVENTORY
+        rasters_dir = C.DIR_GL_RASTERS
 
     # replace the 'preds' subdirectory with 'stats'
     p = list(inference_dir_root.parts)

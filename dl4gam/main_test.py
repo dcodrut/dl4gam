@@ -173,7 +173,7 @@ if __name__ == "__main__":
         all_settings['trainer']['devices'] = [args.gpu_id]
 
     # set the raster directory to the command line argument if given, otherwise use the inference dirs from the config
-    rasters_dir = args.rasters_dir if args.rasters_dir is not None else C.DIR_GL_INVENTORY
+    rasters_dir = args.rasters_dir if args.rasters_dir is not None else C.DIR_GL_RASTERS
     assert Path(rasters_dir).exists(), f"rasters_dir = {rasters_dir} does not exist"
     all_settings['data']['rasters_dir'] = rasters_dir
 
