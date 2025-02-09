@@ -10,7 +10,7 @@ dependencies:
   - pytorch=2.5.1
   - torchvision=0.20
   - pip:
-      - segmentation-models-pytorch==0.3.4
+      - segmentation-models-pytorch==0.4.0
       - pytorch-lightning==2.4.0
       - torchmetrics==1.6.0
       - tensorboard==2.18.0
