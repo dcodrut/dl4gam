@@ -57,6 +57,10 @@ def add_glacier_masks(
     # keep only the current glacier and its neighbours
     nc_data_crop = nc_data.rio.clip([g_buff_bbox])
 
+    # pad the data with NODATA values if the glacier is not fully covered
+    if not check_data_coverage:
+        nc_data_crop = nc_data_crop.rio.pad_box(*g_buff_bbox.bounds)
+
     # add masks (current glacier mask & all glaciers mask, i.e. with glaciers IDs)
     # 1. all glaciers mask - with glaciers IDs
     mask_rgi_id = np.zeros_like(nc_data_crop.band_data.values[0], dtype=np.int32) - 1
