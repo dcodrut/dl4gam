@@ -63,8 +63,9 @@ def add_glacier_masks(
     gl_crt_buff_df = gl_proj_df[gl_proj_df.intersects(g_buff_bbox)]
     for i in range(len(gl_crt_buff_df)):
         row = gl_crt_buff_df.iloc[i]
+        # note that we ignore the NaN values in the raster when setting the glacier IDs (this is why we use fillna(0))
         tmp_raster = nc_data_crop.band_data.isel(band=0).fillna(0).rio.clip([row.geometry], drop=False).values
-        mask_crt_g = ~np.isnan(tmp_raster)
+        mask_crt_g = (tmp_raster != nc_data_crop.band_data.rio.nodata)
         mask_rgi_id[mask_crt_g] = row.entry_id_i
     nc_data_crop['mask_all_g_id'] = (('y', 'x'), mask_rgi_id)
     nc_data_crop['mask_all_g_id'].attrs['_FillValue'] = -1
@@ -75,13 +76,13 @@ def add_glacier_masks(
         _crt_g_shp = crt_g_shp.buffer(buffer_mask)
         if not _crt_g_shp.iloc[0].is_empty:
             tmp_raster = nc_data_crop.band_data.isel(band=0).fillna(0).rio.clip(_crt_g_shp.geometry, drop=False).values
-            mask_crt_glacier = (~np.isnan(tmp_raster)).astype(np.int8)
+            mask_crt_g = (tmp_raster != nc_data_crop.band_data.rio.nodata).astype(np.int8)
         else:
-            mask_crt_glacier = np.zeros_like(nc_data_crop.mask_all_g_id).astype(np.int8)
+            mask_crt_g = np.zeros_like(nc_data_crop.mask_all_g_id).astype(np.int8)
 
         label = '' if buffer_mask == 0 else f'_b{buffer_mask}'
         k = 'mask_crt_g' + label
-        nc_data_crop[k] = (('y', 'x'), mask_crt_glacier)
+        nc_data_crop[k] = (('y', 'x'), mask_crt_g)
         nc_data_crop[k].attrs['_FillValue'] = -1
         nc_data_crop[k].rio.write_crs(nc_data.rio.crs, inplace=True)
 
@@ -102,7 +103,7 @@ def add_extra_mask(nc_data, mask_name, gdf):
 
     # get all the polys that intersect the current raster (multiple glaciers can be covered)
     tmp_raster = nc_data.band_data.isel(band=0).rio.clip(gdf_proj.geometry, drop=False).values
-    mask = (~np.isnan(tmp_raster)).astype(np.int8)
+    mask = (tmp_raster != nc_data.band_data.rio.nodata).astype(np.int8)
     nc_data[mask_name] = (('y', 'x'), mask)
     nc_data[mask_name].attrs['_FillValue'] = -1
     nc_data[mask_name].rio.write_crs(nc_data.rio.crs, inplace=True)
@@ -136,7 +137,7 @@ def prep_glacier_dataset(
     assert len(row_crt_g) == 1
 
     # read the raw image
-    nc = xr.open_dataset(fp_img)
+    nc = xr.open_dataset(fp_img, mask_and_scale=False)
 
     # check if the name of the bands is given, otherwise name them
     if 'long_name' not in nc.band_data.attrs:
@@ -169,10 +170,8 @@ def prep_glacier_dataset(
         for k, gdf in extra_gdf_dict.items():
             add_extra_mask(nc_data=nc, mask_name=f"mask_{k}", gdf=gdf)
 
-    # convert the image data to int16
-    nc['band_data'] = nc.band_data.fillna(no_data).astype(np.int16)
-    nc['band_data'].attrs['_FillValue'] = no_data
-    nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)  # not sure why but needed for QGIS
+    # not sure why but needed for QGIS
+    nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)
 
     # export
     fp_out.parent.mkdir(exist_ok=True, parents=True)

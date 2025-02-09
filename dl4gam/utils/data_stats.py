@@ -89,7 +89,7 @@ def compute_qc_stats(gl_sdf, include_shadows=True):
     row = gl_sdf.iloc[0]
     fp = Path(row.fp_img)
     stats = {'fp_img': str(fp), 'entry_id': row.entry_id}
-    nc = xr.open_dataset(fp)
+    nc = xr.open_dataset(fp, mask_and_scale=False)
 
     # get the band names
     band_names = list(nc.band_data.attrs['long_name'])

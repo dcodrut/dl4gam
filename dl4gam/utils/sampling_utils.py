@@ -173,7 +173,7 @@ def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
 
     for entry_id in tqdm(entry_id_list, desc='Patchifying'):
         g_fp = entry_id_to_fp[entry_id][0]
-        nc = xr.open_dataset(g_fp, decode_coords='all').load()
+        nc = xr.open_dataset(g_fp, decode_coords='all', mask_and_scale=False).load()
 
         # get the locations of the sampled patches
         patches_df = get_patches_gdf(
