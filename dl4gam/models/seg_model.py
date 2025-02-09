@@ -35,7 +35,7 @@ class SegModel(torch.nn.Module):
         # set the number of output channels
         self.model_args['classes'] = 1
 
-        self.logger.info(f'Building Unet with {self.model_args}')
+        self.logger.info(f'Building SegModel with {self.model_args}')
         self.seg_model = getattr(smp, self.model_name)(**self.model_args)
 
         if other_settings is not None:
