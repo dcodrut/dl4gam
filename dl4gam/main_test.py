@@ -1,3 +1,4 @@
+import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -6,11 +7,10 @@ import pandas as pd
 import pytorch_lightning as pl
 import yaml
 from tqdm import tqdm
-import logging
 
 # local imports
-from config import C
 import models
+from config import C
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
 from utils.general import str2bool
@@ -89,16 +89,19 @@ def test_model(
     else:
         dir_fp = Path(dm.rasters_dir)
         logger.info(f'Reading the glaciers IDs based on the rasters from {dir_fp}')
-        fp_list = list(dir_fp.glob('**/*.nc'))
-        glacier_id_list_crt_dir = set([p.parent.name for p in fp_list])
+        fp_rasters = list(dir_fp.rglob('*.nc'))
+        glacier_id_list_crt_dir = set([p.parent.name for p in fp_rasters])
         logger.info(f'#glaciers in the current rasters dir = {len(glacier_id_list_crt_dir)}')
 
         glacier_id_list_final = sorted(set(glacier_id_list_crt_dir) & set(glacier_id_list))
         logger.info(f'#glaciers to test on = {len(glacier_id_list_final)}')
 
-        # TODO: parallelize this and avoid loading everything in-memory at the beginning
+        fp_rasters = list(filter(lambda x: x.parent.name in glacier_id_list_final, fp_rasters))
+        logger.info(f'#rasters to test on = {len(fp_rasters)}')
+
+        # TODO: try to use a single dataloader but with multiple datasets or ConcatDataset
         dl_list = dm.test_dataloaders_per_glacier(
-            gid_list=glacier_id_list_final,
+            fp_rasters=fp_rasters,
             patch_radius=patch_radius,
             sampling_step=sampling_step,
             preload_data=preload_data

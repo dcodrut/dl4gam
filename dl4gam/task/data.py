@@ -1,3 +1,4 @@
+import functools
 from pathlib import Path
 from typing import Union
 
@@ -6,8 +7,8 @@ import pandas as pd
 import pytorch_lightning as pl
 import xarray as xr
 from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
 
+from utils.general import run_in_parallel
 from utils.sampling_utils import get_patches_gdf
 
 
@@ -251,7 +252,7 @@ class GlSegPatchDataset(Dataset):
 
 
 class GlSegDataset(GlSegPatchDataset):
-    def __init__(self, fp, patch_radius=None, sampling_step=None, preload_data=False, **kwargs):
+    def __init__(self, fp, patch_radius, sampling_step=None, preload_data=False, **kwargs):
         self.fp = fp
         super().__init__(folder=None, fp_list=[fp], **kwargs)
 
@@ -382,35 +383,25 @@ class GlSegDataModule(pl.LightningDataModule):
                 data_stats_df=self.data_stats_df
             )
 
-    def setup_dl_per_glacier(self, gid_list=None, patch_radius=None, sampling_step=None, preload_data=False):
-        # get the directory of the full glacier cubes
-        cubes_dir = Path(self.rasters_dir)
-        assert cubes_dir.exists()
-
-        # get all glaciers
-        cubes_fp = sorted(list(cubes_dir.glob('**/*.nc')))
-
-        # filter the glaciers by id, if needed
-        if gid_list is not None:
-            cubes_fp = list(filter(lambda f: f.parent.name in gid_list, cubes_fp))
-
-        test_ds_list = []
-        for fp in tqdm(cubes_fp, desc='Preparing datasets per glacier'):
-            test_ds_list.append(
-                GlSegDataset(
-                    fp=fp,
-                    input_settings=self.input_settings,
-                    standardize_data=self.standardize_data,
-                    minmax_scale_data=self.minmax_scale_data,
-                    scale_each_band=self.scale_each_band,
-                    data_stats_df=self.data_stats_df,
-                    patch_radius=patch_radius,
-                    sampling_step=sampling_step,
-                    preload_data=preload_data
-                )
-            )
-
-        return test_ds_list
+    def build_patch_dataset_per_glacier(self, fp_rasters, patch_radius, sampling_step=None, preload_data=False):
+        ds_list = run_in_parallel(
+            fun=functools.partial(
+                GlSegDataset,
+                input_settings=self.input_settings,
+                standardize_data=self.standardize_data,
+                minmax_scale_data=self.minmax_scale_data,
+                scale_each_band=self.scale_each_band,
+                data_stats_df=self.data_stats_df,
+                patch_radius=patch_radius,
+                sampling_step=sampling_step,
+                preload_data=preload_data
+            ),
+            fp=fp_rasters,
+            num_procs=self.num_workers,
+            pbar=True,
+            pbar_desc='Preparing patch-level datasets for each glacier'
+        )
+        return ds_list
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -445,9 +436,9 @@ class GlSegDataModule(pl.LightningDataModule):
             drop_last=False
         )
 
-    def test_dataloaders_per_glacier(self, gid_list, patch_radius=None, sampling_step=None, preload_data=False):
-        test_ds_list = self.setup_dl_per_glacier(
-            gid_list=gid_list,
+    def test_dataloaders_per_glacier(self, fp_rasters, patch_radius=None, sampling_step=None, preload_data=False):
+        test_ds_list = self.build_patch_dataset_per_glacier(
+            fp_rasters=fp_rasters,
             patch_radius=patch_radius,
             sampling_step=sampling_step,
             preload_data=preload_data
