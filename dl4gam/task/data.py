@@ -9,7 +9,7 @@ import xarray as xr
 from torch.utils.data import Dataset, DataLoader
 
 from utils.general import run_in_parallel
-from utils.sampling_utils import get_patches_gdf
+from utils.sampling_utils import get_patches_df
 
 
 def extract_inputs(ds, fp, input_settings):
@@ -261,7 +261,7 @@ class GlSegDataset(GlSegPatchDataset):
             self.nc = xr.load_dataset(fp, decode_coords='all')
         else:
             self.nc = xr.open_dataset(fp, decode_coords='all')
-        self.patches_df = get_patches_gdf(
+        self.patches_df = get_patches_df(
             self.nc,
             patch_radius=patch_radius,
             sampling_step=sampling_step,
@@ -271,13 +271,13 @@ class GlSegDataset(GlSegPatchDataset):
         )
 
     def __getitem__(self, idx):
-        patch_shp = self.patches_df.iloc[idx:idx + 1]
-        nc_patch = self.nc.rio.clip(patch_shp.geometry)
+        r = self.patches_df.iloc[idx]
+        nc_patch = self.nc.isel(x=slice(r.minx, r.maxx), y=slice(r.miny, r.maxy))
 
         data = self.process_data(ds=nc_patch, fp=self.fp)
 
-        # add information regarding the location of the patch w.r.t. the entire glacier
-        data['patch_info'] = {k: patch_shp.iloc[0][k] for k in ['x_center', 'y_center', 'bounds_px']}
+        # save the patch location relative to the entire glacier (will be used later for mosaicking the predictions)
+        data['patch_info'] = r.to_dict()
 
         return data
 

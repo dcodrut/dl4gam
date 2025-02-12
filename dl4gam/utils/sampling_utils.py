@@ -1,17 +1,23 @@
 from pathlib import Path
 
-import geopandas as gpd
 import numpy as np
-import shapely
-import shapely.geometry
+import pandas as pd
 import xarray as xr
 from tqdm import tqdm
 
 
-def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_centroid=False, add_extremes=False):
+def get_patches_df(
+        nc: xr.Dataset,
+        patch_radius: int,
+        sampling_step: int = None,
+        add_center: bool = False,
+        add_centroid: bool = False,
+        add_extremes: bool = False,
+        keep_only_patches_on_glacier: bool = True
+):
     """
-    Given a xarray dataset for one glacier, it returns a geopandas dataframe with the contours of square patches
-    extracted from the dataset. The patches are generated only if they have the center pixel on the glacier.
+    Given a xarray dataset for one glacier, it returns a pandas dataframe with the pixel coordinates for square patches
+    extracted from the dataset.
 
     :param nc: xarray dataset containing the image data and the glacier masks
     :param patch_radius: patch radius (in px)
@@ -20,7 +26,8 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
     :param add_center: whether to add one patch centered in the middle of the glacier's box
     :param add_centroid: whether to add one patch centered in the centroid of the glacier
     :param add_extremes: whether to add four patches centered on the margin (in each direction) of the glacier
-    :return: a geopandas dataframe with the contours of the generated patches
+    :param keep_only_patches_on_glacier: whether to keep only the patches that have the center pixel on the glacier
+    :return: a pandas dataframe with the pixel coordinates of the patches
     """
 
     if sampling_step is None:
@@ -37,12 +44,16 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
     maxy = all_y_centers.max()
 
     if sampling_step is not None:
-        # sample the feasible centers uniformly; ensure that the first and last feasible centers are always included
-        idx_x = np.asarray([p % sampling_step == 0 for p in all_x_centers])
-        idx_y = np.asarray([p % sampling_step == 0 for p in all_y_centers])
-        idx = idx_x & idx_y
-        x_centers = all_x_centers[idx]
-        y_centers = all_y_centers[idx]
+        # sample the feasible centers uniformly from either the glacier pixels or the whole image
+        if keep_only_patches_on_glacier:
+            idx_x = np.asarray([p % sampling_step == 0 for p in all_x_centers])
+            idx_y = np.asarray([p % sampling_step == 0 for p in all_y_centers])
+            idx = idx_x & idx_y
+            x_centers = all_x_centers[idx]
+            y_centers = all_y_centers[idx]
+        else:
+            x_centers = np.arange(0, nc.dims['x'], sampling_step)
+            y_centers = np.arange(0, nc.dims['y'], sampling_step)
     else:
         x_centers = []
         y_centers = []
@@ -65,24 +76,17 @@ def get_patches_gdf(nc, patch_radius, sampling_step=None, add_center=False, add_
         y_centers = np.concatenate([y_centers, [int((miny + maxy) / 2)]]).astype(int)
 
     # build a geopandas dataframe with the sampled patches
-    all_patches = {k: [] for k in ['x_center', 'y_center', 'bounds_px', 'bounds_m', 'gl_cvg']}
+    all_patches = {k: [] for k in ['minx', 'miny', 'maxx', 'maxy']}
     for x_center, y_center in zip(x_centers, y_centers):
         minx_patch, maxx_patch = x_center - patch_radius, x_center + patch_radius
         miny_patch, maxy_patch = y_center - patch_radius, y_center + patch_radius
-        nc_crt_patch = nc.isel(x=slice(minx_patch, maxx_patch), y=slice(miny_patch, maxy_patch))
 
-        # compute the fraction of pixels that cover the glacier
-        g_fraction = float(np.sum((nc_crt_patch.mask_crt_g == 1))) / nc_crt_patch.mask_crt_g.size
+        all_patches['minx'].append(minx_patch)
+        all_patches['miny'].append(miny_patch)
+        all_patches['maxx'].append(maxx_patch)
+        all_patches['maxy'].append(maxy_patch)
 
-        all_patches['x_center'].append(x_center)
-        all_patches['y_center'].append(y_center)
-        all_patches['bounds_px'].append((minx_patch, miny_patch, maxx_patch, maxy_patch))
-        all_patches['bounds_m'].append(nc_crt_patch.rio.bounds())
-        all_patches['gl_cvg'].append(g_fraction)
-
-    patches_df = gpd.GeoDataFrame(all_patches)
-    patches_df = gpd.GeoDataFrame(patches_df, geometry=patches_df.bounds_m.apply(lambda x: shapely.geometry.box(*x)))
-    patches_df = patches_df.set_crs(nc.rio.crs)
+    patches_df = pd.DataFrame(all_patches)
 
     return patches_df
 
@@ -176,7 +180,7 @@ def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
         nc = xr.open_dataset(g_fp, decode_coords='all', mask_and_scale=False).load()
 
         # get the locations of the sampled patches
-        patches_df = get_patches_gdf(
+        patches_df = get_patches_df(
             nc=nc,
             sampling_step=sampling_step,
             patch_radius=patch_radius,

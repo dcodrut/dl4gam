@@ -247,10 +247,10 @@ class GlSegTask(pl.LightningModule):
                 crt_pred = preds[i][0]
 
                 # get the (pixel) coordinates of the current patch
-                i_minx, i_maxx = patch_infos['bounds_px'][0][i], patch_infos['bounds_px'][2][i]
-                i_miny, i_maxy = patch_infos['bounds_px'][1][i], patch_infos['bounds_px'][3][i]
-                preds_acc[i_miny:i_maxy, i_minx:i_maxx] += crt_pred
-                preds_cnt[i_miny:i_maxy, i_minx:i_maxx] += 1
+                minx, maxx = patch_infos['minx'][i], patch_infos['maxx'][i]
+                miny, maxy = patch_infos['miny'][i], patch_infos['maxy'][i]
+                preds_acc[miny:maxy, minx:maxx] += crt_pred
+                preds_cnt[miny:maxy, minx:maxx] += 1
 
         preds_acc /= preds_cnt
 
