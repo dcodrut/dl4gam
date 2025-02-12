@@ -121,6 +121,7 @@ def select_best_images(
 
     return gl_sdf
 
+
 def prepare_all_rasters(
         fp_gl_df_all: gpd.GeoDataFrame,
         out_rasters_dir: str | Path,
@@ -309,7 +310,7 @@ def prepare_all_rasters(
 
     # prepare the output paths
     fp_img_list = [Path(x) for x in gl_df_sel.fp_img]
-    fn_img_out_list = [x.with_suffix('.nc').name for x in fp_img_list]
+    fn_img_out_list = [f"{x.stem[date_indices[0]:date_indices[1]]}.nc" for x in fp_img_list]
     fp_out_list = [Path(out_rasters_dir) / x / y for x, y in zip(gl_df_sel.entry_id, fn_img_out_list)]
 
     # build and export the rasters for each image
