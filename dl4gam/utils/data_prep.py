@@ -119,7 +119,6 @@ def prep_glacier_dataset(
         entry_id,
         gl_df, extra_gdf_dict,
         buffer_px,
-        no_data,
         bands_to_keep='all',
         check_data_coverage=True
 ):
@@ -132,7 +131,6 @@ def prep_glacier_dataset(
     :param gl_df: the geopandas dataframe with all the glacier outlines
     :param extra_gdf_dict: a dictionary with the extra masks to be added
     :param buffer_px: the buffer around the current glacier (in pixels) to be used when cropping the image data
-    :param no_data: the value to be used as NODATA
     :param bands_to_keep: the image bands to keep (if 'all', all the bands will be kept)
     :param check_data_coverage: whether to check if the data covers the current glacier + buffer
     :return: None
@@ -187,12 +185,14 @@ def prep_glacier_dataset(
 
 def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):
     """
-        Adds extra rasters to the glacier dataset.
+    Adds extra rasters to the glacier dataset.
 
-        :param fp_gl: str, path to the glacier dataset
-        :param extra_rasters_bb_dict: dict, the paths to the extra rasters as keys and their bounding boxes that will be
-        used to determine which of them intersect the current glacier
-        :no_data: the value to be used as NODATA
+    :param fp_gl: str, path to the glacier dataset
+    :param extra_rasters_bb_dict: dict, the paths to the extra rasters as keys and their bounding boxes that will be
+    used to determine which of them intersect the current glacier
+    :param no_data: the value to be used as NODATA
+
+    :return: None
     """
     with xr.open_dataset(fp_gl, decode_coords='all', mask_and_scale=False) as nc_gl:
         nc_gl.load()  # needed to be able to close the file and save the changes to the same file
@@ -233,11 +233,13 @@ def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):
 
 def add_dem_features(fp_gl, no_data):
     """
-        Add DEM features to the glacier dataset using the XDEM library.
-        The features are: slope, aspect, planform curvature, profile curvature, terrain ruggedness index.
+    Add DEM features to the glacier dataset using the XDEM library.
+    The features are: slope, aspect, planform curvature, profile curvature, terrain ruggedness index.
 
-       :param fp_gl: the path to the glacier dataset (the result will be saved in the same file)
-       :no_data: the value to be used as NODATA
+    :param fp_gl: the path to the glacier dataset (the result will be saved in the same file)
+    :param no_data: the value to be used as NODATA
+
+    :return: None
     """
     # read the glacier dataset
     with xr.open_dataset(fp_gl, decode_coords='all', mask_and_scale=False) as nc_gl:
