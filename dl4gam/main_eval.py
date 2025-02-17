@@ -185,9 +185,9 @@ if __name__ == "__main__":
     stats_dir_root = Path(*p[:p.index('preds')]) / 'stats' / Path(*p[p.index('preds') + 1:])
 
     # get the training settings (needed for building the data masks)
-    settings_fp = Path(*p[:p.index('output')]) / 'settings.yaml'
+    config_fp = Path(*p[:p.index('output')]) / 'settings.yaml'
 
-    with open(settings_fp, 'r') as fp:
+    with open(config_fp, 'r') as fp:
         all_settings = yaml.load(fp, Loader=yaml.FullLoader)
 
     fold = args.fold

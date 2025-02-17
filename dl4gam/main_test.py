@@ -164,11 +164,11 @@ if __name__ == "__main__":
     # get the settings (assuming it was saved in the model's results directory if not given)
     if args.settings_fp is None:
         model_dir = Path(checkpoint_file).parent.parent
-        settings_fp = model_dir / 'settings.yaml'
+        config_fp = model_dir / 'settings.yaml'
     else:
-        settings_fp = args.settings_fp
+        config_fp = args.settings_fp
 
-    with open(settings_fp, 'r') as fp:
+    with open(config_fp, 'r') as fp:
         all_settings = yaml.load(fp, Loader=yaml.FullLoader)
 
     # overwrite the gpu ID if provided

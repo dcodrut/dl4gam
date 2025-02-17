@@ -88,8 +88,8 @@ def train_model(settings: dict):
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument(
-        '--settings_fp',
-        type=str, metavar='path/to/settings.yaml', help='yaml with all the settings', required=True)
+        '--config_fp',
+        type=str, metavar='path/to/settings.yaml', help='yaml with all the model settings', required=True)
     parser.add_argument(
         '--seed',
         type=int, help='training seed (if not given, the one from the config is used)', default=None, required=False)
@@ -104,8 +104,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # read the settings
-    assert Path(args.settings_fp).exists(), f'Settings file ({args.settings_fp}) not found.'
-    with open(args.settings_fp, 'r') as f:
+    assert Path(args.config_fp).exists(), f'Settings file ({args.config_fp}) not found.'
+    with open(args.config_fp, 'r') as f:
         all_settings = yaml.load(f, Loader=yaml.FullLoader)
 
     # overwrite the seed if provided
