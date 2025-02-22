@@ -1,3 +1,4 @@
+import argparse
 import os
 import subprocess
 import time
@@ -15,23 +16,34 @@ def run_task(cmd, gpu_id):
 
 
 if __name__ == '__main__':
-    num_gpus = 4  # number of GPUs available
-    max_tasks_per_gpu = 2  # maximum number of tasks per GPU
-    base_settings_file = './configs/unet.yaml'
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Train ensemble of models')
+    parser.add_argument('--config_fp', type=str, required=True, help='Path to the config file')
+    parser.add_argument('--n_splits', type=int, default=5, help='Number of cross-validation iterations')
+    parser.add_argument('--ensemble_size', type=int, default=5, help='Number of models in the ensemble')
+    parser.add_argument('--n_gpus', type=int, default=1, help='Number of GPUs available')
+    parser.add_argument('--max_tasks_per_gpu', type=int, default=1, help='Maximum number of models per GPU')
+    parser.add_argument('--seed_base', type=int, default=1, help='Base seed for the ensemble')
+    args = parser.parse_args()
+
+    config_fp = args.config_fp
+    n_splits = args.n_splits
+    ensemble_size = args.ensemble_size
+    n_gpus = args.n_gpus
+    max_tasks_per_gpu = args.max_tasks_per_gpu
+    seed_base = args.seed_base
 
     # generate all the commands
-    ensemble_size = 10
-    seed = 1
     commands = []
-    for seed in range(seed, seed + ensemble_size):
-        for i_split in range(1, 6):
+    for seed in range(seed_base, seed_base + ensemble_size):
+        for i_split in range(1, n_splits + 1):
             # get the settings from the environment
-            cmd = f"python main_train.py --setting={base_settings_file} --split=split_{i_split} --seed={seed}"
+            cmd = f"python main_train.py --config_fp={config_fp} --split=split_{i_split} --seed={seed}"
             commands.append(cmd)
     print(f"Generated {len(commands)} commands")
 
     # GPU task counters
-    gpu_task_count = [0] * num_gpus
+    gpu_task_count = [0] * n_gpus
     running_processes = []
 
     # loop to manage and distribute tasks
@@ -40,16 +52,13 @@ if __name__ == '__main__':
 
     while task_index < total_tasks or len(running_processes) > 0:
         # launch new tasks if any GPUs have available slots
-        for gpu_id in range(num_gpus):
+        for gpu_id in range(n_gpus):
             while gpu_task_count[gpu_id] < max_tasks_per_gpu and task_index < total_tasks:
                 print(f"Launching task {task_index} ({commands[task_index]}) on GPU {gpu_id}")
                 running_processes = run_task(commands[task_index], gpu_id)
                 task_index += 1
+                time.sleep(1)
 
-                # give some time to the training to start (first one takes longer to start)
-                time.sleep(300 if task_index == 1 else 10)
-
-        # take a break
         time.sleep(1)
 
         # check for completed tasks

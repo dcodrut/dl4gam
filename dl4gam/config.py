@@ -10,11 +10,10 @@ class BaseConfig:
     MIN_GLACIER_AREA = 0.1  # km2
     NODATA = -9999
 
-    # how many processes to use when building the rasters
+    # how many processes to use in the parallel processing (when possible/implemented, e.g. building the rasters)
     NUM_PROCS = 8
 
     # how many processes to use when evaluating the models per glacier
-    NUM_PROCS_EVAL = 16
     PRELOAD_DATA_INFER = True  # whether to load the netcdf files in memory before patchifying them (at inference time)
 
     # the next properties have to be specified for each dataset

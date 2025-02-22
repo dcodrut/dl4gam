@@ -85,17 +85,16 @@ def aggregate_all_stats(
         model_dir: str | Path,
         model_version: str,
         seed_list: list,
-        n_splits: int,
-        ds_name_infer: str,
+        split_list: list,
+        ds_name: str,
         subdir: str,
-        ds_fold: str = 'test',
         buffer_pred_m: int = 20,
         buffer_fp_m: int = 50,
         excl_masked_pixels: bool = True,
         interp: str = 'nn'
 ):
     """
-    Aggregate the glacier-wide statistics from all the folds and seeds.
+    Aggregate the glacier-wide statistics from the testing folds of all the cross-validation iterations and seeds.
     Then compute the uncertainties based on the lower and upper bounds of the predictions, if available (i.e.
     predictions are already ensemble-aggregated) or based on the standard deviation of the predictions over the
     available seeds (if multiple seeds are available).
@@ -106,10 +105,9 @@ def aggregate_all_stats(
     :param model_dir: the root directory of the model outputs
     :param model_version: the version of the model
     :param seed_list: the list of seeds (or 'all' to use the ensemble-aggregated predictions)
-    :param n_splits: the number of cross-validation iterations
-    :param ds_name_infer: the name of the dataset used for inference
+    :param split_list: the list of cross-validation iterations (e.g. [1, 2, 3, 4, 5])
+    :param ds_name: the name of the dataset used for inference
     :param subdir: the subdirectory of the dataset used for inference (e.g. 'inv', '2023')
-    :param ds_fold: the fold of the dataset used for inference (default: 'test')
     :param buffer_pred_m: the buffer size in meters until where the predictions are considered as glacierized
     :param buffer_fp_m: the buffer size in meters until where the predictions are considered as false positives
                         (starting from buffer_pred_m)
@@ -120,19 +118,19 @@ def aggregate_all_stats(
     """
     df_stats_list = []
     for seed in seed_list:
-        for i_split in range(1, n_splits + 1):
-            stats_dir = model_dir / f"split_{i_split}/seed_{seed}/{model_version}/output/stats/{ds_name_infer}"
+        for i_split in split_list:
+            stats_dir = model_dir / f"split_{i_split}/seed_{seed}/{model_version}/output/stats/{ds_name}"
             assert stats_dir.exists(), f"{stats_dir} doesn't exist"
-            fp = stats_dir / str(subdir) / f"s_{ds_fold}" / f'stats_excl_{excl_masked_pixels}.csv'
-            print(f'seed = {seed}; split = {i_split}; model_version = {model_version}; '
-                  f'subdir = {subdir}; fold = {ds_fold}; \n\tfp = {fp}')
+            fp = stats_dir / str(subdir) / f"s_test" / f'stats_excl_{excl_masked_pixels}.csv'
+            print(f'seed = {seed}; split = {i_split}; model_version = {model_version}; subdir = {subdir}')
+            print(f'\tfp = {fp}')
             assert fp.exists(), f"{fp} doesn't exist"
             df_glacier = pd.read_csv(fp)
 
             df_glacier['seed'] = seed
             df_glacier['i_split'] = i_split
             df_glacier['subdir'] = subdir
-            df_glacier['fold'] = ds_fold
+            df_glacier['fold'] = 'test'
             df_glacier['fn'] = df_glacier.fp.apply(lambda s: Path(s).name)
             df_glacier['entry_id'] = df_glacier.fp.apply(lambda x: Path(x).parent.name)
             df_glacier = df_glacier[['entry_id'] + [c for c in df_glacier if c != 'entry_id']]  # entry_id first col
@@ -208,6 +206,8 @@ def aggregate_all_stats(
 
     # merge with the glacier dataframe
     df_stats_all = pd.concat(df_stats_list)
+    assert set(df_stats_all.entry_id).issubset(set(gl_df.entry_id)), \
+        "Some glaciers are missing from the inventory or the wrong inventory was used"
     df_stats_all = df_stats_all.merge(
         gl_df.drop(columns=[
             'area_inv',
@@ -229,7 +229,7 @@ def aggregate_all_stats(
 
     # export the processed statistics
     label = 'ensemble' if seed_list == ['all'] else 'individual'
-    fp_out = model_dir / f"df_stats_all_{ds_name_infer}_{subdir}_{model_version}_{label}.csv"
+    fp_out = model_dir / f"df_stats_all_{ds_name}_{subdir}_{model_version}_{label}.csv"
     df_stats_all.to_csv(fp_out, index=False)
     print(f"\nSaved the processed & combined statistics to {fp_out}\n")
 
@@ -360,14 +360,14 @@ def compute_change_rates(df_t0: pd.DataFrame, df_t1: pd.DataFrame):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Aggregate the glacier-wide statistics from all the folds and seeds')
-    parser.add_argument('--model_dir', type=str, required=True, help='The model outputs root directory')
-    parser.add_argument('--model_version', type=str, required=True, help='The version of the model')
+    parser.add_argument('--model_dir',
+                        type=str,
+                        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)')
+    parser.add_argument('--model_version', type=str, required=True, help='Version of the model')
     parser.add_argument('--seed_list', type=str, nargs='+', required=True,
                         help='The list of seeds (or "all" to use the ensemble-aggregated predictions)')
-    parser.add_argument('--n_splits', type=int, default=5, help='Number of cross-validation iterations')
-    parser.add_argument('--ds_name_infer', type=str, required=True, help='The name of the dataset used for inference')
-    parser.add_argument('--ds_fold', type=str, default='test',
-                        help='The fold of the dataset to collect from all the splits')
+    parser.add_argument('--split_list', type=int, nargs='+', default=[1, 2, 3, 4, 5],
+                        help='The list of cross-validation iterations (e.g. [1, 2, 3, 4, 5])')
     parser.add_argument('--subdir_list', type=str, nargs='+', required=True,
                         help='The subdirectories of the model outputs (e.g. inv, 2023). '
                              'If two are provided, area change rates are computed between them, '
@@ -381,47 +381,46 @@ if __name__ == "__main__":
     _model_dir = Path(args.model_dir)
     _model_version = args.model_version
     _seed_list = ["all"] if args.seed_list == "all" else list(args.seed_list)
-    _n_splits = args.n_splits
-    _ds_name_infer = args.ds_name_infer
-    _ds_fold = args.ds_fold
+    _split_list = list(args.split_list)
     _subdir_list = list(args.subdir_list)
 
     # read the inventory
     print(f"Loading the glacier outlines from {C.GLACIER_OUTLINES_FP}")
-    gl_df = gpd.read_file(C.GLACIER_OUTLINES_FP)
+    _gl_df = gpd.read_file(C.GLACIER_OUTLINES_FP)
 
     # add the year for each outline
-    if 'year_acq' in gl_df.columns:
-        gl_df['year_inv'] = gl_df.year_acq
-    elif 'date_inv' in gl_df.columns:
-        gl_df['year_inv'] = gl_df.date_inv.apply(lambda d: pd.to_datetime(d).year)
+    if 'year_acq' in _gl_df.columns:
+        _gl_df['year_inv'] = _gl_df.year_acq
+    elif 'date_inv' in _gl_df.columns:
+        _gl_df['year_inv'] = _gl_df.date_inv.apply(lambda d: pd.to_datetime(d).year)
     else:
         raise ValueError('Neither of acquisition year (`year_acq`) or date (`date_inv`) was found in the inventory')
 
     # mark the outlines as inventory
-    gl_df['area_inv'] = gl_df.area_km2
+    _gl_df['area_inv'] = _gl_df.area_km2
 
+    print(f"Model directory: {_model_dir}")
+
+    _ds_name = Path(C.WD).name
     df_stats_agg_t0 = aggregate_all_stats(
-        gl_df=gl_df,
+        gl_df=_gl_df,
         model_dir=_model_dir,
         model_version=_model_version,
         seed_list=_seed_list,
-        n_splits=_n_splits,
-        ds_name_infer=_ds_name_infer,
+        split_list=_split_list,
+        ds_name=_ds_name,
         subdir=_subdir_list[0],
-        ds_fold=_ds_fold,
     )
 
     if len(_subdir_list) == 2:
         df_stats_agg_t1 = aggregate_all_stats(
-            gl_df=gl_df,
+            gl_df=_gl_df,
             model_dir=_model_dir,
             model_version=_model_version,
             seed_list=_seed_list,
-            n_splits=_n_splits,
-            ds_name_infer=_ds_name_infer,
+            split_list=_split_list,
+            ds_name=_ds_name,
             subdir=_subdir_list[1],
-            ds_fold=_ds_fold,
         )
 
         # compute the change rates

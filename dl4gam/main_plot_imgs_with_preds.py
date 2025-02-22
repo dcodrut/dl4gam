@@ -1,3 +1,5 @@
+import argparse
+import sys
 from functools import partial
 from pathlib import Path
 
@@ -180,12 +182,31 @@ def plot_glacier(
     plt.close()
 
 
-if __name__ == "__main__":
-    num_cores = 10
-    plot_preds = False
+def parse_args():
+    parser = argparse.ArgumentParser(description="Plot glacier images (optionally with predictions on top)")
+    parser.add_argument('--plot_root_dir',
+                        type=str,
+                        default='../data/external/scratch_partition/plots/',
+                        help='Output root directory for plots')
+    parser.add_argument('--plot_preds', action='store_true', help='Flag to plot predictions')
+    req_pred_args = '--plot_preds' in sys.argv
+    parser.add_argument('--model_dir',
+                        type=str,
+                        required=req_pred_args,
+                        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)')
+    parser.add_argument('--model_version', type=str, required=req_pred_args, help='Version of the model')
+    parser.add_argument('--seed', type=str, required=req_pred_args,
+                        help='Model training seed (set it to "all" for using the ensemble average results)')
+    return parser.parse_args()
 
-    # output root directory
-    plot_root_dir = Path('../data/external/scratch_partition/plots/')
+
+if __name__ == "__main__":
+    args = parse_args()
+    plot_root_dir = Path(args.plot_root_dir)
+    plot_preds = args.plot_preds
+    model_dir = Path(args.model_dir)
+    model_version = args.model_version
+    seed = args.seed
 
     # read the inventory
     print(f"Loading the glacier outlines from {C.GLACIER_OUTLINES_FP}")
@@ -193,33 +214,43 @@ if __name__ == "__main__":
 
     # read the paths to the rasters
     rasters_dir = Path(C.DIR_GL_RASTERS)
-    year = rasters_dir.parent.name
-    ds_name = rasters_dir.parent.parent.name
+    subdir = C.SUBDIR
+    ds_name = Path(C.WD).name
     print(f"Reading the raster paths from {rasters_dir}")
     fp_list = sorted(list(rasters_dir.rglob('*.nc')))
-    print(f"rasters_dir = {rasters_dir}; #glaciers = {len(fp_list)}")
+    print(f"rasters_dir = {rasters_dir}; #rasters = {len(fp_list)}")
 
     # read the predicted areas and their uncertainties if we want to plot the results
     if plot_preds:
-        model_root_dir = Path(f'../data/external/_experiments/{ds_name}/unet/')
-        model_version = 'version_0'
-        fp_results = model_root_dir / f'df_glacier_agg_{ds_name}_{model_version}.csv'
+        fp_results = model_dir / f'df_glacier_agg_{ds_name}_{model_version}.csv'
+        if seed == 'all':
+            fp_results = model_dir / f"df_stats_agg_{ds_name}_{subdir}_{model_version}_ensemble.csv"
+        else:
+            fp_results = model_dir / f"df_stats_{ds_name}_{subdir}_{model_version}_individual.csv"
+        assert fp_results.exists(), f"Results file not found: {fp_results} (run main_postprocess_stats.py)"
         print(f"Loading the results from {fp_results}")
         df_results = pd.read_csv(fp_results)
+        if seed != 'all':
+            df_results = df_results[df_results.seed == int(seed)]
+            df_results['area_pred_std'] = np.nan  # no uncertainties for individual models
+        print(df_results)
 
         # read the predicted contours
-        fp_pred_outlines = model_root_dir / f'gdf_all_splits/seed_all/{model_version}/{ds_name}/{year}/{year}_pred.shp'
+        fp_pred_outlines = (
+                model_dir / 'gdf_all_splits' /
+                f"seed_{seed}" / model_version / f"{ds_name}" / f"{subdir}" / f"{subdir}_pred.shp"
+        )
         print(f"Loading the predicted glacier outlines from {fp_pred_outlines}")
         gl_df_pred = gpd.read_file(fp_pred_outlines)
 
         # keep only the rasters for which we have predictions
         fp_list = [fp for fp in fp_list if fp.parent.name in gl_df_pred.entry_id.values]
-
-        plot_dir = plot_root_dir / ds_name / model_root_dir.name / model_version / year
+        model_name = model_dir.name
+        plot_dir = plot_root_dir / ds_name / model_name / model_version / subdir
     else:
         df_results = None
         gl_df_pred = None
-        plot_dir = plot_root_dir / ds_name / year
+        plot_dir = plot_root_dir / ds_name / subdir
 
     # plot
     print(f"plot_dir = {plot_dir}")
@@ -233,9 +264,9 @@ if __name__ == "__main__":
         bands_img_1=('B4', 'B3', 'B2') if ds_name != 'ps_alps' else ('R', 'G', 'B'),
         bands_img_2=('B11', 'B8', 'B4') if ds_name != 'ps_alps' else ('NIR', 'G', 'B'),
         source_name='Copernicus Sentinel-2' if ds_name != 'ps_alps' else 'PlanetScope',
-        plot_dhdt=False,
+        plot_dhdt=(ds_name == 's2_alps_plus'),
         line_thickness=1,
         fontsize=9,
     )
 
-    run_in_parallel(_plot_results, fp_raster=fp_list, num_procs=num_cores, pbar=True)
+    run_in_parallel(_plot_results, fp_raster=fp_list, num_procs=C.NUM_PROCS, pbar=True)
