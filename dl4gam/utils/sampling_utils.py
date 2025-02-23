@@ -107,6 +107,10 @@ def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
     gl_df['bound_lim'] = gl_df.bounds.maxx
     gl_df = gl_df.sort_values('bound_lim', ascending=False)
 
+    # covert date to string (to avoid a warning when exporting to shapefile)
+    if 'date_inv' in gl_df.columns:
+        gl_df['date_inv'] = gl_df.date_inv.dt.strftime('%Y-%m-%d')
+
     split_lims = np.linspace(0, 1, num_folds + 1)
     split_lims[-1] += 1e-4  # to include the last glacier
 
