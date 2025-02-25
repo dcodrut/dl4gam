@@ -28,6 +28,7 @@ def compute_normalization_stats(fp):
     data = np.concatenate(list_arrays, axis=0)
 
     stats = {
+        'entry_id': fp.parent.name,
         'fn': fp.name,
     }
 

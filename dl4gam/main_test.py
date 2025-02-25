@@ -65,7 +65,7 @@ def test_model(
         subdir = p[p.index('glacier_wide') - 1]
         root_outdir = checkpoint_root_dir / 'output' / 'preds' / ds_name / subdir
     else:
-        p = list(Path(data_params['data_root_dir']).parts)
+        p = list(Path(data_params['patches_dir']).parts)
         ds_name = p[p.index('patches') + 1]
         root_outdir = checkpoint_root_dir / 'output' / 'stats' / f"patches_{ds_name}"
 
@@ -100,12 +100,7 @@ def test_model(
         logger.info(f'#rasters to test on = {len(fp_rasters)}')
 
         # TODO: try to use a single dataloader but with multiple datasets or ConcatDataset
-        dl_list = dm.test_dataloaders_per_glacier(
-            fp_rasters=fp_rasters,
-            patch_radius=patch_radius,
-            sampling_step=sampling_step,
-            preload_data=preload_data
-        )
+        dl_list = dm.test_dataloaders_per_glacier(fp_rasters=fp_rasters)
         for dl in tqdm(dl_list, desc='Testing per glacier'):
             trainer.test(model=task, dataloaders=dl)
 
@@ -202,7 +197,4 @@ if __name__ == "__main__":
         test_per_glacier=args.test_per_glacier,
         glacier_id_list=glacier_ids,
         fold=args.fold,
-        patch_radius=C.PATCH_RADIUS,
-        sampling_step=C.SAMPLING_STEP_INFER,
-        preload_data=C.PRELOAD_DATA_INFER
     )

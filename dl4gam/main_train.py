@@ -78,8 +78,8 @@ def train_model(settings: dict):
     setting_dict_save['SLURM_JOBID'] = os.environ['SLURM_JOBID'] if 'SLURM_JOBID' in os.environ else None
     with open(path_out, 'w') as fp:
         yaml.dump(setting_dict_save, fp, sort_keys=False)
-    logger.info(f'Settings saved to to {path_out}')
-    logger.info(f'Exported settings:\n{json.dumps(settings, sort_keys=False, indent=4)}')
+    logger.info(f'Settings:\n{json.dumps(settings, sort_keys=False, indent=4)}')
+    logger.info(f'Settings exported to {path_out}')
 
     trainer.fit(task, dm)
     logger.info(f'Best model {checkpoint_callback.best_model_path} with score {checkpoint_callback.best_model_score}')
@@ -116,8 +116,21 @@ if __name__ == '__main__':
     if args.split is not None:
         all_settings['data']['split'] = args.split
         all_settings['data']['data_stats_fp'] = str(
-            Path(all_settings['data']['data_stats_fp']).parent.parent / args.split / 'stats_train_patches_agg.csv')
+            Path(all_settings['data']['data_stats_fp']).parent / f'stats_agg_{args.split}.csv')
         all_settings['logger']['name'] = str(Path(all_settings['logger']['name']).parent / args.split)
+
+    # add the patch sampling parameters if needed
+    if not C.EXPORT_PATCHES:
+        all_settings['data']['patch_radius'] = C.PATCH_RADIUS
+        all_settings['data']['sampling_step_train'] = C.SAMPLING_STEP_TRAIN
+        all_settings['data']['sampling_step_valid'] = C.SAMPLING_STEP_VALID
+        all_settings['data']['sampling_step_test'] = C.SAMPLING_STEP_TEST  # will be used for inference in the future
+        all_settings['data']['preload_data'] = C.PRELOAD_DATA
+
+        # limit the number of batches in the training set
+        # with shuffle=True and a large enough number of patches, the epoch will be different each time
+        num_batches = C.NUM_PATCHES_PER_EPOCH // all_settings['data']['train_batch_size']
+        all_settings['trainer']['limit_train_batches'] = num_batches
 
     # add the seed as a subfolder
     all_settings['logger']['name'] = str(Path(all_settings['logger']['name']) / f'seed_{all_settings["task"]["seed"]}')

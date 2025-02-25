@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import xarray as xr
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 
 from utils.general import run_in_parallel
 from utils.sampling_utils import get_patches_df
@@ -286,15 +286,20 @@ class GlSegDataset(GlSegPatchDataset):
 
 class GlSegDataModule(pl.LightningDataModule):
     def __init__(self,
-                 data_root_dir: Union[Path, str],
                  all_splits_fp: Union[Path, str],
                  split: str,
                  rasters_dir: str,
                  input_settings: dict,
-                 standardize_data: bool,
-                 minmax_scale_data: bool,
-                 scale_each_band: bool,
-                 data_stats_fp: str,
+                 patches_dir: Union[Path, str] = None,
+                 patch_radius: int = None,
+                 sampling_step_train: int = None,
+                 sampling_step_valid: int = None,
+                 sampling_step_test: int = None,
+                 preload_data: bool = False,
+                 standardize_data: bool = False,
+                 minmax_scale_data: bool = False,
+                 scale_each_band: bool = True,
+                 data_stats_fp: str = None,
                  train_batch_size: int = 16,
                  val_batch_size: int = 32,
                  test_batch_size: int = 32,
@@ -303,9 +308,13 @@ class GlSegDataModule(pl.LightningDataModule):
                  num_workers: int = 16,
                  pin_memory: bool = False):
         super().__init__()
-        self.data_root_dir = Path(data_root_dir)
         self.rasters_dir = rasters_dir
         self.input_settings = input_settings
+        self.patch_radius = patch_radius
+        self.sampling_step_train = sampling_step_train
+        self.sampling_step_valid = sampling_step_valid
+        self.sampling_step_test = sampling_step_test
+        self.preload_data = preload_data
         self.standardize_data = standardize_data
         self.minmax_scale_data = minmax_scale_data
         self.scale_each_band = scale_each_band
@@ -317,8 +326,12 @@ class GlSegDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
 
-        # read the filepaths for all the patches
-        fp_list = sorted(list(self.data_root_dir.rglob('*.nc')))
+        # read the filepaths for all the patches, if provided, otherwise we will build them on the fly using the rasters
+        self.patches_are_on_disk = patches_dir is not None
+        if not self.patches_are_on_disk:
+            assert patch_radius is not None, 'Patch radius must be provided when patches are not on disk'
+        data_dir = Path(patches_dir) if self.patches_are_on_disk else Path(rasters_dir)
+        fp_list = sorted(list(Path(data_dir).rglob('*.nc')))
 
         # read the split and the corresponding train/valid/test files
         split_df = pd.read_csv(all_splits_fp)
@@ -354,35 +367,40 @@ class GlSegDataModule(pl.LightningDataModule):
             self.data_stats_df = pd.read_csv(data_stats_fp)
 
     def setup(self, stage: str = None):
-        if stage == 'fit' or stage is None:
-            self.train_ds = GlSegPatchDataset(
-                fp_list=self.fp_list_train,
-                input_settings=self.input_settings,
-                standardize_data=self.standardize_data,
-                minmax_scale_data=self.minmax_scale_data,
-                scale_each_band=self.scale_each_band,
-                data_stats_df=self.data_stats_df,
-                use_augmentation=self.use_augmentation
-            )
-            self.valid_ds = GlSegPatchDataset(
-                fp_list=self.fp_list_valid,
+        if self.patches_are_on_disk:
+            common_kwargs = dict(
                 input_settings=self.input_settings,
                 standardize_data=self.standardize_data,
                 minmax_scale_data=self.minmax_scale_data,
                 scale_each_band=self.scale_each_band,
                 data_stats_df=self.data_stats_df
             )
-        if stage == 'test':
-            self.test_ds = GlSegPatchDataset(
-                fp_list=self.fp_list_test,
-                input_settings=self.input_settings,
-                standardize_data=self.standardize_data,
-                minmax_scale_data=self.minmax_scale_data,
-                scale_each_band=self.scale_each_band,
-                data_stats_df=self.data_stats_df
-            )
+            if stage == 'fit' or stage is None:
+                self.train_ds = GlSegPatchDataset(
+                    fp_list=self.fp_list_train,
+                    use_augmentation=self.use_augmentation,
+                    **common_kwargs,
+                )
+                self.valid_ds = GlSegPatchDataset(fp_list=self.fp_list_valid, **common_kwargs)
+            elif stage == 'test':
+                self.test_ds = GlSegPatchDataset(fp_list=self.fp_list_test, **common_kwargs)
+        else:
+            # build a dataset for each glacier (patches will be sampled on the fly), then concatenate them
+            if stage == 'fit' or stage is None:
+                self.train_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
+                    fp_rasters=self.fp_list_train,
+                    use_augmentation=self.use_augmentation,
+                    sampling_step=self.sampling_step_train
+                ))
+                self.valid_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
+                    fp_rasters=self.fp_list_valid, sampling_step=self.sampling_step_valid
+                ))
+            elif stage == 'test':
+                self.test_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
+                    fp_rasters=self.fp_list_test, sampling_step=self.sampling_step_test
+                ))
 
-    def build_patch_dataset_per_glacier(self, fp_rasters, patch_radius, sampling_step=None, preload_data=False):
+    def build_patch_dataset_per_glacier(self, fp_rasters, use_augmentation=False, sampling_step=None):
         ds_list = run_in_parallel(
             fun=functools.partial(
                 GlSegDataset,
@@ -391,9 +409,10 @@ class GlSegDataModule(pl.LightningDataModule):
                 minmax_scale_data=self.minmax_scale_data,
                 scale_each_band=self.scale_each_band,
                 data_stats_df=self.data_stats_df,
-                patch_radius=patch_radius,
+                patch_radius=self.patch_radius,
                 sampling_step=sampling_step,
-                preload_data=preload_data
+                preload_data=self.preload_data,
+                use_augmentation=use_augmentation
             ),
             fp=fp_rasters,
             num_procs=self.num_workers,
@@ -435,13 +454,15 @@ class GlSegDataModule(pl.LightningDataModule):
             drop_last=False
         )
 
-    def test_dataloaders_per_glacier(self, fp_rasters, patch_radius=None, sampling_step=None, preload_data=False):
-        test_ds_list = self.build_patch_dataset_per_glacier(
-            fp_rasters=fp_rasters,
-            patch_radius=patch_radius,
-            sampling_step=sampling_step,
-            preload_data=preload_data
-        )
+    def test_dataloaders_per_glacier(self, fp_rasters: list):
+        """
+        Build one dataloader per glacier (patches will be sampled on the fly) such that the predictions can be mosaicked
+        together on epoch end.
+
+        :param fp_rasters: list of filepaths to the rasters
+        :return: list of dataloaders
+        """
+        test_ds_list = self.build_patch_dataset_per_glacier(fp_rasters=fp_rasters)
 
         dloaders = []
         for ds in test_ds_list:

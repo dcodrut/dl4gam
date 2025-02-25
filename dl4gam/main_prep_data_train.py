@@ -19,17 +19,18 @@ from utils.general import run_in_parallel
 from utils.data_stats import compute_normalization_stats, aggregate_normalization_stats
 
 if __name__ == "__main__":
-    # 1. patchify the data
-    dir_patches = Path(C.DIR_GL_PATCHES)
-    patchify_data(
-        rasters_dir=C.DIR_GL_RASTERS,
-        patches_dir=dir_patches,
-        patch_radius=C.PATCH_RADIUS,
-        sampling_step=C.SAMPLING_STEP_TRAIN,
-    )
+    ################################################# STEP 1 - PATCHIFY ################################################
+    # patchify the data if needed (otherwise patches will be sampled on the fly while training)
+    if C.EXPORT_PATCHES:
+        dir_patches = Path(C.DIR_GL_PATCHES)
+        patchify_data(
+            rasters_dir=C.DIR_GL_RASTERS,
+            patches_dir=dir_patches,
+            patch_radius=C.PATCH_RADIUS,
+            sampling_step=C.SAMPLING_STEP_TRAIN,
+        )
 
-    # 2. build the splits for the cross-validation
-
+    ########################################## STEP 2 - CROSS-VALIDATION SPLIT #########################################
     # import the constants corresponding to the desired dataset
     outlines_fp = C.GLACIER_OUTLINES_FP
     print(f'Reading S2-based glacier outlines from {outlines_fp}')
@@ -45,7 +46,8 @@ if __name__ == "__main__":
     # remove the glaciers for which there is no data
     assert Path(C.DIR_GL_RASTERS).exists(), f"{C.DIR_GL_RASTERS} does not exist"
     print(f'Keeping only the glaciers that have data in {C.DIR_GL_RASTERS}')
-    gl_entry_ids_ok = [x.parent.name for x in Path(C.DIR_GL_RASTERS).glob('**/*.nc')]
+    fp_rasters = sorted(list(Path(C.DIR_GL_RASTERS).rglob('*.nc')))
+    gl_entry_ids_ok = [x.parent.name for x in fp_rasters]
     gl_df = gl_df[gl_df.entry_id.isin(gl_entry_ids_ok)]
     area = gl_df.area_km2.sum()
     print(f'#glaciers = {len(gl_df)}; area = {area:.2f} km2 ({area / initial_area * 100:.2f}%)')
@@ -75,37 +77,39 @@ if __name__ == "__main__":
     df_all.to_csv(fp, index=False)
     print(f"Dataframe with the split-fold mapping saved to {fp}")
 
-    # 3. compute the normalization statistics for the training patches of each cross-validation split
-    # get the list of all patches and group them by glacier
-    fp_all_patches = sorted(list(Path(dir_patches).glob('**/*.nc')))
-    print(f'Found {len(fp_all_patches)} patches')
-    gl_to_patches = {x.parent.name: [] for x in fp_all_patches}
-    for fp in fp_all_patches:
-        gl_to_patches[fp.parent.name].append(fp)
-    out_dir_root = dir_patches.parent.parent / 'aux_data' / 'norm_stats' / dir_patches.name
+    ####################################### STEP 3 - COMPUTE NORMALIZATION STATS #######################################
+    # prepare the files (of patches or rasters) for all the glaciers
+    if C.EXPORT_PATCHES:
+        # get the list of all patches and group them by glacier
+        fp_list = sorted(list(Path(dir_patches).rglob('*.nc')))
+        print(f'Found {len(fp_list)} patches')
+        gl_to_files = {x.parent.name: [] for x in fp_list}
+        for fp in fp_list:
+            gl_to_files[fp.parent.name].append(fp)
+        out_dir_root = Path(C.WD) / Path(C.SUBDIR) / 'aux_data' / 'norm_stats' / dir_patches.name
+    else:
+        # get the raster path for each glacier
+        fp_list = fp_rasters
+        gl_to_files = {x.parent.name: [x] for x in fp_list}
+        out_dir_root = Path(C.WD) / Path(C.SUBDIR) / 'aux_data' / 'norm_stats' / 'rasters'
+
+    print(f"Computing normalization stats for all {'patches' if C.EXPORT_PATCHES else 'rasters'} "
+          f"(#files = {len(fp_list)}; #glaciers = {len(gl_to_files)})")
+    all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_procs=C.NUM_PROCS, pbar=True)
+    all_df = [pd.DataFrame(stats) for stats in all_stats]
+    df = pd.concat(all_df)
+    fp_out = Path(out_dir_root) / 'stats_all.csv'
+    fp_out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(fp_out, index=False)
+    print(f'Stats (per file) saved to {fp_out}')
+
+    # extract & aggregate the statistics for the training folds of each cross-validation split
     for i_split in range(1, C.NUM_CV_FOLDS + 1):
-        # get the list of patches for the training fold of the current cross-validation split
         gl_entry_ids_train = set(df_all[df_all[f"split_{i_split}"] == 'fold_train'].entry_id)
-        fp_list = [x for gl, lst in gl_to_patches.items() if gl in gl_entry_ids_train for x in lst]
-
-        print(
-            f'Computing normalization stats for the training fold of the split = {i_split} '
-            f'(#glaciers = {len(gl_entry_ids_train)}, '
-            f'#patches = {len(fp_list)})'
-        )
-        all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_procs=C.NUM_PROCS, pbar=True)
-        all_df = [pd.DataFrame(stats) for stats in all_stats]
-
-        df = pd.concat(all_df)
-        df = df.sort_values('fn')
-        out_dir_crt_split = out_dir_root / f'split_{i_split}'
-        out_dir_crt_split.mkdir(parents=True, exist_ok=True)
-        fp_out = Path(out_dir_crt_split) / 'stats_train_patches.csv'
-        df.to_csv(fp_out, index=False)
-        print(f'Stats (per patch) saved to {fp_out}')
+        df_crt = df[df.entry_id.isin(gl_entry_ids_train)]
 
         # aggregate the statistics
-        df_stats_agg = aggregate_normalization_stats(df)
-        fp_out = Path(out_dir_crt_split) / 'stats_train_patches_agg.csv'
-        df_stats_agg.to_csv(fp_out, index=False)
-        print(f'Aggregated stats saved to {fp_out}')
+        df_crt_agg = aggregate_normalization_stats(df_crt)
+        fp_out = Path(out_dir_root) / f'stats_agg_split_{i_split}.csv'
+        df_crt_agg.to_csv(fp_out, index=False)
+        print(f'Aggregated stats for split {i_split} saved to {fp_out}')

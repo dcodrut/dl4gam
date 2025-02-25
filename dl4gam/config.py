@@ -13,8 +13,15 @@ class BaseConfig:
     # how many processes to use in the parallel processing (when possible/implemented, e.g. building the rasters)
     NUM_PROCS = 8
 
-    # how many processes to use when evaluating the models per glacier
-    PRELOAD_DATA_INFER = True  # whether to load the netcdf files in memory before patchifying them (at inference time)
+    # whether to load the netcdf files in memory before patchifying them
+    # (at inference time or at training time if EXPORT_PATCHES is False)
+    PRELOAD_DATA = False
+
+    # whether to export the patches to disk (if False, the patches will be built on the fly);
+    # building the patches on the fly is a bit slower but not by much as we use xarray's lazy loading;
+    # the advantage is that we save disk space, especially when using a small sampling stride;
+    # additionally, it can increase the diversity of the patches as we can sample more and the epochs will be different
+    EXPORT_PATCHES = False
 
     # the next properties have to be specified for each dataset
     # we raise a NotImplementedError for the properties that need to be implemented
@@ -59,20 +66,41 @@ class BaseConfig:
     def SAMPLING_STEP_TRAIN(cls):
         """
             The step (in pixels) between two consecutive patches for training.
-            These patches will be exported to disk.
+            These patches will be either be exported to disk or prepared on the fly, see EXPORT_PATCHES.
         """
         raise NotImplementedError
 
     @classmethod
     @property
-    def SAMPLING_STEP_INFER(cls):
+    def NUM_PATCHES_PER_EPOCH(cls):
         """
-            The step (in pixels) between two consecutive patches for inference.
-            By default, the step is the half of the one used in training
-                (so double the overlap & ~four time more patches).
-            These patches will be built in memory.
+            The number of patches to sample per epoch. This is used only when EXPORT_PATCHES is False.
         """
-        return cls.SAMPLING_STEP_TRAIN // 2
+        if cls.EXPORT_PATCHES:
+            return None
+
+        raise NotImplementedError
+
+    @classmethod
+    @property
+    def SAMPLING_STEP_VALID(cls):
+        """
+            The step (in pixels) between two consecutive patches for validation.
+            By default, the step is the same as the training one if patches are exported to disk
+            or half of the training one otherwise.
+        """
+        return cls.SAMPLING_STEP_TRAIN if cls.EXPORT_PATCHES else cls.SAMPLING_STEP_TRAIN * 2
+
+    @classmethod
+    @property
+    def SAMPLING_STEP_TEST(cls):
+        """
+            The step (in pixels) between two consecutive patches for (glacier-wide) inference.
+            By default, the step is the half of the one used in training if patches are exported to disk.
+                (so double the overlap & (potentially) x4 more patches) or the same as the training one otherwise.
+            These patches will be built on the fly, one glacier at a time.
+        """
+        return cls.SAMPLING_STEP_TRAIN // 2 if cls.EXPORT_PATCHES else cls.SAMPLING_STEP_TRAIN
 
     # the next properties are derived based on the above
     @classmethod
@@ -88,7 +116,9 @@ class BaseConfig:
     @classmethod
     @property
     def DIR_GL_PATCHES(cls):
-        return Path(cls.WD) / cls.SUBDIR / 'patches' / f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP_TRAIN}"
+        """ Directory where the patches are stored, in we don't train with on-the-fly patch generation """
+        return Path(cls.WD) / cls.SUBDIR / 'patches' / f"r_{cls.PATCH_RADIUS}_s_{cls.SAMPLING_STEP_TRAIN}" \
+            if cls.EXPORT_PATCHES else None
 
     @classmethod
     @property
@@ -98,7 +128,8 @@ class BaseConfig:
              added to the optical data. The data is expected to be in a raster format (e.g. tif) and it will be
              automatically matched to the glacier directories. This means that we automatically find the files that
              intersect the current glacier, merge them if needed, resample them to the same resolution as the optical
-             and finally add them to the glacier optical dataset.
+             and finally add them to the glacier optical dataset. Note that we expect the data to be static (not sure
+             what happens in the merging step now if multiple files for the same pixels are found).
         """
         return {}
 
@@ -117,7 +148,7 @@ class BaseConfig:
         """
             Path to a csv file containing which dates are allowed for each glacier.
             If None, all the images from the raw image directory will be accessed and the best will be automatically
-             selected based on cloud coverage and the snow index.
+             selected based on cloud coverage and the snow index (currently this works for Sentinel-2 data only).
         """
 
         return None
@@ -177,6 +208,8 @@ class S2_ALPS_PLUS(S2_ALPS):
         Same inventory images were removed or replaced (when possible) because they had too many clouds/shadows or
         had too much seasonal snow. The final dates are read from a csv file (CSV_DATES_ALLOWED).
     """
+
+    EXPORT_PATCHES = True
 
     WD = f'../data/external/wd/s2_alps_plus'
 

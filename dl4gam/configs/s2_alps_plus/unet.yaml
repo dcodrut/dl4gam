@@ -1,12 +1,12 @@
 data:
-  data_root_dir: '../data/external/wd/s2_alps_plus/inv/patches/r_128_s_64/'
+  patches_dir: '../data/external/wd/s2_alps_plus/inv/patches/r_128_s_64/'
   all_splits_fp: '../data/external/wd/s2_alps_plus/cv_split_outlines/map_all_splits_all_folds.csv'
   split: 'split_1'
   rasters_dir: '../data/external/wd/s2_alps_plus/inv/glacier_wide'
   minmax_scale_data: False
   standardize_data: True
   scale_each_band: True
-  data_stats_fp: '../data/external/wd/s2_alps_plus/inv/aux_data/norm_stats/r_128_s_64/split_1/stats_train_patches_agg.csv'
+  data_stats_fp: '../data/external/wd/s2_alps_plus/inv/aux_data/norm_stats/r_128_s_64/stats_agg_split_1.csv'
   train_batch_size: 16
   val_batch_size: 32
   test_batch_size: 32
