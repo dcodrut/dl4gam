@@ -18,7 +18,7 @@ def compute_normalization_stats(fp):
     :return: a dictionary with the stats for the current raster
     """
     nc = xr.open_dataset(fp, decode_coords='all')
-    band_data = nc.band_data.values[:13]
+    band_data = nc.band_data.values[:13]  # TODO: parameterize the number of bands to consider
     list_arrays = [band_data]
 
     # add the other variables (except the masks and the already added band_data), assuming that they are 2D
@@ -52,7 +52,7 @@ def compute_normalization_stats(fp):
     stats['sum_2'] = ssq_list
     stats['vmin'] = vmin_list
     stats['vmax'] = vmax_list
-    stats['var_name'] = [f'band_{i}' for i in range(len(band_data))] + extra_vars
+    stats['var_name'] = nc.band_data.long_name[:len(band_data)] + extra_vars
 
     return stats
 
@@ -78,8 +78,8 @@ def aggregate_normalization_stats(df):
         stats_agg['var_name'].append(var_name)
         stats_agg['mu'].append(mu)
         stats_agg['stddev'].append(std)
-        stats_agg['vmin'].append(df_r1_crt_var.vmin.quantile(0.025))
-        stats_agg['vmax'].append(df_r1_crt_var.vmax.quantile(1 - 0.025))
+        stats_agg['vmin'].append(df_r1_crt_var.vmin.quantile(0.01))
+        stats_agg['vmax'].append(df_r1_crt_var.vmax.quantile(0.99))
     df_stats_agg = pd.DataFrame(stats_agg)
 
     return df_stats_agg

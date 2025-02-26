@@ -120,10 +120,10 @@ def extract_inputs(ds, fp, input_settings):
     return data
 
 
-def standardize_inputs(data, stats_df, scale_each_band):
-    band_data_sdf = stats_df[stats_df.var_name.apply(lambda s: 'band' in s)]
-    mu = band_data_sdf.mu.values[:len(data['band_data'])]
-    stddev = band_data_sdf.stddev.values[:len(data['band_data'])]
+def standardize_inputs(data, stats_df, scale_each_band, bands_input):
+    band_data_sdf = pd.concat([stats_df[stats_df.var_name == b] for b in bands_input])
+    mu = band_data_sdf.mu.values
+    stddev = band_data_sdf.stddev.values
 
     if not scale_each_band:
         mu[:] = mu.mean()
@@ -143,10 +143,10 @@ def standardize_inputs(data, stats_df, scale_each_band):
             data[v] /= stddev
 
 
-def minmax_scale_inputs(data, stats_df, scale_each_band):
-    band_data_sdf = stats_df[stats_df.var_name.apply(lambda s: 'band' in s)]
-    vmin = band_data_sdf.vmin.values[:len(data['band_data'])]
-    vmax = band_data_sdf.vmax.values[:len(data['band_data'])]
+def minmax_scale_inputs(data, stats_df, scale_each_band, bands_input):
+    band_data_sdf = pd.concat([stats_df[stats_df.var_name == b] for b in bands_input])
+    vmin = band_data_sdf.vmin.values
+    vmax = band_data_sdf.vmax.values
 
     # clip the values to the min and max
     dtype = data['band_data'].dtype
@@ -231,9 +231,19 @@ class GlSegPatchDataset(Dataset):
         if self.standardize_data or self.minmax_scale_data:
             assert self.standardize_data != self.minmax_scale_data
         if self.standardize_data:
-            standardize_inputs(data, stats_df=self.data_stats_df, scale_each_band=self.scale_each_band)
+            standardize_inputs(
+                data,
+                stats_df=self.data_stats_df,
+                scale_each_band=self.scale_each_band,
+                bands_input=self.input_settings['bands_input']
+            )
         if self.minmax_scale_data:
-            minmax_scale_inputs(data, stats_df=self.data_stats_df, scale_each_band=self.scale_each_band)
+            minmax_scale_inputs(
+                data,
+                stats_df=self.data_stats_df,
+                scale_each_band=self.scale_each_band,
+                bands_input=self.input_settings['bands_input']
+            )
 
         return data
 
