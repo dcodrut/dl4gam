@@ -35,7 +35,8 @@ def plot_glacier(
         fig_w_px=1920,
         dpi=150,
         line_thickness=1,
-        fontsize=12
+        fontsize=12,
+        q_lim_contrast=0.02,  # default in QGIS
 ):
     nc = xr.open_dataset(fp_raster, decode_coords='all')
     img_date = pd.to_datetime(fp_raster.name[:8])
@@ -60,7 +61,7 @@ def plot_glacier(
     ax = axes[0]
     band_names = nc.band_data.long_name
     img = nc.band_data.isel(band=[band_names.index(b) for b in bands_img_1]).transpose('y', 'x', 'band').values
-    img = contrast_stretch(img=img, q_lim_clip=0.025)
+    img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast)
     ax.imshow(img, extent=extent, interpolation='none')
 
     # plot the glacier outline
@@ -120,7 +121,7 @@ def plot_glacier(
     # Subplot 2) plot the SWIR-NIR-R image
     ax = axes[1]
     img = nc.band_data.isel(band=[band_names.index(b) for b in bands_img_2]).transpose('y', 'x', 'band').values
-    img = contrast_stretch(img=img, q_lim_clip=0.025)
+    img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast)
     ax.imshow(img, extent=extent, interpolation='none')
     ax.set_title('-'.join(bands_img_2), fontsize=fontsize)
 
@@ -129,7 +130,7 @@ def plot_glacier(
     if plot_dhdt:
         assert 'dhdt' in nc.data_vars, f"dhdt not found in {fp_raster}"
         img = nc.dhdt.values
-        img = contrast_stretch(img=img, q_lim_clip=0.025, scale_to_01=False)
+        img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast, scale_to_01=False)
         vmax_abs = max(abs(np.nanmin(img)), abs(np.nanmax(img)))
     else:
         img = np.zeros_like(nc.mask_crt_g, dtype=np.float32) + np.nan
@@ -256,7 +257,7 @@ if __name__ == "__main__":
     print(f"plot_dir = {plot_dir}")
     _plot_results = partial(
         plot_glacier,
-        fig_w_px=1920,
+        fig_w_px=2500,
         gl_df=gl_df,
         gl_df_pred=gl_df_pred,
         df_results=df_results,
@@ -267,6 +268,7 @@ if __name__ == "__main__":
         plot_dhdt=(ds_name == 's2_alps_plus'),
         line_thickness=1,
         fontsize=9,
+        q_lim_contrast=0.05
     )
 
     run_in_parallel(_plot_results, fp_raster=fp_list, num_procs=C.NUM_PROCS, pbar=True)
