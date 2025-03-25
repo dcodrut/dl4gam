@@ -280,7 +280,7 @@ def prepare_all_rasters(
 
         # keep the best n images (based on cloud coverage and NDSI, plus albedo as tie-breaker) if needed
         if choose_best_auto:
-            fp_qc_stats_all = Path(out_rasters_dir).parent / 'aux_data' / 'qc_stats_all.csv'
+            fp_qc_stats_all = Path(out_rasters_dir).parent / 'aux_data' / f'qc_stats_max_cloud_f_{max_cloud_f}.csv'
             fp_qc_stats_selected = Path(out_rasters_dir).parent / 'aux_data' / 'qc_stats_selected.csv'
 
             gl_df_sel = select_best_images(
