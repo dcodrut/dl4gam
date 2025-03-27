@@ -22,7 +22,7 @@ if 'SLURM_JOB_NAME' in os.environ:
     del os.environ['SLURM_JOB_NAME']
 
 
-def train_model(settings: dict):
+def train_model(settings: dict, patches_on_disk: bool = False, n_patches: int = None):
     # Logger (console and TensorBoard)
     tb_logger = pl.loggers.TensorBoardLogger(**settings['logger'])
     Path(tb_logger.log_dir).mkdir(parents=True, exist_ok=True)
@@ -86,7 +86,7 @@ def train_model(settings: dict):
     dm.setup(stage='fit')
     for ds_name in ['train', 'valid']:
         ds = getattr(dm, f'{ds_name}_ds')
-        if C.EXPORT_PATCHES:
+        if patches_on_disk:
             logger.info(f'{ds_name} dataset: {len(ds)} patches from {ds.n_glaciers} glaciers')
         else:
             # this means ds is a ConcatDataset
@@ -96,6 +96,17 @@ def train_model(settings: dict):
                 f'{len(ds)} patches from {len(ds_sizes)} glaciers; '
                 f'#samples per glacier: min = {min(ds_sizes)} max = {max(ds_sizes)} avg = {np.mean(ds_sizes):.1f}'
             )
+
+            # subsample the training set if needed
+            if ds_name == 'train' and n_patches is not None:
+                logger.info(f'Subsampling the training set to {n_patches} patches')
+                dm.subsample_train_ds(n_patches)
+                ds_sizes = [len(x) for x in dm.train_ds.datasets]
+                logger.info(
+                    f'{ds_name} dataset: '
+                    f'{len(dm.train_ds)} patches from {len(ds_sizes)} glaciers; '
+                    f'#samples per glacier: min = {min(ds_sizes)} max = {max(ds_sizes)} avg = {np.mean(ds_sizes):.1f}'
+                )
 
     trainer.fit(task, dm)
     logger.info(f'Best model {checkpoint_callback.best_model_path} with score {checkpoint_callback.best_model_score}')
@@ -150,10 +161,6 @@ if __name__ == '__main__':
             # (with shuffle=True and a large enough number of patches, the epoch will be different each time)
             num_batches = C.NUM_PATCHES_TRAIN // all_settings['data']['train_batch_size']
             all_settings['trainer']['limit_train_batches'] = num_batches
-            all_settings['data']['n_patches_train'] = None
-        else:
-            # sample once all the patches in the training set (the same patches will be used each epoch but reshuffled)
-            all_settings['data']['n_patches_train'] = C.NUM_PATCHES_TRAIN
 
     # add the seed as a subfolder
     all_settings['logger']['name'] = str(Path(all_settings['logger']['name']) / f'seed_{all_settings["task"]["seed"]}')
@@ -162,4 +169,8 @@ if __name__ == '__main__':
     if args.gpu_id is not None:
         all_settings['trainer']['devices'] = [args.gpu_id]
 
-    train_model(all_settings)
+    train_model(
+        all_settings,
+        patches_on_disk=C.EXPORT_PATCHES,
+        n_patches=C.NUM_PATCHES_TRAIN if not C.SAMPLE_PATCHES_EACH_EPOCH else None
+    )
