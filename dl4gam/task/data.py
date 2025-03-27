@@ -73,41 +73,54 @@ def extract_inputs(ds, fp, input_settings):
         data['v'] = v
 
     if input_settings['optical_indices']:
-        # compute the NDSI, NDVI and NDWI indices
+        # compute the provided indices (has to be a subset of ['NDSI', 'NDVI', 'NDWI'])
+        assert set(input_settings['optical_indices']).issubset({'NDSI', 'NDVI', 'NDWI'})
+
         # NDSI = (Green - SWIR) / (Green + SWIR)
+        if 'NDSI' in input_settings['optical_indices']:
+            g = band_data[input_settings['bands_input'].index('G')]
+            swir = band_data[input_settings['bands_input'].index('SWIR')]
+            den = g + swir
+            den[den == 0] = 1  # avoid division by zero
+            data['NDSI'] = (g - swir) / den
+
         # NDVI = (NIR - Red) / (NIR + Red)
+        if 'NDVI' in input_settings['optical_indices']:
+            r = band_data[input_settings['bands_input'].index('R')]
+            nir = band_data[input_settings['bands_input'].index('NIR')]
+            den = nir + r
+            den[den == 0] = 1  # avoid division by zero
+            data['NDVI'] = (nir - r) / den
+
         # NDWI = (Green - NIR) / (Green + NIR)
-        swir = band_data[input_settings['bands_input'].index('SWIR')]
-        r = band_data[input_settings['bands_input'].index('R')]
-        g = band_data[input_settings['bands_input'].index('G')]
-        nir = band_data[input_settings['bands_input'].index('NIR')]
-
-        # NDSI
-        den = g + swir
-        den[den == 0] = 1  # avoid division by zero
-        data['ndsi'] = (g - swir) / den
-
-        # NDVI
-        den = nir + r
-        den[den == 0] = 1  # avoid division by zero
-        data['ndvi'] = (nir - r) / den
-
-        # NDWI
-        den = g + nir
-        den[den == 0] = 1  # avoid division by zero
-        data['ndwi'] = (g - nir) / den
+        if 'NDWI' in input_settings['optical_indices']:
+            g = band_data[input_settings['bands_input'].index('G')]
+            nir = band_data[input_settings['bands_input'].index('NIR')]
+            den = g + nir
+            den[den == 0] = 1  # avoid division by zero
+            data['NDWI'] = (g - nir) / den
 
     if input_settings['dem_features']:
-        data['slope'] = ds.slope.values.astype(np.float32) / 90.  # scale the slope to [0, 1]
+        # the features should be a subset of
+        # ['slope', 'aspect_sin', 'aspect_cos', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']
+        assert set(input_settings['dem_features']).issubset({
+            'slope', 'aspect_sin', 'aspect_cos', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index'
+        })
+
+        if 'slope' in input_settings['dem_features']:
+            data['slope'] = ds.slope.values.astype(np.float32) / 90.  # scale the slope to [0, 1]
 
         # compute the sine and cosine of the aspect
         # TODO: maybe remove when using geometric augmentation as the aspect doesn't physically make sense anymore)
-        data['aspect_sin'] = np.sin(ds.aspect.values.astype(np.float32) * np.pi / 180)
-        data['aspect_cos'] = np.cos(ds.aspect.values.astype(np.float32) * np.pi / 180)
+        if 'aspect_sin' in input_settings['dem_features']:
+            data['aspect_sin'] = np.sin(ds.aspect.values.astype(np.float32) * np.pi / 180)
+        if 'aspect_cos' in input_settings['dem_features']:
+            data['aspect_cos'] = np.cos(ds.aspect.values.astype(np.float32) * np.pi / 180)
 
         # add the planform curvature, profile curvature, terrain ruggedness index, which will be later normalized
         for k in ['planform_curvature', 'profile_curvature', 'terrain_ruggedness_index']:
-            data[k] = ds[k].values.astype(np.float32)
+            if k in input_settings['dem_features']:
+                data[k] = ds[k].values.astype(np.float32)
 
     return data
 

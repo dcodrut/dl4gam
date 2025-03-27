@@ -29,8 +29,8 @@ logger:
 trainer:
   devices: [ 0 ]
   accelerator: 'gpu'
-#  limit_train_batches: 8
-#  limit_val_batches: 4
+  #  limit_train_batches: 8
+  #  limit_val_batches: 4
   log_every_n_steps: 10
   max_epochs: 30
   deterministic: True
@@ -39,12 +39,12 @@ model:
   class: 'SegModel'
   name: 'Unet'
   inputs:
-    bands_input: [ 'R', 'G', 'B', 'NIR', 'SWIR']
+    bands_input: [ 'R', 'G', 'B', 'NIR', 'SWIR' ]
     band_mask: 'mask_nok'
     dem: True
     dhdt: True
-    optical_indices: True
-    dem_features: True
+    optical_indices: ['NDVI', 'NDWI', 'NDSI']
+    dem_features: [ 'slope', 'aspect_sin', 'aspect_cos', 'planform_curvature', 'profile_curvature', 'terrain_ruggedness_index' ]
     velocity: False
   args:
     encoder_name: 'resnet34'
