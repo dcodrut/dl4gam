@@ -196,6 +196,10 @@ class GlSegPatchDataset(Dataset):
         self.scale_each_band = scale_each_band
         self.data_stats_df = data_stats_df
 
+        # save the glaciers IDs
+        self.glaciers = sorted(list(set([fp.parent.name for fp in self.fp_list])))
+        self.n_glaciers = len(self.glaciers)
+
         if use_augmentation:
             # D4: https://albumentations.ai/docs/api_reference/full_reference/?h=d4#albumentations.augmentations.geometric.transforms.D4
             self.aug_transforms = [
@@ -335,6 +339,7 @@ class GlSegDataModule(pl.LightningDataModule):
         self.use_augmentation = use_augmentation
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.setups_initialized = []  # will be used to check if the setup method was called to avoid calling it twice
 
         # read the filepaths for all the patches, if provided, otherwise we will build them on the fly using the rasters
         self.patches_are_on_disk = patches_dir is not None
@@ -377,6 +382,10 @@ class GlSegDataModule(pl.LightningDataModule):
             self.data_stats_df = pd.read_csv(data_stats_fp)
 
     def setup(self, stage: str = None):
+        if stage in self.setups_initialized:
+            print(f'Setup for {stage} already initialized. Skipping...')
+            return
+
         if self.patches_are_on_disk:
             common_kwargs = dict(
                 input_settings=self.input_settings,
@@ -410,6 +419,8 @@ class GlSegDataModule(pl.LightningDataModule):
                 self.test_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
                     fp_rasters=self.fp_list_test, sampling_step=self.sampling_step_test, add_extremes=True
                 ))
+
+        self.setups_initialized.append(stage)
 
     def build_patch_dataset_per_glacier(
             self, fp_rasters, use_augmentation=False, sampling_step=None, add_extremes=False

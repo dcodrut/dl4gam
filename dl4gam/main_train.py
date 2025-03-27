@@ -4,6 +4,7 @@ import os
 from argparse import ArgumentParser
 from pathlib import Path
 
+import numpy as np
 import pytorch_lightning as pl
 import pytorch_lightning.loggers
 import yaml
@@ -80,6 +81,26 @@ def train_model(settings: dict):
         yaml.dump(setting_dict_save, fp, sort_keys=False)
     logger.info(f'Settings:\n{json.dumps(settings, sort_keys=False, indent=4)}')
     logger.info(f'Settings exported to {path_out}')
+
+    # explicitly call the setup method of the DataModule so we can print the data stats
+    dm.setup(stage='fit')
+    for ds_name in ['train', 'valid']:
+        ds = getattr(dm, f'{ds_name}_ds')
+        if C.EXPORT_PATCHES:
+            logger.info(f'{ds_name} dataset: {len(ds)} patches from {ds.n_glaciers} glaciers')
+        else:
+            # this means ds is a ConcatDataset
+            ds_sizes = [len(x) for x in ds.datasets]
+            logger.info(
+                f'{ds_name} dataset: '
+                f'{len(ds)} patches from {len(ds_sizes)} glaciers; '
+                f'#samples per glacier: min = {min(ds_sizes)} max = {max(ds_sizes)} avg = {np.mean(ds_sizes):.1f}'
+            )
+
+    # make sure we generated enough patches for the training set
+    if not C.EXPORT_PATCHES:
+        assert len(dm.train_ds) >= C.NUM_PATCHES_PER_EPOCH, \
+            f'Not enough patches for training: {len(dm.train_ds)} < {C.NUM_PATCHES_PER_EPOCH}'
 
     trainer.fit(task, dm)
     logger.info(f'Best model {checkpoint_callback.best_model_path} with score {checkpoint_callback.best_model_score}')
