@@ -13,7 +13,7 @@ def get_patches_df(
         add_center: bool = False,
         add_centroid: bool = False,
         add_extremes: bool = False,
-        keep_only_patches_on_glacier: bool = True
+        keep_only_patches_50m_buffer: bool = True
 ):
     """
     Given a xarray dataset for one glacier, it returns a pandas dataframe with the pixel coordinates for square patches
@@ -26,7 +26,7 @@ def get_patches_df(
     :param add_center: whether to add one patch centered in the middle of the glacier's box
     :param add_centroid: whether to add one patch centered in the centroid of the glacier
     :param add_extremes: whether to add four patches centered on the margin (in each direction) of the glacier
-    :param keep_only_patches_on_glacier: whether to keep only the patches that have the center pixel on the glacier
+    :param keep_only_patches_50m_buffer: whether to keep only the patches with the center pixel on glacier or within 50m
     :return: a pandas dataframe with the pixel coordinates of the patches
     """
 
@@ -36,7 +36,7 @@ def get_patches_df(
 
     # get all feasible patch centers s.t. the center pixel is on glacier
     assert 'mask_crt_g' in nc.data_vars, nc.data_vars
-    nc_full_crt_g_mask_center_sel = (nc.mask_crt_g.data == 1)
+    nc_full_crt_g_mask_center_sel = (nc.mask_crt_g_b50.data == 1)
     all_y_centers, all_x_centers = np.where(nc_full_crt_g_mask_center_sel)
     minx = all_x_centers.min()
     miny = all_y_centers.min()
@@ -45,7 +45,7 @@ def get_patches_df(
 
     if sampling_step is not None:
         # sample the feasible centers uniformly from either the glacier pixels or the whole image
-        if keep_only_patches_on_glacier:
+        if keep_only_patches_50m_buffer:
             idx_x = np.asarray([p % sampling_step == 0 for p in all_x_centers])
             idx_y = np.asarray([p % sampling_step == 0 for p in all_y_centers])
             idx = idx_x & idx_y
