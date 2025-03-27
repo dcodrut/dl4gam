@@ -261,7 +261,7 @@ class GlSegPatchDataset(Dataset):
 
 
 class GlSegDataset(GlSegPatchDataset):
-    def __init__(self, fp, patch_radius, sampling_step=None, preload_data=False, **kwargs):
+    def __init__(self, fp, patch_radius, sampling_step=None, preload_data=False, add_extremes=False, **kwargs):
         self.fp = fp
         super().__init__(folder=None, fp_list=[fp], **kwargs)
 
@@ -276,7 +276,7 @@ class GlSegDataset(GlSegPatchDataset):
             sampling_step=sampling_step,
             add_center=False,
             add_centroid=True,
-            add_extremes=True
+            add_extremes=add_extremes
         )
 
     def __getitem__(self, idx):
@@ -406,11 +406,14 @@ class GlSegDataModule(pl.LightningDataModule):
                     fp_rasters=self.fp_list_valid, sampling_step=self.sampling_step_valid
                 ))
             elif stage == 'test':
+                # we enable add_extremes for the test set to make sure we have a good coverage of the glacier
                 self.test_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
-                    fp_rasters=self.fp_list_test, sampling_step=self.sampling_step_test
+                    fp_rasters=self.fp_list_test, sampling_step=self.sampling_step_test, add_extremes=True
                 ))
 
-    def build_patch_dataset_per_glacier(self, fp_rasters, use_augmentation=False, sampling_step=None):
+    def build_patch_dataset_per_glacier(
+            self, fp_rasters, use_augmentation=False, sampling_step=None, add_extremes=False
+    ):
         ds_list = run_in_parallel(
             fun=functools.partial(
                 GlSegDataset,
@@ -421,6 +424,7 @@ class GlSegDataModule(pl.LightningDataModule):
                 data_stats_df=self.data_stats_df,
                 patch_radius=self.patch_radius,
                 sampling_step=sampling_step,
+                add_extremes=add_extremes,
                 preload_data=self.preload_data,
                 use_augmentation=use_augmentation
             ),
