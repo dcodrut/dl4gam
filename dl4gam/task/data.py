@@ -268,6 +268,7 @@ class GlSegDataset(GlSegPatchDataset):
     def __init__(self, fp, patch_radius, sampling_step=None, preload_data=False, add_extremes=False, **kwargs):
         self.fp = fp
         super().__init__(folder=None, fp_list=[fp], **kwargs)
+        self.patch_radius = patch_radius
 
         # get all possible patches for the glacier
         if preload_data:
@@ -286,6 +287,12 @@ class GlSegDataset(GlSegPatchDataset):
     def __getitem__(self, idx):
         r = self.patches_df.iloc[idx]
         nc_patch = self.nc.isel(x=slice(r.minx, r.maxx), y=slice(r.miny, r.maxy))
+
+        # make sure the patch has the correct size
+        assert nc_patch.sizes['x'] == 2 * self.patch_radius, \
+            f'Wrong patch size: {nc_patch.sizes["x"]} != {2 * self.patch_radius}'
+        assert nc_patch.sizes['y'] == 2 * self.patch_radius, \
+            f'Wrong patch size: {nc_patch.sizes["y"]} != {2 * self.patch_radius}'
 
         data = self.process_data(ds=nc_patch, fp=self.fp)
 

@@ -371,7 +371,8 @@ if __name__ == "__main__":
         num_procs=C.NUM_PROCS,
         extra_geometries_dict=C.EXTRA_GEOMETRIES,
         extra_rasters_dict=C.EXTRA_RASTERS,
-        compute_dem_features=True
+        compute_dem_features=True,
+        buffer_px=(C.PATCH_RADIUS + int(round(50 / C.GSD))),
     )
 
     for k, v in {**C.EXTRA_GEOMETRIES, **C.EXTRA_RASTERS}.items():
@@ -382,7 +383,7 @@ if __name__ == "__main__":
     if C.__name__ == 'S2_ALPS':
         specific_settings = dict(
             choose_best_auto=True,
-            buffer_px=C.PATCH_RADIUS,
+
         )
     elif C.__name__ == 'S2_ALPS_PLUS':
         if C.CSV_DATES_ALLOWED is not None:
@@ -394,7 +395,6 @@ if __name__ == "__main__":
             max_cloud_f = 0.3
             choose_best_auto = True
         specific_settings = dict(
-            buffer_px=C.PATCH_RADIUS,
             df_dates=dates_allowed,
             max_cloud_f=max_cloud_f,
             choose_best_auto=choose_best_auto
@@ -410,7 +410,6 @@ if __name__ == "__main__":
         specific_settings = dict(
             choose_best_auto=choose_best_auto,
             max_cloud_f=0.3,
-            buffer_px=C.PATCH_RADIUS,
             df_dates=dates_allowed
         )
 
