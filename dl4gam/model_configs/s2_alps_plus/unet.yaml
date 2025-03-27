@@ -47,14 +47,9 @@ model:
     dem_features: True
     velocity: False
   args:
-#    encoder_name: 'resnet50'
     encoder_name: 'resnet34'
     encoder_weights: 'imagenet'
-#    encoder_weights: null
     encoder_depth: 5
     activation: 'sigmoid'
     decoder_use_batchnorm: False
     decoder_attention_type: null
-  other:
-    external_encoder_weights: null
-#    external_encoder_weights: '../data/external/pretraining/B13_rn50_moco_0099.pth'
