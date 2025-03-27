@@ -127,6 +127,7 @@ def prep_glacier_dataset(
         buffer_px: int = 0,
         check_data_coverage=True,
         fp_out: str | Path | None = None,
+        return_nc: bool = False
 ):
     """
     Prepare a glacier dataset by adding the glacier masks and possibly extra masks (see add_glacier_masks).
@@ -141,7 +142,8 @@ def prep_glacier_dataset(
     :param buffer_px: the buffer around the current glacier (in pixels) to be used when cropping the image data
     :param check_data_coverage: whether to check if the data covers the current glacier + buffer
     :param fp_out: the path to the output glacier dataset (if None, the raster is returned without saving it)
-    :return: None
+    :param return_nc: whether to return the xarray dataset
+    :return: None or the xarray dataset
     """
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
@@ -224,7 +226,8 @@ def prep_glacier_dataset(
         nc.to_netcdf(fp_out)
         nc.close()
 
-    return nc
+    if return_nc:
+        return nc
 
 
 def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):

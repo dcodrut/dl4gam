@@ -97,6 +97,7 @@ def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask):
         bands_name_map=bands_name_map,
         bands_qc_mask=bands_qc_mask,
         buffer_px=5, # this will be used for computing the scene level statistics
+        return_nc=True
     )
 
     # prepare the QC mask (check the config to see what goes into the QC mask)
