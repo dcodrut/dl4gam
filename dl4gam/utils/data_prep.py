@@ -117,46 +117,30 @@ def add_glacier_masks(
     return nc_data_crop
 
 
-def add_extra_mask(nc_data, mask_name, gdf):
-    """
-    Add an extra mask to the given dataset.
-    :param nc_data: the xarray dataset with the (raw) image data
-    :param mask_name: the name of the mask to be added
-    :param gdf: the geopandas dataframe with the mask's outlines
-    :return: None
-    """
-
-    # project the outlines on the same CRS as the image data
-    gdf_proj = gdf.to_crs(nc_data.rio.crs)
-
-    # get all the polys that intersect the current raster (multiple glaciers can be covered)
-    tmp_raster = nc_data.band_data.isel(band=0).rio.clip(gdf_proj.geometry, drop=False).values
-    mask = (tmp_raster != nc_data.band_data.rio.nodata).astype(np.int8)
-    nc_data[mask_name] = (('y', 'x'), mask)
-    nc_data[mask_name].attrs['_FillValue'] = -1
-    nc_data[mask_name].rio.write_crs(nc_data.rio.crs, inplace=True)
-
-
 def prep_glacier_dataset(
-        fp_img,
-        fp_out,
-        entry_id,
-        gl_df, extra_gdf_dict,
-        buffer_px,
-        bands_to_keep='all',
-        check_data_coverage=True
+        fp_img: str | Path,
+        entry_id: str,
+        gl_df: geopandas.GeoDataFrame,
+        bands_name_map: dict | None = None,
+        bands_qc_mask=None,
+        extra_gdf_dict: dict | None = None,
+        buffer_px: int = 0,
+        check_data_coverage=True,
+        fp_out: str | Path | None = None,
 ):
     """
     Prepare a glacier dataset by adding the glacier masks and possibly extra masks (see add_glacier_masks).
 
     :param fp_img: the path to the raw image
-    :param fp_out: the path to the output glacier dataset
     :param entry_id: the ID of the current glacier
     :param gl_df: the geopandas dataframe with all the glacier outlines
+    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values);
+        if None, all the bands are kept
+    :param bands_qc_mask: the names of the bands to be used for building the mask for bad pixels
     :param extra_gdf_dict: a dictionary with the extra masks to be added
     :param buffer_px: the buffer around the current glacier (in pixels) to be used when cropping the image data
-    :param bands_to_keep: the image bands to keep (if 'all', all the bands will be kept)
     :param check_data_coverage: whether to check if the data covers the current glacier + buffer
+    :param fp_out: the path to the output glacier dataset (if None, the raster is returned without saving it)
     :return: None
     """
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
@@ -169,15 +153,44 @@ def prep_glacier_dataset(
     if 'long_name' not in nc.band_data.attrs:
         nc.band_data.attrs['long_name'] = [f'B{i + 1}' for i in range(len(nc.band_data))]
 
-    # keep only the bands we need later if specified
-    if bands_to_keep == 'all':
-        # ensure the bands to keep are in the image
-        bands_missing = [b for b in bands_to_keep if b not in nc.band_data.long_name]
-        assert len(bands_missing) == 0, f"Missing bands: {bands_missing}"
+    # set the band names for indexing
+    nc = nc.assign_coords(band=list(nc.band_data.long_name))
 
-        all_bands = list(nc.band_data.long_name)
-        nc = nc.isel(band=[all_bands.index(b) for b in bands_to_keep])
-        nc.band_data.attrs['long_name'] = tuple(bands_to_keep)
+    # build the mask for the bad (e.g. cloudy, shadowed or missing) pixels if needed
+    if bands_qc_mask is not None:
+        # ensure the bands to keep are in the image
+        bands_missing = [b for b in bands_qc_mask if b.replace('~', '') not in nc.band_data.long_name]
+        assert len(bands_missing) == 0, f"{bands_missing} not found in the image bands = {nc.band_data.long_name}"
+
+        # build the mask
+        mask_nok = np.zeros_like(nc.band_data.isel(band=0).values, dtype=bool)
+        for b in bands_qc_mask:
+            crt_mask = (nc.band_data.sel(band=b.replace('~', '')).values == 1)
+            # invert the mask if needed
+            if b[0] == '~':
+                crt_mask = ~crt_mask
+            mask_nok |= crt_mask
+
+        # add the mask to the dataset
+        nc['mask_nok'] = (('y', 'x'), mask_nok.astype(np.int8))
+        nc['mask_nok'].attrs['_FillValue'] = -1
+        nc['mask_nok'].attrs['bands_qc_mask'] = tuple(bands_qc_mask)
+        nc['mask_nok'].rio.write_crs(nc.rio.crs, inplace=True)
+
+    # keep only the bands we will need later if given
+    if bands_name_map is not None:
+        # ensure the bands to keep are in the image
+        bands_missing = [b for b in bands_name_map if b not in nc.band_data.long_name]
+        assert len(bands_missing) == 0, f"{bands_missing} not found in the image bands = {nc.band_data.long_name}"
+
+        # subset the bands
+        bands_to_keep = list(bands_name_map.keys())
+        nc = nc.sel(band=list(bands_to_keep))
+
+        # rename the bands
+        new_band_names = [bands_name_map[b] for b in bands_to_keep]
+        nc = nc.assign_coords(band=new_band_names)
+        nc.band_data.attrs['long_name'] = new_band_names
 
     # add the glacier masks
     entry_id_int = row_crt_g.iloc[0].entry_id_i
@@ -203,12 +216,15 @@ def prep_glacier_dataset(
     # not sure why but needed for QGIS
     nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)
 
-    # export
-    fp_out.parent.mkdir(exist_ok=True, parents=True)
-    nc.attrs['fn'] = fp_img.name
-    nc.attrs['glacier_area'] = row_crt_g.area_km2.iloc[0]
-    nc.to_netcdf(fp_out)
-    nc.close()
+    # export if needed
+    if fp_out is not None:
+        fp_out.parent.mkdir(exist_ok=True, parents=True)
+        nc.attrs['fn'] = fp_img.name
+        nc.attrs['glacier_area'] = row_crt_g.area_km2.iloc[0]
+        nc.to_netcdf(fp_out)
+        nc.close()
+
+    return nc
 
 
 def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):

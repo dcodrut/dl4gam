@@ -51,9 +51,23 @@ class BaseConfig:
 
     @classmethod
     @property
-    def BANDS(cls):
-        # which bands to keep from the original raw files (used when building the glacier-wide rasters)
-        raise NotImplementedError
+    def BANDS_NAME_MAP(cls):
+        # a dict with the optical bands to keep from the raw images when building the glacier-wide rasters (keys)
+        # AND the new names for the bands if needed (values)
+        # (in case we want to derive optical indices (i.e. NDVI, NDWI & NDSI) we expect the R, G, B, NIR, SWIR bands)
+        # !Note that we will attempt to use the "long_name" attribute of the bands in the raw files
+        # and if this is not available, the map keys should be B1, B2, B3, ... etc.
+
+        # if it is None, no bands subset or renaming will be applied
+        return None
+
+    @classmethod
+    @property
+    def BANDS_QC_MASK(cls):
+        # a list of the bands that are used to build the quality mask (e.g. FILL_MASK, CLOUD_MASK, SHADOW_MASK)
+        # the mask is built using the bitwise OR of the bands
+        # use ~ as prefix to invert a mask
+        return None
 
     @classmethod
     @property
@@ -211,11 +225,16 @@ class S2_ALPS(BaseConfig):
     WD = f'../data/external/wd/s2_alps'
 
     # raw -> rasters settings
-    BANDS = (
-        'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12',
-        'CLOUDLESS_MASK',
-        'FILL_MASK'
-    )
+    BANDS_NAME_MAP = {k: k for k in ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']}
+    BANDS_NAME_MAP.update({
+        'B2': 'B',
+        'B3': 'G',
+        'B4': 'R',
+        'B8': 'NIR',
+        'B11': 'SWIR'  # this is SWIR1, but we will call it SWIR
+    })
+    # BANDS_QC_MASK = ['FILL_MASK', 'SHADOW_MASK', 'CLOUD_MASK']
+    BANDS_QC_MASK = ['~CLOUDLESS_MASK']  # see https://geedim.readthedocs.io/en/latest/cli.html#geedim-download
 
     GSD = 10  # ground sampling distance in meters
 

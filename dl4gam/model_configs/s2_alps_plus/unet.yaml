@@ -40,8 +40,8 @@ model:
   class: 'SegModel'
   name: 'Unet'
   inputs:
-    bands_input: [ 'B4', 'B3', 'B2', 'B8', 'B11']
-    bands_mask: [ '~FILL_MASK', '~CLOUDLESS_MASK']
+    bands_input: [ 'R', 'G', 'B', 'NIR', 'SWIR']
+    band_mask: 'mask_nok'
     dem: True
     dhdt: True
     optical_indices: True

@@ -17,6 +17,8 @@ from utils.general import run_in_parallel
 
 def add_stats(
         gl_df: gpd.GeoDataFrame,
+        bands_name_map: dict | None,
+        bands_qc_mask: list,
         fp_stats: Path,
         num_procs: int,
         col_clouds: str,
@@ -29,6 +31,9 @@ def add_stats(
     both for the glacier and the surrounding area.
 
     :param gl_df: the glaciers dataframe
+    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values).
+        If None, all the bands will be kept.
+    :param bands_qc_mask: the list of bands to use for the QC mask (e.g. the cloud coverage)
     :param fp_stats: the filepath to the csv file where to save the QC statistics (or read them from if it exists)
     :param num_procs: the number of parallel processes to use for computing the stats
     :param col_clouds: the column name for the cloud coverage (including shadows and missing pixels)
@@ -50,7 +55,7 @@ def add_stats(
             gl_df.apply(lambda r: gpd.GeoDataFrame(pd.DataFrame(r).T, crs=gl_df.crs), axis=1)
         )
         all_cloud_stats = run_in_parallel(
-            fun=functools.partial(compute_qc_stats, include_shadows=False),
+            fun=functools.partial(compute_qc_stats, bands_name_map=bands_name_map, bands_qc_mask=bands_qc_mask),
             gl_sdf=gl_sdf_list,
             num_procs=num_procs,
             pbar=True
@@ -133,7 +138,8 @@ def prepare_all_rasters(
         check_data_coverage: bool = True,
         no_data: int = C.NODATA,
         num_procs: int = 1,
-        bands_to_keep: str = 'all',
+        bands_name_map: dict = C.BANDS_NAME_MAP,
+        bands_qc_mask: list = C.BANDS_QC_MASK,
         extra_geometries_dict: dict = None,
         extra_rasters_dict: dict = None,
         min_area: float = None,
@@ -180,19 +186,21 @@ def prepare_all_rasters(
     :param raw_images_dir: The directory containing the raw images (optional, see also *raw_fp_df*).
     :param date_indices: The range of where the date is located in the image filename (optional, see also *raw_fp_df*).
     :param date_format: The format of the date in the image filename (optional, see also *raw_fp_df*).
-    :param raw_fp_df: The dataframe containing the list of images for each glacier (optional, if raw_images_dir is
-    not given).
+    :param raw_fp_df: The dataframe containing the list of images for each glacier (optional, if raw_images_dir is not
+        given).
     :param buffer_px: The buffer in pixels to consider around the glacier outlines when cutting the raw images.
     :param check_data_coverage: If True, check if the raw image has a large enough spatial extent to cover the
-    glacier + the buffer.
+        glacier + the buffer.
     :param no_data: The no data value to use for the output rasters.
     :param num_procs: The number of parallel processes to use.
-    :param bands_to_keep: The bands to keep from the raw images.
+    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values).
+        If None, all the bands will be kept.
+    :param bands_qc_mask: The bands to use for the QC mask (e.g. the cloud coverage).
     :param extra_geometries_dict: A dictionary containing the extra shapefiles to add to the glacier datasets as
-    binary masks.
+        binary masks.
     :param extra_rasters_dict: A dictionary containing the extra rasters to add to the glacier datasets.
     :param min_area: The minimum glacier area to consider (only the rasters for these glaciers will be built but the
-    main binary masks will contain all glaciers).
+        main binary masks will contain all glaciers).
     :param df_dates: A dataframe containing the allowed dates for each glacier (if None, all the images will be used).
     :param choose_best_auto: If True, keep the best images based on the cloud coverage and the NDSI.
     :param max_cloud_f: The maximum cloud coverage allowed for each image.
@@ -252,16 +260,15 @@ def prepare_all_rasters(
     # compute the cloud coverage statistics for each downloaded image if needed
     if choose_best_auto or max_cloud_f is not None:
         # specify the columns for the cloud coverage, the NDSI and the albedo stats (see the compute_qc_stats function)
-        # the v1 suffix means we use the statistics based on the CLOUDLESS_MASK band
-        # (i.e. Mask of filled & cloud/shadow-free pixels,
-        # see https://geedim.readthedocs.io/en/latest/cli.html#geedim-download)
-        col_clouds = 'cloud_p_gl_b50m_v1'
-        col_ndsi = 'ndsi_avg_non_gl_b50m_v1'
-        col_albedo = 'albedo_avg_gl_b50m_v1'
+        col_clouds = 'cloud_p_gl_b50m'
+        col_ndsi = 'ndsi_avg_non_gl_b50m'
+        col_albedo = 'albedo_avg_gl_b50m'
 
         fp_stats_all = Path(out_rasters_dir).parent / 'aux_data' / 'stats_all.csv'
         gl_df_sel = add_stats(
             gl_df=gl_df_sel,
+            bands_name_map=bands_name_map,
+            bands_qc_mask=bands_qc_mask,
             fp_stats=fp_stats_all,
             num_procs=num_procs,
             col_clouds=col_clouds,
@@ -315,16 +322,18 @@ def prepare_all_rasters(
 
     # build and export the rasters for each image
     run_in_parallel(
-        fun=prep_glacier_dataset,
+        fun=functools.partial(
+            prep_glacier_dataset,
+            gl_df=gl_df_all,
+            extra_gdf_dict=extra_gdf_dict,
+            bands_name_map=bands_name_map,
+            bands_qc_mask=bands_qc_mask,
+            buffer_px=buffer_px,
+            check_data_coverage=check_data_coverage,
+        ),
         fp_img=fp_img_list,
         fp_out=fp_out_list,
         entry_id=list(gl_df_sel.entry_id),
-        gl_df=gl_df_all,
-        extra_gdf_dict=extra_gdf_dict,
-        bands_to_keep=bands_to_keep,
-        buffer_px=buffer_px,
-        check_data_coverage=check_data_coverage,
-        no_data=no_data,
         num_procs=num_procs,
         pbar=True
     )
@@ -339,21 +348,25 @@ def prepare_all_rasters(
 
     # add the extra rasters to the glacier datasets by loading those that intersect each glacier using the previous bb
     run_in_parallel(
-        fun=add_external_rasters,
+        fun=functools.partial(
+            add_external_rasters,
+            extra_rasters_bb_dict=extra_rasters_bb_dict,
+            no_data=no_data
+        ),
         fp_gl=fp_out_list,
-        extra_rasters_bb_dict=extra_rasters_bb_dict,
         num_procs=num_procs,
-        no_data=no_data,
         pbar=True
     )
 
     # derive features from the DEM if needed
     if compute_dem_features:
         run_in_parallel(
-            fun=add_dem_features,
+            fun=functools.partial(
+                add_dem_features,
+                no_data=no_data,
+            ),
             fp_gl=fp_out_list,
             num_procs=num_procs,
-            no_data=no_data,
             pbar=True
         )
 
@@ -366,7 +379,8 @@ if __name__ == "__main__":
         fp_gl_df_all=C.GLACIER_OUTLINES_FP,
         out_rasters_dir=C.DIR_GL_RASTERS,
         min_area=C.MIN_GLACIER_AREA,
-        bands_to_keep=C.BANDS,
+        bands_name_map=C.BANDS_NAME_MAP,
+        bands_qc_mask=C.BANDS_QC_MASK,
         no_data=C.NODATA,
         num_procs=C.NUM_PROCS,
         extra_geometries_dict=C.EXTRA_GEOMETRIES,

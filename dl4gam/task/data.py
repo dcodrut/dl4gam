@@ -17,20 +17,12 @@ def extract_inputs(ds, fp, input_settings):
     idx_bands = [band_names.index(b) for b in input_settings['bands_input']]
     band_data = ds.band_data.isel(band=idx_bands).values.astype(np.float32)
 
-    # build the data mask
-    mask_no_data = np.zeros_like(ds.band_data.isel(band=0).values).astype(bool)
-    mask_names = input_settings['bands_mask']
-    for mask_name in mask_names:
-        # check which value do we expect for the mask
-        if mask_name[0] == '~':
-            mask_name = mask_name[1:]
-            ok_value = 1
-        else:
-            ok_value = 0
-        # add the current mask
-        assert mask_name in band_names, f"Expecting one of the following values for masks: {band_names}"
-        crt_mask_no_data = ~(ds.band_data.values[band_names.index(mask_name)] == ok_value)
-        mask_no_data |= crt_mask_no_data
+    # prepare the mask
+    mask_name = input_settings['band_mask']
+    if mask_name is not None:
+        mask_no_data = (ds[mask_name].values == 1)
+    else:
+        mask_no_data = np.zeros_like(ds.band_data.isel(band=0).values).astype(bool)
 
     # include to the nodata mask any NaN pixel
     # (it happened once that a few pixels were missing only from the last band but the mask did not include them)
@@ -85,10 +77,10 @@ def extract_inputs(ds, fp, input_settings):
         # NDSI = (Green - SWIR) / (Green + SWIR)
         # NDVI = (NIR - Red) / (NIR + Red)
         # NDWI = (Green - NIR) / (Green + NIR)
-        swir = band_data[input_settings['bands_input'].index('B11')]
-        r = band_data[input_settings['bands_input'].index('B4')]
-        g = band_data[input_settings['bands_input'].index('B3')]
-        nir = band_data[input_settings['bands_input'].index('B8')]
+        swir = band_data[input_settings['bands_input'].index('SWIR')]
+        r = band_data[input_settings['bands_input'].index('R')]
+        g = band_data[input_settings['bands_input'].index('G')]
+        nir = band_data[input_settings['bands_input'].index('NIR')]
 
         # NDSI
         den = g + swir

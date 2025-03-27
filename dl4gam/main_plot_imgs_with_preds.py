@@ -28,8 +28,8 @@ def plot_glacier(
         gl_df_pred,
         df_results,
         plot_dir,
-        bands_img_1=('B4', 'B3', 'B2'),
-        bands_img_2=('B11', 'B8', 'B4'),
+        bands_img_1=('R', 'G', 'B'),
+        bands_img_2=('SWIR', 'NIR', 'R'),
         plot_dhdt=True,
         source_name='Copernicus Sentinel-2',
         fig_w_px=1920,
@@ -205,7 +205,7 @@ if __name__ == "__main__":
     args = parse_args()
     plot_root_dir = Path(args.plot_root_dir)
     plot_preds = args.plot_preds
-    model_dir = Path(args.model_dir)
+    model_dir = Path(args.model_dir) if plot_preds else None
     model_version = args.model_version
     seed = args.seed
 
@@ -262,13 +262,13 @@ if __name__ == "__main__":
         gl_df_pred=gl_df_pred,
         df_results=df_results,
         plot_dir=plot_dir,
-        bands_img_1=('B4', 'B3', 'B2') if ds_name != 'ps_alps' else ('R', 'G', 'B'),
-        bands_img_2=('B11', 'B8', 'B4') if ds_name != 'ps_alps' else ('NIR', 'G', 'B'),
+        bands_img_1=('R', 'G', 'B'),
+        bands_img_2=('SWIR', 'NIR', 'R') if ds_name != 'ps_alps' else ('NIR', 'R', 'G'),
         source_name='Copernicus Sentinel-2' if ds_name != 'ps_alps' else 'PlanetScope',
         plot_dhdt=(ds_name == 's2_alps_plus'),
         line_thickness=1,
         fontsize=9,
-        q_lim_contrast=0.05
+        q_lim_contrast=0.035
     )
 
     run_in_parallel(_plot_results, fp_raster=fp_list, num_procs=C.NUM_PROCS, pbar=True)

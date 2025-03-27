@@ -15,13 +15,12 @@ from tqdm import tqdm
 
 # local imports
 from config import C
-from task.data import extract_inputs
 from utils.general import run_in_parallel
 from utils.postprocessing import nn_interp
 
 input_settings = {
-    'bands_input': ['B4', 'B3', 'B2', 'B8', 'B11'],
-    'bands_mask': ['~FILL_MASK', '~CLOUDLESS_MASK'],
+    'bands_input': ['R', 'G', 'B', 'NIR', 'SWIR'],
+    'band_qc_mask': 'mask_nok',
     'dem': False,
     'dhdt': False,
     'optical_indices': False,
@@ -35,21 +34,21 @@ def band_ratio(filepath, r_swir_thr_step=0.1, b_thr_step=None):
     stats = {'entry_id': [], 'glacier_area': [], 'r_swir_thr': [], 'b_thr': [], 'iou': []}
 
     # compute the band ratio (red / SWIR)
-    r = nc.band_data.isel(band=nc.band_data.long_name.index('B4')).values
-    b = nc.band_data.isel(band=nc.band_data.long_name.index('B2')).values
-    swir = nc.band_data.isel(band=nc.band_data.long_name.index('B11')).values
+    r = nc.band_data.sel(band='R').values
+    b = nc.band_data.sel(band='B').values
+    swir = nc.band_data.sel(band='SWIR').values
 
     # keep only the clean pixels
-    mask_no_data = extract_inputs(fp=filepath, ds=nc, input_settings=input_settings)['mask_no_data']
-    r = r[~mask_no_data]
-    swir = swir[~mask_no_data]
-    b = b[~mask_no_data]
+    mask_nok = (nc.mask_nok.values == 1)
+    r = r[~mask_nok]
+    swir = swir[~mask_nok]
+    b = b[~mask_nok]
 
     # R/SWIR ratio
     ratio = r / np.maximum(swir, 1)
 
     # ground truth
-    y_true = (~np.isnan(nc.mask_all_g_id.values))[~mask_no_data]
+    y_true = (~np.isnan(nc.mask_all_g_id.values))[~mask_nok]
 
     # TODO: make this more efficient
     for r_swir_thr in np.arange(0.5, 5.5 + r_swir_thr_step, r_swir_thr_step):
@@ -250,9 +249,9 @@ if __name__ == "__main__":
                     b_thr = df_best_thrs[idx].b_thr.values[0]
 
                     # get the predictions
-                    r = nc.band_data.isel(band=nc.band_data.long_name.index('B4')).values
-                    b = nc.band_data.isel(band=nc.band_data.long_name.index('B2')).values
-                    swir = nc.band_data.isel(band=nc.band_data.long_name.index('B11')).values
+                    r = nc.band_data.sel(band='R').values
+                    b = nc.band_data.sel(band='B').values
+                    swir = nc.band_data.sel(band='SWIR').values
                     ratio = r / np.maximum(swir, 1)
                     preds_b = (ratio >= r_swir_thr) & (b >= b_thr)
 
@@ -263,7 +262,7 @@ if __name__ == "__main__":
                     nc_pred['pred_b'] = (('y', 'x'), preds_b)
 
                     # fill-in the masked pixels (only within 50m buffer) using the NN interpolation
-                    mask_to_fill = extract_inputs(ds=nc, fp=fp, input_settings=input_settings)['mask_no_data']
+                    mask_to_fill = (nc.mask_nok == 1)
                     mask_crt_g_b50 = (nc.mask_crt_g_b50.values == 1)
                     mask_to_fill &= mask_crt_g_b50
                     mask_ok = (~mask_to_fill) & mask_crt_g_b50
