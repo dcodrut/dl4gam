@@ -284,6 +284,11 @@ class GlSegDataset(GlSegPatchDataset):
             add_extremes=add_extremes
         )
 
+    def subsample(self, n, with_replacement=False):
+        # subsample the patches
+        assert n <= len(self.patches_df), f'Not enough patches: {n} > {len(self.patches_df)}; fp = {self.fp}'
+        self.patches_df = self.patches_df.sample(n, replace=with_replacement)
+
     def __getitem__(self, idx):
         r = self.patches_df.iloc[idx]
         nc_patch = self.nc.isel(x=slice(r.minx, r.maxx), y=slice(r.miny, r.maxy))
@@ -314,6 +319,7 @@ class GlSegDataModule(pl.LightningDataModule):
                  patches_dir: Union[Path, str] = None,
                  patch_radius: int = None,
                  sampling_step_train: int = None,
+                 n_patches_train: int = None,
                  sampling_step_valid: int = None,
                  sampling_step_test: int = None,
                  preload_data: bool = False,
@@ -333,6 +339,7 @@ class GlSegDataModule(pl.LightningDataModule):
         self.input_settings = input_settings
         self.patch_radius = patch_radius
         self.sampling_step_train = sampling_step_train
+        self.n_patches_train = n_patches_train
         self.sampling_step_valid = sampling_step_valid
         self.sampling_step_test = sampling_step_test
         self.preload_data = preload_data
@@ -413,11 +420,41 @@ class GlSegDataModule(pl.LightningDataModule):
         else:
             # build a dataset for each glacier (patches will be sampled on the fly), then concatenate them
             if stage == 'fit' or stage is None:
-                self.train_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
+                ds_list_train = self.build_patch_dataset_per_glacier(
                     fp_rasters=self.fp_list_train,
                     use_augmentation=self.use_augmentation,
                     sampling_step=self.sampling_step_train
-                ))
+                )
+
+                # subsample the patches if needed
+                if self.n_patches_train is not None:
+                    # make sure we generated enough training patches (keep at least on patch per glacier)
+                    ds_sizes_init = np.asarray([len(ds) for ds in ds_list_train])
+                    n_patches_init = sum(ds_sizes_init)
+                    assert n_patches_init >= self.n_patches_train, \
+                        f'Not enough patches for training: {n_patches_init} < {self.n_patches_train}'
+                    n_glaciers = len(ds_list_train)
+                    # keep at least one patch per glacier
+                    fraction = (self.n_patches_train - n_glaciers) / (n_patches_init - n_glaciers)
+                    ds_sizes_to_keep = np.asarray([1 + int(round((x - 1) * fraction)) for x in ds_sizes_init])
+
+                    # make sure the sum is exactly the target number of patches
+                    idx = np.argsort(ds_sizes_to_keep)  # use the largest glaciers to make sure we have enough patches
+                    diff = self.n_patches_train - sum(ds_sizes_to_keep)
+                    ds_sizes_to_keep[idx[-abs(diff):]] += np.sign(diff)
+
+                    print("===================================================")
+                    print(pd.Series([len(x) for x in ds_list_train]).describe())
+                    print("===================================================")
+
+                    # subsample the patches
+                    for n, ds in zip(ds_sizes_to_keep, ds_list_train):
+                        ds.subsample(n=n, with_replacement=False)
+
+                print(pd.Series([len(x) for x in ds_list_train]).describe())
+                self.train_ds = ConcatDataset(ds_list_train)
+
+                # for validation, we don't apply any subsampling, adjust the sampling step if needed
                 self.valid_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
                     fp_rasters=self.fp_list_valid, sampling_step=self.sampling_step_valid
                 ))

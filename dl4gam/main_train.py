@@ -97,11 +97,6 @@ def train_model(settings: dict):
                 f'#samples per glacier: min = {min(ds_sizes)} max = {max(ds_sizes)} avg = {np.mean(ds_sizes):.1f}'
             )
 
-    # make sure we generated enough patches for the training set
-    if not C.EXPORT_PATCHES:
-        assert len(dm.train_ds) >= C.NUM_PATCHES_PER_EPOCH, \
-            f'Not enough patches for training: {len(dm.train_ds)} < {C.NUM_PATCHES_PER_EPOCH}'
-
     trainer.fit(task, dm)
     logger.info(f'Best model {checkpoint_callback.best_model_path} with score {checkpoint_callback.best_model_score}')
 
@@ -141,6 +136,8 @@ if __name__ == '__main__':
         all_settings['logger']['name'] = str(Path(all_settings['logger']['name']).parent / args.split)
 
     # add the patch sampling parameters if needed
+    # (we don't store them in the model config file because when patches are exported to disk, we need the sampling
+    #  parameters in main_prep_data_train.py)
     if not C.EXPORT_PATCHES:
         all_settings['data']['patch_radius'] = C.PATCH_RADIUS
         all_settings['data']['sampling_step_train'] = C.SAMPLING_STEP_TRAIN
@@ -148,10 +145,15 @@ if __name__ == '__main__':
         all_settings['data']['sampling_step_test'] = C.SAMPLING_STEP_TEST  # will be used for inference in the future
         all_settings['data']['preload_data'] = C.PRELOAD_DATA
 
-        # limit the number of batches in the training set
-        # with shuffle=True and a large enough number of patches, the epoch will be different each time
-        num_batches = C.NUM_PATCHES_PER_EPOCH // all_settings['data']['train_batch_size']
-        all_settings['trainer']['limit_train_batches'] = num_batches
+        if C.SAMPLE_PATCHES_EACH_EPOCH:
+            # limit the number of batches in the training set s.t. we sample different patches each epoch
+            # (with shuffle=True and a large enough number of patches, the epoch will be different each time)
+            num_batches = C.NUM_PATCHES_TRAIN // all_settings['data']['train_batch_size']
+            all_settings['trainer']['limit_train_batches'] = num_batches
+            all_settings['data']['n_patches_train'] = None
+        else:
+            # sample once all the patches in the training set (the same patches will be used each epoch but reshuffled)
+            all_settings['data']['n_patches_train'] = C.NUM_PATCHES_TRAIN
 
     # add the seed as a subfolder
     all_settings['logger']['name'] = str(Path(all_settings['logger']['name']) / f'seed_{all_settings["task"]["seed"]}')

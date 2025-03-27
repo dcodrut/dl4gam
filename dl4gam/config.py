@@ -72,14 +72,35 @@ class BaseConfig:
 
     @classmethod
     @property
-    def NUM_PATCHES_PER_EPOCH(cls):
+    def NUM_PATCHES_TRAIN(cls):
         """
-            The number of patches to sample per epoch. This is used only when EXPORT_PATCHES is False.
+            The number of patches to sample for training. Has to be smaller than the total number of patches available
+            (which is controlled by SAMPLING_STEP_TRAIN).
+
+            We will then sample (without replacement) the required number of patches, either at the beginning of each
+            epoch (see SAMPLE_PATCHES_EACH_EPOCH) or once at the beginning of the training.
+
+            This is used only when EXPORT_PATCHES is False.
         """
         if cls.EXPORT_PATCHES:
             return None
 
         raise NotImplementedError
+
+    @classmethod
+    @property
+    def SAMPLE_PATCHES_EACH_EPOCH(cls):
+        """
+            Whether to take a new sample of the initially generated patches at the beginning of each epoch.
+            This is used only when EXPORT_PATCHES is False.
+            If False, the patches will be the same for each epoch and the order will be shuffled. This could be useful
+            when training an ensemble of models (~bootstrapping).
+            Note however that we keep at least one patch per glacier so it's not a bootstrapping in a classical sense.
+        """
+        if cls.EXPORT_PATCHES:
+            return False
+
+        return True
 
     @classmethod
     @property
@@ -172,6 +193,7 @@ class S2_ALPS(BaseConfig):
             'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'),
             'v': Path('../data/external/velocity/its_live/2015'),
         }
+        RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/yearly/'  # multiple years are needed
     elif SUBDIR == '2023':
         # extra rasters to be added to the optical data
         EXTRA_RASTERS = {
@@ -179,13 +201,13 @@ class S2_ALPS(BaseConfig):
             'dhdt': Path('../data/external/dhdt_hugonnet/11_rgi60_2015-01-01_2020-01-01/dhdt'),
             'v': Path('../data/external/velocity/its_live/2022'),
         }
+        RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/yearly/{SUBDIR}'
 
     # extra vector data
     EXTRA_GEOMETRIES = {
         'debris': Path('../data/outlines/debris_multisource/debris_multisource.shp'),
     }
 
-    RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_alps/{SUBDIR}'
     WD = f'../data/external/wd/s2_alps'
 
     # raw -> rasters settings
@@ -199,7 +221,11 @@ class S2_ALPS(BaseConfig):
 
     # patch sampling settings
     PATCH_RADIUS = 128
-    SAMPLING_STEP_TRAIN = 64
+    SAMPLING_STEP_TRAIN = 32
+    NUM_PATCHES_TRAIN = 10000
+    SAMPLE_PATCHES_EACH_EPOCH = False
+    SAMPLING_STEP_VALID = 64
+    SAMPLING_STEP_TEST = 32
 
 
 class S2_ALPS_PLUS(S2_ALPS):
@@ -208,8 +234,6 @@ class S2_ALPS_PLUS(S2_ALPS):
         Same inventory images were removed or replaced (when possible) because they had too many clouds/shadows or
         had too much seasonal snow. The final dates are read from a csv file (CSV_DATES_ALLOWED).
     """
-
-    EXPORT_PATCHES = True
 
     WD = f'../data/external/wd/s2_alps_plus'
 
