@@ -14,6 +14,9 @@ from utils.sampling_utils import get_patches_df
 
 def extract_inputs(ds, fp, input_settings):
     band_names = ds.band_data.attrs['long_name']
+    assert set(input_settings['bands_input']).issubset(band_names), \
+        f"Invalid bands: {input_settings['bands_input']} not in {band_names} for {fp}"
+
     idx_bands = [band_names.index(b) for b in input_settings['bands_input']]
     band_data = ds.band_data.isel(band=idx_bands).values.astype(np.float32)
 
