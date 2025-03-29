@@ -1,8 +1,13 @@
-from pathlib import Path
 from abc import ABC, abstractmethod
+from pathlib import Path
+
 
 class BaseConfig(ABC):
     """ Class which defines the constants applied for all configs and specifies the dataset-specific ones """
+
+    # root working directory, where the glacier-wide rasters, patches, stats etc. are stored
+    # (this is the same for all the datasets)
+    ROOT_WD = Path('../data/external/wd')
 
     # the next properties are the same for all the datasets
     NUM_CV_FOLDS = 5
@@ -24,7 +29,6 @@ class BaseConfig(ABC):
     EXPORT_PATCHES = False
 
     # the next properties have to be specified for each dataset
-    # we raise a NotImplementedError for the properties that need to be implemented
     @classmethod
     @property
     @abstractmethod
@@ -37,13 +41,6 @@ class BaseConfig(ABC):
     @abstractmethod
     def RAW_DATA_DIR(cls):
         # where the original raw (tif) images are stored
-        ...
-
-    @classmethod
-    @property
-    @abstractmethod
-    def WD(cls):
-        # working directory (will store the glacier-wide rasters, patches, stats etc.)
         ...
 
     @classmethod
@@ -146,6 +143,12 @@ class BaseConfig(ABC):
     # the next properties are derived based on the above
     @classmethod
     @property
+    def WD(cls):
+        # derived working directory from the class name containing the dataset-specific settings
+        return cls.ROOT_WD / cls.__name__.lower()
+
+    @classmethod
+    @property
     def DIR_OUTLINES_SPLIT(cls):
         return Path(cls.WD) / 'cv_split_outlines'
 
@@ -228,8 +231,6 @@ class S2_ALPS(BaseConfig):
         'debris': Path('../data/outlines/debris_multisource/debris_multisource.shp'),
     }
 
-    WD = f'../data/external/wd/s2_alps'
-
     # raw -> rasters settings
     BANDS_NAME_MAP = {k: k for k in ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']}
     BANDS_NAME_MAP.update({
@@ -260,8 +261,6 @@ class S2_ALPS_PLUS(S2_ALPS):
         had too much seasonal snow. The final dates are read from a csv file (CSV_DATES_ALLOWED).
     """
 
-    WD = f'../data/external/wd/s2_alps_plus'
-
     # csv file with the finals inventory dates
     CSV_DATES_ALLOWED = '../data/inv_images_qc/final_dates.csv' if S2_ALPS.SUBDIR == 'inv' else None
 
@@ -270,8 +269,6 @@ class S2_SGI(S2_ALPS):
     """ Settings for Sentinel-2 data using the SGI2016 outlines. Most of the settings are the same as in S2. """
 
     RAW_DATA_DIR = f'../data/sat_data_downloader/external/download/s2_sgi/{S2_ALPS.SUBDIR}'
-
-    WD = '../data/external/wd/s2_sgi'
 
     # some dates are skipped when building the rasters because of seasonal snow
     # CSV_DATES_ALLOWED = Path(WD) / Path(RAW_DATA_DIR).name / 'aux_data' / 'dates_allowed.csv'
