@@ -535,7 +535,12 @@ class GlSegDataModule(pl.LightningDataModule):
         :param fp_rasters: list of filepaths to the rasters
         :return: list of dataloaders
         """
-        test_ds_list = self.build_patch_dataset_per_glacier(fp_rasters=fp_rasters)
+        test_ds_list = self.build_patch_dataset_per_glacier(
+            fp_rasters=fp_rasters,
+            sampling_step=self.sampling_step_test,
+            add_extremes=True,
+            use_augmentation=self.use_augmentation
+        )
 
         dloaders = []
         for ds in test_ds_list:
