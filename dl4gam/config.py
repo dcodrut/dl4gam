@@ -1,7 +1,7 @@
 from pathlib import Path
+from abc import ABC, abstractmethod
 
-
-class BaseConfig:
+class BaseConfig(ABC):
     """ Class which defines the constants applied for all configs and specifies the dataset-specific ones """
 
     # the next properties are the same for all the datasets
@@ -27,27 +27,31 @@ class BaseConfig:
     # we raise a NotImplementedError for the properties that need to be implemented
     @classmethod
     @property
+    @abstractmethod
     def GLACIER_OUTLINES_FP(cls):
         # path to the glacier outlines (a shapefile); two columns (except 'geometry') are expected 'Area' and 'entry_id'
-        raise NotImplementedError
+        ...
 
     @classmethod
     @property
+    @abstractmethod
     def RAW_DATA_DIR(cls):
         # where the original raw (tif) images are stored
-        raise NotImplementedError
+        ...
 
     @classmethod
     @property
+    @abstractmethod
     def WD(cls):
         # working directory (will store the glacier-wide rasters, patches, stats etc.)
-        raise NotImplementedError
+        ...
 
     @classmethod
     @property
+    @abstractmethod
     def SUBDIR(cls):
         # subdirectory of the WD where the data is stored (for separating the data by years e.g. 'inv', '2023')
-        raise NotImplementedError
+        ...
 
     @classmethod
     @property
@@ -71,18 +75,20 @@ class BaseConfig:
 
     @classmethod
     @property
+    @abstractmethod
     def PATCH_RADIUS(cls):
         """ patch radius in pixels """
-        raise NotImplementedError
+        ...
 
     @classmethod
     @property
+    @abstractmethod
     def SAMPLING_STEP_TRAIN(cls):
         """
             The step (in pixels) between two consecutive patches for training.
             These patches will be either be exported to disk or prepared on the fly, see EXPORT_PATCHES.
         """
-        raise NotImplementedError
+        ...
 
     @classmethod
     @property
