@@ -238,6 +238,7 @@ class GlSegTask(pl.LightningModule):
         nc = xr.load_dataset(cube_fp, decode_coords='all')
         preds_acc = torch.zeros(nc.mask_crt_g.shape, device=self.device)
         preds_cnt = torch.zeros(size=preds_acc.shape, device=self.device)
+        prc_margin_to_drop = 0.05  # percentage of the patch size to drop from each side (to avoid border effects)
         for j in range(len(self.test_step_outputs)):
             preds = self.test_step_outputs[j]['preds']
             patch_infos = self.test_step_outputs[j]['patch_info']
@@ -249,6 +250,13 @@ class GlSegTask(pl.LightningModule):
                 # get the (pixel) coordinates of the current patch
                 minx, maxx = patch_infos['minx'][i], patch_infos['maxx'][i]
                 miny, maxy = patch_infos['miny'][i], patch_infos['maxy'][i]
+
+                # drop the margins
+                dx = int(crt_pred.shape[1] * prc_margin_to_drop)
+                minx, maxx = minx + dx, maxx - dx
+                miny, maxy = miny + dx, maxy - dx  # square patches
+                crt_pred = crt_pred[dx:-dx, dx:-dx]
+
                 preds_acc[miny:maxy, minx:maxx] += crt_pred
                 preds_cnt[miny:maxy, minx:maxx] += 1
 
