@@ -48,16 +48,6 @@ for SPLIT in "${SPLITS[@]}"; do
   for SEED in "${SEEDS[@]}"; do
     # SEED is 0 for the band ratio models (run main_band_ratio.py beforehand)
     if [ "$SEED" != "0" ]; then
-      # patch-wise inference & evaluation (only if the current evaluation dataset is the inventory & the main dataset)
-      if [ "$EVAL_SUBDIR" == "inv" ] && [ "$DATASET_NAME" == "s2_alps_plus" ]; then
-        echo "Patch-wise evaluation for DATASET_NAME = $DATASET_NAME; EVAL_SUBDIR = $EVAL_SUBDIR; VERSION = $VERSION; SPLIT = $SPLIT; SEED = $SEED"
-        python main_test.py \
-          --checkpoint_dir="$MODEL_ROOT_DIR/split_$SPLIT/seed_$SEED/version_$VERSION/checkpoints" \
-          --fold="s_test" \
-          --test_per_glacier false \
-          --gpu_id=0
-      fi
-
       # glacier-wise inference
       echo "Inferring on DATASET_NAME = $DATASET_NAME; EVAL_SUBDIR = $EVAL_SUBDIR; VERSION = $VERSION; SPLIT = $SPLIT; SEED = $SEED"
       python main_test.py \
