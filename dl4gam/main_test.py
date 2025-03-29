@@ -23,10 +23,7 @@ root_logger.handlers[0].setFormatter(logging.Formatter(fmt))
 logger = logging.getLogger('pytorch_lightning.core')
 
 
-def test_model(
-        settings, fold, test_per_glacier=False, glacier_id_list=None, checkpoint=None, patch_radius=None,
-        sampling_step=None, preload_data=None
-):
+def test_model(settings, fold, test_per_glacier=False, glacier_id_list=None, checkpoint=None):
     logger.info(f'Settings: {settings}')
 
     # Data
