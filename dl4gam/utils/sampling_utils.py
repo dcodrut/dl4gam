@@ -76,11 +76,13 @@ def get_patches_df(
         y_centers = np.concatenate([y_centers, [int((miny + maxy) / 2)]]).astype(int)
 
     # build a geopandas dataframe with the sampled patches
-    all_patches = {k: [] for k in ['minx', 'miny', 'maxx', 'maxy']}
+    all_patches = {k: [] for k in ['x_center', 'y_center', 'minx', 'miny', 'maxx', 'maxy']}
     for x_center, y_center in zip(x_centers, y_centers):
         minx_patch, maxx_patch = x_center - patch_radius, x_center + patch_radius
         miny_patch, maxy_patch = y_center - patch_radius, y_center + patch_radius
 
+        all_patches['x_center'].append(x_center)
+        all_patches['y_center'].append(y_center)
         all_patches['minx'].append(minx_patch)
         all_patches['miny'].append(miny_patch)
         all_patches['maxx'].append(maxx_patch)
@@ -194,10 +196,9 @@ def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
         )
         # build the patches
         for i in range(len(patches_df)):
-            patch_shp = patches_df.iloc[i:i + 1]
-            nc_patch = nc.rio.clip(patch_shp.geometry)
+            r = patches_df.iloc[0]
+            nc_patch = nc.isel(x=slice(r.minx, r.maxx), y=slice(r.miny, r.maxy))
 
-            r = patch_shp.iloc[0]
             fn = f'{entry_id}_patch_{i}_xc_{r.x_center}_yc_{r.y_center}.nc'
 
             patch_fp = Path(patches_dir) / entry_id / fn
