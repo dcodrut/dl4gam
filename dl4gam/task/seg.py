@@ -280,19 +280,20 @@ class GlSegTask(pl.LightningModule):
         if self.interp is not None:
             n_px = 30  # how many pixels to use as source for interpolation value
             if mask_to_fill.sum() > 0 and mask_ok.sum() >= n_px:
+                # make a copy of the original probs in case we want to analyze the impact of the interpolation later
+                nc_pred['pred_orig'] = (('y', 'x'), data)
+
                 # use the nearest neighbours
                 if self.interp == 'nn':
                     data_interp = nn_interp(data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, num_nn=n_px)
-                    nc_pred['pred_i_nn'] = (('y', 'x'), data_interp)
-                    nc_pred['pred_i_nn_b'] = (('y', 'x'), data_interp >= self.thr)
                 elif self.interp == 'hypso':
                     # use the pixels with the closest elevations
                     dem = nc_pred.dem.values
                     data_interp = hypso_interp(
                         data=data, mask_to_fill=mask_to_fill, mask_ok=mask_ok, dem=dem, num_px=n_px
                     )
-                    nc_pred['pred_i_hypso'] = (('y', 'x'), data_interp)
-                    nc_pred['pred_i_hypso_b'] = (('y', 'x'), data_interp >= self.thr)
+                nc_pred['pred'] = (('y', 'x'), data_interp)
+                nc_pred['pred_b'] = (('y', 'x'), data_interp >= self.thr)
 
         # add the CRS to the new data arrays
         for c in [_c for _c in nc_pred.data_vars if 'pred' in _c]:

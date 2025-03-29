@@ -74,20 +74,20 @@ if __name__ == "__main__":
 
         # compute the average and standard deviation; keep the other variables
         nc_avg = nc_list[0].copy()
-        for s in ['', '_i_nn', '_i_hypso']:
-            k = f'pred{s}'
-            if k in nc_avg:
-                nc_avg[k] = (('y', 'x'), np.mean([nc[k].values for nc in nc_list], axis=0))
-                nc_avg[k + '_b'] = (nc_avg[k] >= 0.5)
-                nc_avg[k + '_std'] = (('y', 'x'), np.std([nc[k].values for nc in nc_list], axis=0))
+        nc_avg['pred'] = (('y', 'x'), np.mean([nc.pred.values for nc in nc_list], axis=0))
+        nc_avg['pred_b'] = (nc_avg.pred >= 0.5)
+        nc_avg['pred_std'] = (('y', 'x'), np.std([nc.pred.values for nc in nc_list], axis=0))
 
-                # compute the lower and higher bounds of the glacier extent
-                nc_avg[f'pred_low_b{s}'] = ((nc_avg[k] - nc_avg[k + '_std']) >= 0.5)
-                nc_avg[f'pred_high_b{s}'] = ((nc_avg[k] + nc_avg[k + '_std']) >= 0.5)
+        # save also the individual predictions after stacking
+        nc_avg['pred_all'] = (('seed', 'y', 'x'), np.stack([nc.pred.values for nc in nc_list], axis=0))
 
-            # (re)set the CRS
-            for k in nc_avg.data_vars:
-                nc_avg[k].rio.write_crs(nc_avg.rio.crs, inplace=True)
+        # compute the lower and higher bounds of the glacier extent
+        nc_avg[f'pred_low_b'] = ((nc_avg.pred - nc_avg.pred_std) >= 0.5)
+        nc_avg[f'pred_high_b'] = ((nc_avg.pred + nc_avg.pred_std) >= 0.5)
+
+        # (re)set the CRS - QGIS issues
+        for k in nc_avg.data_vars:
+            nc_avg[k].rio.write_crs(nc_avg.rio.crs, inplace=True)
 
         # export the cube
         model_output_dir = (
