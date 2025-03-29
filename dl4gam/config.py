@@ -166,6 +166,24 @@ class BaseConfig(ABC):
 
     @classmethod
     @property
+    def NORM_STATS_DIR(cls):
+        """
+            Path to the directory with the statistics used for normalizing the data
+            (one set of statistics per CV iteration).
+
+            They are computed using main_prep_data_train.py, either based on the patches or the glacier-wide rasters,
+            depending on the EXPORT_PATCHES flag.
+        """
+
+        if cls.EXPORT_PATCHES:
+            # the stats are computed based on the patches
+            return Path(cls.WD) / cls.SUBDIR / 'aux_data' / 'norm_stats' / Path(cls.DIR_GL_PATCHES).name
+        else:
+            # the stats are computed based on the glacier-wide rasters
+            return Path(cls.WD) / cls.SUBDIR / 'aux_data' / 'norm_stats' / 'rasters'
+
+    @classmethod
+    @property
     def EXTRA_RASTERS(cls):
         """
             A dictionary {name -> path} with the paths to various directories that contain additional raster data to be

@@ -11,7 +11,7 @@ import yaml
 
 # local imports
 import models
-from config import C
+import config
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
 
@@ -123,7 +123,6 @@ if __name__ == '__main__':
     parser.add_argument(
         '--split',
         type=str, help='training split (if not given, the one from the config is used)', default=None, required=False,
-        choices={f"split_{i + 1}" for i in range(C.NUM_CV_FOLDS)}
     )
     parser.add_argument(
         '--gpu_id',
@@ -135,25 +134,22 @@ if __name__ == '__main__':
     with open(args.config_fp, 'r') as f:
         all_settings = yaml.load(f, Loader=yaml.FullLoader)
 
-    # overwrite the seed if provided
-    if args.seed is not None:
-        all_settings['task']['seed'] = args.seed
-
-    # overwrite the split if provided
-    if args.split is not None:
-        all_settings['data']['split'] = args.split
-        all_settings['data']['data_stats_fp'] = str(
-            Path(all_settings['data']['data_stats_fp']).parent / f'stats_agg_{args.split}.csv')
-        all_settings['logger']['name'] = str(Path(all_settings['logger']['name']).parent / args.split)
-
     # add the patch sampling parameters if needed
     # (we don't store them in the model config file because when patches are exported to disk, we need the sampling
     #  parameters in main_prep_data_train.py)
+
+    # get the constant class
+    config_cls_name = all_settings['config']
+    C = getattr(config, config_cls_name)
+
+    # fill in the missing parameters
+    all_settings['data']['rasters_dir'] = str(C.DIR_GL_RASTERS)
+    all_settings['data']['all_splits_fp'] = str(Path(C.DIR_OUTLINES_SPLIT) / 'map_all_splits_all_folds.csv')
+
     if not C.EXPORT_PATCHES:
         all_settings['data']['patch_radius'] = C.PATCH_RADIUS
         all_settings['data']['sampling_step_train'] = C.SAMPLING_STEP_TRAIN
         all_settings['data']['sampling_step_valid'] = C.SAMPLING_STEP_VALID
-        all_settings['data']['sampling_step_test'] = C.SAMPLING_STEP_TEST  # will be used for inference in the future
         all_settings['data']['preload_data'] = C.PRELOAD_DATA
 
         if C.SAMPLE_PATCHES_EACH_EPOCH:
@@ -161,6 +157,22 @@ if __name__ == '__main__':
             # (with shuffle=True and a large enough number of patches, the epoch will be different each time)
             num_batches = C.NUM_PATCHES_TRAIN // all_settings['data']['train_batch_size']
             all_settings['trainer']['limit_train_batches'] = num_batches
+    else:
+        # set the patch directory
+        all_settings['data']['patches_dir'] = str(C.DIR_GL_PATCHES)
+
+    # for testing, we always build up the patches in memory
+    all_settings['data']['sampling_step_test'] = C.SAMPLING_STEP_TEST  # will be used for inference in the future
+
+    # overwrite the seed if provided
+    if args.seed is not None:
+        all_settings['task']['seed'] = args.seed
+
+    # overwrite the split if provided
+    if args.split is not None:
+        all_settings['data']['split'] = args.split
+        all_settings['data']['data_stats_fp'] = str(C.NORM_STATS_DIR / f'stats_agg_{args.split}.csv')
+        all_settings['logger']['name'] = str(Path(all_settings['logger']['name']).parent / args.split)
 
     # add the seed as a subfolder
     all_settings['logger']['name'] = str(Path(all_settings['logger']['name']) / f'seed_{all_settings["task"]["seed"]}')

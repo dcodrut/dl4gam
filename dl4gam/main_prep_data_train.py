@@ -86,19 +86,17 @@ if __name__ == "__main__":
         gl_to_files = {x.parent.name: [] for x in fp_list}
         for fp in fp_list:
             gl_to_files[fp.parent.name].append(fp)
-        out_dir_root = Path(C.WD) / Path(C.SUBDIR) / 'aux_data' / 'norm_stats' / dir_patches.name
     else:
         # get the raster path for each glacier
         fp_list = fp_rasters
         gl_to_files = {x.parent.name: [x] for x in fp_list}
-        out_dir_root = Path(C.WD) / Path(C.SUBDIR) / 'aux_data' / 'norm_stats' / 'rasters'
 
     print(f"Computing normalization stats for all {'patches' if C.EXPORT_PATCHES else 'rasters'} "
           f"(#files = {len(fp_list)}; #glaciers = {len(gl_to_files)})")
     all_stats = run_in_parallel(compute_normalization_stats, fp=fp_list, num_procs=C.NUM_PROCS, pbar=True)
     all_df = [pd.DataFrame(stats) for stats in all_stats]
     df = pd.concat(all_df)
-    fp_out = Path(out_dir_root) / 'stats_all.csv'
+    fp_out = Path(C.NORM_STATS_DIR) / 'stats_all.csv'
     fp_out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(fp_out, index=False)
     print(f'Stats (per file) saved to {fp_out}')
@@ -110,6 +108,6 @@ if __name__ == "__main__":
 
         # aggregate the statistics
         df_crt_agg = aggregate_normalization_stats(df_crt)
-        fp_out = Path(out_dir_root) / f'stats_agg_split_{i_split}.csv'
+        fp_out = Path(C.NORM_STATS_DIR) / f'stats_agg_split_{i_split}.csv'
         df_crt_agg.to_csv(fp_out, index=False)
         print(f'Aggregated stats for split {i_split} saved to {fp_out}')
