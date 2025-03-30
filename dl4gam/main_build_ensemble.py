@@ -53,15 +53,16 @@ if __name__ == '__main__':
     for seed in range(seed_base, seed_base + ensemble_size):
         for i_split in range(1, n_splits + 1):
             for fold in ['s_valid', 's_test']:
-                cmd = (
-                    f"python main_test.py"
-                    f" --checkpoint_dir=../data/external/_experiments/s2_alps_plus/unet/split_{i_split}/seed_{seed}/{model_version}/checkpoints"
-                    f" --fold={fold}"
-                    f" --test_per_glacier true"
-                    f" --split_fp=../data/external/wd/s2_alps_plus/cv_split_outlines/map_all_splits_all_folds.csv"
-                    f" --rasters_dir=../data/external/wd/s2_alps_plus/inv/glacier_wide"
-                )
-                commands.append((cmd, False))  # False = inference
+                for sub_dir in ['inv', '2023']:
+                    cmd = (
+                        f"python main_test.py"
+                        f" --checkpoint_dir=../data/external/_experiments/s2_alps_plus/unet/split_{i_split}/seed_{seed}/{model_version}/checkpoints"
+                        f" --fold={fold}"
+                        f" --test_per_glacier true"
+                        f" --split_fp=../data/external/wd/s2_alps_plus/cv_split_outlines/map_all_splits_all_folds.csv"
+                        f" --rasters_dir=../data/external/wd/s2_alps_plus/{sub_dir}/glacier_wide"
+                    )
+                    commands.append((cmd, False))  # False = inference
 
     print(f"Generated {len(commands)} commands")
 
