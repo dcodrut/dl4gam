@@ -46,19 +46,6 @@ for SPLIT in "${SPLITS[@]}"; do
   # first make the inferences using the ensemble members, then aggregate the results and evaluate them
 
   for SEED in "${SEEDS[@]}"; do
-    # SEED is 0 for the band ratio models (run main_band_ratio.py beforehand)
-    if [ "$SEED" != "0" ]; then
-      # glacier-wise inference
-      echo "Inferring on DATASET_NAME = $DATASET_NAME; EVAL_SUBDIR = $EVAL_SUBDIR; VERSION = $VERSION; SPLIT = $SPLIT; SEED = $SEED"
-      python main_test.py \
-        --checkpoint_dir="$MODEL_ROOT_DIR/split_$SPLIT/seed_$SEED/version_$VERSION/checkpoints" \
-        --fold="s_test" \
-        --test_per_glacier true \
-        --gpu_id=0 \
-        --split_fp="../data/external/wd/$DATASET_NAME/cv_split_outlines/map_all_splits_all_folds.csv" \
-        --rasters_dir="../data/external/wd/$DATASET_NAME/$EVAL_SUBDIR/glacier_wide"
-    fi
-
     # glacier-wise evaluation
     echo "Glacier-wise evaluation for DATASET_NAME = $DATASET_NAME; EVAL_SUBDIR = $EVAL_SUBDIR; VERSION = $VERSION; SPLIT = $SPLIT; SEED = $SEED"
     python main_eval.py \
