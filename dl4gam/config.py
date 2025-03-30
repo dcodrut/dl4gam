@@ -16,7 +16,7 @@ class BaseConfig(ABC):
     NODATA = -9999
 
     # how many processes to use in the parallel processing (when possible/implemented, e.g. building the rasters)
-    NUM_PROCS = 8
+    NUM_PROCS = 24
 
     # whether to load the netcdf files in memory before patchifying them
     # (at inference time or at training time if EXPORT_PATCHES is False)
@@ -266,7 +266,7 @@ class S2_ALPS(BaseConfig):
     # patch sampling settings
     PATCH_RADIUS = 128
     SAMPLING_STEP_TRAIN = 32
-    NUM_PATCHES_TRAIN = 10000
+    NUM_PATCHES_TRAIN = 7500 // 16 * 16  # make sure it's a multiple of 16
     SAMPLE_PATCHES_EACH_EPOCH = False
     SAMPLING_STEP_VALID = 64
     SAMPLING_STEP_TEST = 32
