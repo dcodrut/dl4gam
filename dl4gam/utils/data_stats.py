@@ -1,3 +1,4 @@
+import gc
 import json
 from pathlib import Path
 
@@ -17,42 +18,43 @@ def compute_normalization_stats(fp):
     :param fp: Filepath to a xarray dataset
     :return: a dictionary with the stats for the current raster
     """
-    nc = xr.open_dataset(fp, decode_coords='all')
-    band_data = nc.band_data.values[:13]  # TODO: parameterize the number of bands to consider
-    list_arrays = [band_data]
 
-    # add the other variables (except the masks and the already added band_data), assuming that they are 2D
-    extra_vars = [v for v in nc if 'mask' not in v and v != 'band_data']
-    for v in extra_vars:
-        list_arrays.append(nc[v].values[None, ...])
-    data = np.concatenate(list_arrays, axis=0)
+    with xr.open_dataset(fp, decode_coords='all') as nc:
+        band_data = nc.band_data.values[:13]  # TODO: parameterize the number of bands to consider
+        list_arrays = [band_data]
 
-    stats = {
-        'entry_id': fp.parent.name,
-        'fn': fp.name,
-    }
+        # add the other variables (except the masks and the already added band_data), assuming that they are 2D
+        extra_vars = [v for v in nc if 'mask' not in v and v != 'band_data']
+        for v in extra_vars:
+            list_arrays.append(nc[v].values[None, ...])
+        data = np.concatenate(list_arrays, axis=0)
 
-    # add the stats for the band data
-    n_list = []
-    s_list = []
-    ssq_list = []
-    vmin_list = []
-    vmax_list = []
-    for i_band in range(len(data)):
-        data_crt_band = data[i_band, :, :].flatten()
-        all_na = np.all(np.isnan(data_crt_band))
-        n_list.append(np.sum(~np.isnan(data_crt_band), axis=0) if not all_na else 0)
-        s_list.append(np.nansum(data_crt_band, axis=0) if not all_na else np.nan)
-        ssq_list.append(np.nansum(data_crt_band ** 2, axis=0) if not all_na else np.nan)
-        vmin_list.append(np.nanmin(data_crt_band, axis=0) if not all_na else np.nan)
-        vmax_list.append(np.nanmax(data_crt_band, axis=0) if not all_na else np.nan)
+        stats = {
+            'entry_id': fp.parent.name,
+            'fn': fp.name,
+        }
 
-    stats['n'] = n_list
-    stats['sum_1'] = s_list
-    stats['sum_2'] = ssq_list
-    stats['vmin'] = vmin_list
-    stats['vmax'] = vmax_list
-    stats['var_name'] = nc.band_data.long_name[:len(band_data)] + extra_vars
+        # add the stats for the band data
+        n_list = []
+        s_list = []
+        ssq_list = []
+        vmin_list = []
+        vmax_list = []
+        for i_band in range(len(data)):
+            data_crt_band = data[i_band, :, :].flatten()
+            all_na = np.all(np.isnan(data_crt_band))
+            n_list.append(np.sum(~np.isnan(data_crt_band), axis=0) if not all_na else 0)
+            s_list.append(np.nansum(data_crt_band, axis=0) if not all_na else np.nan)
+            ssq_list.append(np.nansum(data_crt_band ** 2, axis=0) if not all_na else np.nan)
+            vmin_list.append(np.nanmin(data_crt_band, axis=0) if not all_na else np.nan)
+            vmax_list.append(np.nanmax(data_crt_band, axis=0) if not all_na else np.nan)
+
+        stats['n'] = n_list
+        stats['sum_1'] = s_list
+        stats['sum_2'] = ssq_list
+        stats['vmin'] = vmin_list
+        stats['vmax'] = vmax_list
+        stats['var_name'] = nc.band_data.long_name[:len(band_data)] + extra_vars
 
     return stats
 
@@ -93,15 +95,19 @@ def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask):
     nc = prep_glacier_dataset(
         fp_img=fp,
         entry_id=row.entry_id,
-        gl_df=gl_sdf, # we need the mask only for the current glacier
+        gl_df=gl_sdf,  # we need the mask only for the current glacier
         bands_name_map=bands_name_map,
         bands_qc_mask=bands_qc_mask,
-        buffer_px=5, # this will be used for computing the scene level statistics
+        buffer_px=5,  # this will be used for computing the scene level statistics
         return_nc=True
     )
 
+    # compute the fill percentage in the band data
+    mask_na = (nc.band_data.values == nc.band_data.rio.nodata).any(axis=0)
+    stats['fill_p'] = 1 - np.sum(mask_na) / np.prod(mask_na.shape)
+
     # prepare the QC mask (check the config to see what goes into the QC mask)
-    mask_nok = (nc.mask_nok.data == 1)
+    mask_nok = (nc.mask_nok.data == 1) & ~mask_na
 
     # compute the cloud coverage stats over the entire scene, then over the glacier and, finally, over the glacier + 50m
     stats[f"cloud_p_scene"] = np.sum(mask_nok) / np.prod(mask_nok.shape)
@@ -170,5 +176,10 @@ def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask):
         # get the tile-level cloud percentage
         tile_level_cloud_p = metadata['imgs_props_extra'][k]['CLOUDY_PIXEL_PERCENTAGE'] / 100
         stats['tile_level_cloud_p'] = tile_level_cloud_p
+
+    # had some RAM issues, not sure why
+    nc.close()  # close the dataset to avoid memory leaks
+    del nc, mask_na
+    gc.collect()  # force garbage collection
 
     return stats
