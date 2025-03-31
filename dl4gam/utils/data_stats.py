@@ -87,7 +87,7 @@ def aggregate_normalization_stats(df):
     return df_stats_agg
 
 
-def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask):
+def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask, buffer_px):
     assert len(gl_sdf) == 1, 'Expecting a dataframe with a single entry.'
     row = gl_sdf.iloc[0]
     fp = Path(row.fp_img)
@@ -98,7 +98,7 @@ def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask):
         gl_df=gl_sdf,  # we need the mask only for the current glacier
         bands_name_map=bands_name_map,
         bands_qc_mask=bands_qc_mask,
-        buffer_px=5,  # this will be used for computing the scene level statistics
+        buffer_px=buffer_px,
         return_nc=True
     )
 

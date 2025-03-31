@@ -23,7 +23,8 @@ def add_stats(
         num_procs: int,
         col_clouds: str,
         col_ndsi: str,
-        col_albedo: str
+        col_albedo: str,
+        buffer_px: int = 0
 ) -> gpd.GeoDataFrame:
     """
     Add the image statistics (i.e. cloud and/or shadow, NDSI and albedo) to the selected glacier dataframe.
@@ -39,6 +40,8 @@ def add_stats(
     :param col_clouds: the column name for the cloud coverage (including shadows and missing pixels)
     :param col_ndsi: the column name for the NDSI
     :param col_albedo: the column name for the albedo
+    :param buffer_px: the buffer in pixels to consider around the glacier outlines when cutting the raw images (it will
+        impact the scene level statistics)
 
     :return: the updated dataframe with the QC statistics
     """
@@ -55,7 +58,12 @@ def add_stats(
             gl_df.apply(lambda r: gpd.GeoDataFrame(pd.DataFrame(r).T, crs=gl_df.crs), axis=1)
         )
         all_cloud_stats = run_in_parallel(
-            fun=functools.partial(compute_qc_stats, bands_name_map=bands_name_map, bands_qc_mask=bands_qc_mask),
+            fun=functools.partial(
+                compute_qc_stats,
+                bands_name_map=bands_name_map,
+                bands_qc_mask=bands_qc_mask,
+                buffer_px=buffer_px
+            ),
             gl_sdf=gl_sdf_list,
             num_procs=num_procs,
             pbar=True
@@ -67,7 +75,7 @@ def add_stats(
         print(f"cloud stats exported to {fp_stats}")
     cloud_stats_df.fp_img = cloud_stats_df.fp_img.apply(lambda s: Path(s))
 
-    cols_qc = [col_clouds, col_ndsi, col_albedo]
+    cols_qc = ['fill_p', col_clouds, col_ndsi, col_albedo]
     gl_df = gl_df.merge(cloud_stats_df[['fp_img'] + cols_qc], on='fp_img')
 
     return gl_df
@@ -146,6 +154,7 @@ def prepare_all_rasters(
         df_dates: pd.DataFrame = None,
         choose_best_auto: bool = False,
         max_cloud_f: float = None,
+        min_fill_portion_scene: float = None,
         max_n_imgs_per_g: int = 1,
         compute_dem_features: bool = False
 ) -> None:
@@ -204,6 +213,7 @@ def prepare_all_rasters(
     :param df_dates: A dataframe containing the allowed dates for each glacier (if None, all the images will be used).
     :param choose_best_auto: If True, keep the best images based on the cloud coverage and the NDSI.
     :param max_cloud_f: The maximum cloud coverage allowed for each image.
+    :param min_fill_portion_scene: The minimum data fill portion (i.e. not NAs) for the entire image.
     :param max_n_imgs_per_g: The maximum number of images to keep per glacier.
     :param compute_dem_features: If True, compute the features from the DEM (see the add_dem_features function).
 
@@ -254,17 +264,25 @@ def prepare_all_rasters(
     # add the filepaths to the selected glaciers and check the data coverage
     gid_list = set(gl_df_sel.entry_id)
     gl_df_sel = gl_df_sel.merge(raw_fp_df, on='entry_id', how='inner')  # we allow missing images
-    print(f"avg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
-    print(f"#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} ({n / len(gid_list) * 100:.1f}%)")
+
+    def _show_crt_stats():
+        print(f"\t#images = {len(gl_df_sel)}")
+        print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
+        print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
+              f"({n / len(gid_list) * 100:.1f}%)")
+
+    print("After matching the images to the glaciers:")
+    _show_crt_stats()
 
     # compute the cloud coverage statistics for each downloaded image if needed
-    if choose_best_auto or max_cloud_f is not None:
+    if choose_best_auto or max_cloud_f is not None or min_fill_portion_scene is not None:
         # specify the columns for the cloud coverage, the NDSI and the albedo stats (see the compute_qc_stats function)
         col_clouds = 'cloud_p_gl_b50m'
         col_ndsi = 'ndsi_avg_non_gl_b50m'
         col_albedo = 'albedo_avg_gl_b50m'
 
         fp_stats_all = Path(out_rasters_dir).parent / 'aux_data' / 'stats_all.csv'
+        print(f"fp_stats_all = {fp_stats_all}")
         gl_df_sel = add_stats(
             gl_df=gl_df_sel,
             bands_name_map=bands_name_map,
@@ -273,17 +291,21 @@ def prepare_all_rasters(
             num_procs=num_procs,
             col_clouds=col_clouds,
             col_ndsi=col_ndsi,
-            col_albedo=col_albedo
+            col_albedo=col_albedo,
+            buffer_px=buffer_px,
         )
 
-        # impose the max cloudiness threshold if given (this includes missing pixels)
+        # import the min fill portion threshold if given
+        if min_fill_portion_scene is not None:
+            gl_df_sel = gl_df_sel[gl_df_sel.fill_p >= min_fill_portion_scene]
+            print(f"after NA filtering with min_fill_portion = {min_fill_portion_scene:.2f}")
+            _show_crt_stats()
+
+        # impose the max cloudiness threshold if given
         if max_cloud_f is not None:
             gl_df_sel = gl_df_sel[gl_df_sel[col_clouds] <= max_cloud_f]
             print(f"after cloud filtering with max_cloud_f = {max_cloud_f:.2f}")
-            print(f"\t#images = {len(gl_df_sel)}")
-            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
-            print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
-                  f"({n / len(gid_list) * 100:.1f}%)")
+            _show_crt_stats()
 
         # keep the best n images (based on cloud coverage and NDSI, plus albedo as tie-breaker) if needed
         if choose_best_auto:
@@ -300,11 +322,7 @@ def prepare_all_rasters(
                 max_n_imgs_per_g=max_n_imgs_per_g
             )
             print(f"after keeping the best {max_n_imgs_per_g} images per glacier:")
-            print(f"\t#images = {len(gl_df_sel)}")
-            print(f"\tavg. #images/glacier = {gl_df_sel.groupby('entry_id').count().fp_img.mean():.1f}")
-            print(f"\t#glaciers with no data = {(n := len(gid_list - set(gl_df_sel.entry_id)))} "
-                  f"({n / len(gid_list) * 100:.1f}%)")
-            print(f"len(gl_df_sel) = {len(gl_df_sel)}")
+            _show_crt_stats()
 
     # read the extra shapefiles
     if extra_geometries_dict is not None:
@@ -387,6 +405,7 @@ if __name__ == "__main__":
         extra_rasters_dict=C.EXTRA_RASTERS,
         compute_dem_features=True,
         buffer_px=(C.PATCH_RADIUS + int(round(50 / C.GSD))),
+        min_fill_portion_scene=0.9
     )
 
     for k, v in {**C.EXTRA_GEOMETRIES, **C.EXTRA_RASTERS}.items():
