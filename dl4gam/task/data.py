@@ -292,10 +292,10 @@ class GlSegDataset(GlSegPatchDataset):
             add_extremes=add_extremes
         )
 
-    def subsample(self, n, with_replacement=False):
+    def subsample(self, n, seed, with_replacement=False):
         # subsample the patches
         assert n <= len(self.patches_df), f'Not enough patches: {n} > {len(self.patches_df)}; fp = {self.fp}'
-        self.patches_df = self.patches_df.sample(n, replace=with_replacement)
+        self.patches_df = self.patches_df.sample(n, replace=with_replacement, random_state=seed)
 
     def __getitem__(self, idx):
         r = self.patches_df.iloc[idx]
@@ -444,7 +444,7 @@ class GlSegDataModule(pl.LightningDataModule):
 
         self.setups_initialized.append(stage)
 
-    def subsample_train_ds(self, n_patches):
+    def subsample_train_ds(self, n_patches, seed):
         assert self.train_ds is not None, 'Train dataset not initialized'
         assert not self.patches_are_on_disk, 'Subsampling only supported when patches are built on the fly'
 
@@ -466,7 +466,7 @@ class GlSegDataModule(pl.LightningDataModule):
 
         # subsample the patches
         for n, ds in zip(ds_sizes_to_keep, ds_list_train):
-            ds.subsample(n=n, with_replacement=False)
+            ds.subsample(n=n, with_replacement=False, seed=seed)
 
         self.train_ds = ConcatDataset(ds_list_train)
 
@@ -492,6 +492,10 @@ class GlSegDataModule(pl.LightningDataModule):
             pbar=True,
             pbar_desc='Preparing patch-level datasets for each glacier'
         )
+
+        # make sure they're sorting by glacier ID (for reproducibility)
+        ds_list = sorted(ds_list, key=lambda x: x.fp.parent.name)
+
         return ds_list
 
     def train_dataloader(self) -> DataLoader:

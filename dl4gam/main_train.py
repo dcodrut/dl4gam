@@ -10,8 +10,8 @@ import pytorch_lightning.loggers
 import yaml
 
 # local imports
-import models
 import config
+import models
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
 
@@ -100,7 +100,7 @@ def train_model(settings: dict, patches_on_disk: bool = False, n_patches: int = 
             # subsample the training set if needed
             if ds_name == 'train' and n_patches is not None:
                 logger.info(f'Subsampling the training set to {n_patches} patches')
-                dm.subsample_train_ds(n_patches)
+                dm.subsample_train_ds(n_patches, seed=seed)
                 ds_sizes = [len(x) for x in dm.train_ds.datasets]
                 logger.info(
                     f'{ds_name} dataset: '
