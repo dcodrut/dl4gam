@@ -14,7 +14,7 @@ from config import C
 from task.data import extract_inputs
 
 
-def compute_stats(fp, rasters_dir, input_settings, exclude_bad_pixels=True, return_rasters=False,
+def compute_stats(fp, rasters_dir, input_settings, exclude_bad_pixels=False, return_rasters=False,
                   estimate_terminus_loc=True):
     stats = {'fp': fp}
 
@@ -64,49 +64,41 @@ def compute_stats(fp, rasters_dir, input_settings, exclude_bad_pixels=True, retu
     area_debris = np.sum(mask_debris) * f_area
     stats['area_debris'] = area_debris
 
-    # loop over the original predictions and its interpolated versions, if any
-    pred_bands_suffixes = ['', '_i_nn', '_i_hypso']
-
     nc['mask_crt_g_b0'] = nc['mask_crt_g']
-    for s in pred_bands_suffixes:
-        for k in ['', '_low', '_high']:
-            pred_band = f'pred{k}{s}_b'
+    for k in ['', '_low', '_high']:
+        pred_band = f'pred{k}_b'
 
-            # interpolation should be found when pixels are missing and there are more than 30 non-masked pixels
-            if s != '' and pred_band not in nc.data_vars:
+        # low and high bounds are present only for the ensemble predictions
+        if k != '' and pred_band not in nc.data_vars:
+            continue
+
+        preds = nc[pred_band].values.copy()
+
+        if pred_band == 'pred_b':  # apply the mask only on the raw predictions
+            preds[mask_exclude] = False
+
+        # compute the predicted area using multiple buffers which will be later used for various metrics
+        for b in ['b-20', 'b-10', 'b0', 'b10', 'b20', 'b50']:
+            mask_crt_b = (nc[f'mask_crt_g_{b}'].values == 1)
+
+            # exclude the other glacier pixels (i.e., keeping the same ice divides)
+            mask_crt_b &= (~mask_other_g)
+
+            # compute the total area in the current buffer and the corresponding predicted area
+            stats[f"area_{b}"] = np.sum(mask_crt_b) * f_area
+            stats[f"area_pred{k}_{b}"] = np.sum(preds & mask_crt_b) * f_area
+
+            # add debris-specific stats
+            area_debris_pred = np.sum(preds & mask_crt_b & mask_debris) * f_area
+            stats[f"area_debris_pred{k}_{b}"] = area_debris_pred
+
+            # compute the total non-glacier area in the current buffer, and the corresponding FP area
+            # skip if the buffer is completely within the glacier
+            if b in ['b-20', 'b-10', 'b0']:
                 continue
-
-            # low and high bounds are present only for the ensemble predictions
-            if k != '' and pred_band not in nc.data_vars:
-                continue
-
-            preds = nc[pred_band].values.copy()
-
-            if pred_band == 'pred_b':  # apply the mask only on the raw predictions
-                preds[mask_exclude] = False
-
-            # compute the predicted area using multiple buffers which will be later used for various metrics
-            for b in ['b-20', 'b-10', 'b0', 'b10', 'b20', 'b50']:
-                mask_crt_b = (nc[f'mask_crt_g_{b}'].values == 1)
-
-                # exclude the other glacier pixels (i.e., keeping the same ice divides)
-                mask_crt_b &= (~mask_other_g)
-
-                # compute the total area in the current buffer and the corresponding predicted area
-                stats[f"area_{b}"] = np.sum(mask_crt_b) * f_area
-                stats[f"area_pred{k}_{b}{s}"] = np.sum(preds & mask_crt_b) * f_area
-
-                # add debris-specific stats
-                area_debris_pred = np.sum(preds & mask_crt_b & mask_debris) * f_area
-                stats[f"area_debris_pred{k}_{b}{s}"] = area_debris_pred
-
-                # compute the total non-glacier area in the current buffer, and the corresponding FP area
-                # skip if the buffer is completely within the glacier
-                if b in ['b-20', 'b-10', 'b0']:
-                    continue
-                mask_non_g_crt_b = mask_non_g & mask_crt_b
-                stats[f"area_non_g_{b}"] = np.sum(mask_non_g_crt_b) * f_area
-                stats[f"area_non_g_pred{k}_{b}{s}"] = np.sum(preds & mask_non_g_crt_b) * f_area
+            mask_non_g_crt_b = mask_non_g & mask_crt_b
+            stats[f"area_non_g_{b}"] = np.sum(mask_non_g_crt_b) * f_area
+            stats[f"area_non_g_pred{k}_{b}"] = np.sum(preds & mask_non_g_crt_b) * f_area
 
     # estimate the altitude & location of the terminus if needed
     if estimate_terminus_loc:
@@ -198,7 +190,7 @@ if __name__ == "__main__":
         print(f'No predictions found for fold = {fold}. Skipping.')
         exit(0)
 
-    exclude_bad_pixels = True
+    exclude_bad_pixels = False
     _compute_stats = partial(
         compute_stats,
         rasters_dir=rasters_dir,

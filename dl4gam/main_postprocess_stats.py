@@ -67,7 +67,7 @@ def print_regional_stats(
     print(
         f'Regional statistics:'
         f'\n\t#glaciers = {len(df_stats)}'
-        f'\n\ttotal area = {t_a_inv:.1f}'
+        f'\n\ttotal area = {t_a_inv:.1f}; '
         f'total area NOK = {t_a_nok:.1f}; total area OK = {t_a_ok:.1f} ({t_a_ok / t_a_inv * 100:.2f}%)'
         f'\n\tno  buffer: recall = {t_a_recalled:.1f} ± {t_a_recalled_std:.2f} of {t_a_inv:.1f} km²'
         f' = {t_a_recalled / t_a_inv * 100:.1f} ± {t_a_recalled_std / t_a_inv * 100:.2f} %'
@@ -90,8 +90,7 @@ def aggregate_all_stats(
         subdir: str,
         buffer_pred_m: int = 20,
         buffer_fp_m: int = 50,
-        excl_masked_pixels: bool = True,
-        interp: str = 'nn'
+        excl_masked_pixels: bool = False,
 ):
     """
     Aggregate the glacier-wide statistics from the testing folds of all the cross-validation iterations and seeds.
@@ -112,7 +111,6 @@ def aggregate_all_stats(
     :param buffer_fp_m: the buffer size in meters until where the predictions are considered as false positives
                         (starting from buffer_pred_m)
     :param excl_masked_pixels: whether to exclude the masked-out pixels from the statistics
-    :param interp: the interpolation method used for the predictions (default: 'nn')
 
     :return: the dataframe with the aggregated statistics
     """
@@ -144,18 +142,6 @@ def aggregate_all_stats(
             df_glacier = df_glacier.merge(gl_df[['entry_id', 'area_inv']], on='entry_id')
             df_glacier = df_glacier[['area_inv'] + [c for c in df_glacier if c != 'area_inv']]  # area_inv first col
             df_glacier['area_nok_p'] = df_glacier.area_nok / df_glacier.area_inv
-
-            # replace the original area values with the interpolated ones, when available
-            # (i.e. interpolation is performed only when some pixels were masked-out)
-            for c in df_glacier:
-                if f'_i_{interp}' in c:
-                    # get the original column name
-                    c_orig = c.split(f'_i_{interp}')[0]
-                    idx_f = ~df_glacier[c].isna()
-                    df_glacier.loc[idx_f, c_orig] = df_glacier.loc[idx_f, c]
-
-                    # delete the interpolated column
-                    df_glacier.drop(columns=[c], inplace=True)
 
             # dummy columns in case buffer_size_pred is zero
             df_glacier[f'area_non_g_b0'] = 0.0
