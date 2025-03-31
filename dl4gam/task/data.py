@@ -384,8 +384,12 @@ class GlSegDataModule(pl.LightningDataModule):
         assert len(set(self.fp_list_train) & set(self.fp_list_valid)) == 0, 'Train and valid overlap'
         assert len(set(self.fp_list_train) & set(self.fp_list_test)) == 0, 'Train and test overlap'
         assert len(set(self.fp_list_valid) & set(self.fp_list_test)) == 0, 'Valid and test overlap'
-        assert len(fp_list) == len(self.fp_list_train) + len(self.fp_list_valid) + len(self.fp_list_test), \
-            'Some files are missing.'
+
+        # check if some files were not assigned to any fold
+        fp_list_assigned = set(self.fp_list_train) | set(self.fp_list_valid) | set(self.fp_list_test)
+        if len(fp_list_assigned) != len(fp_list):
+            glacier_ids_missing = sorted([fp.parent.name for fp in set(fp_list) - fp_list_assigned])
+            print(f'Warning: {len(glacier_ids_missing)} glaciers ({glacier_ids_missing}) were not assigned to any fold')
 
         # the following will be set when calling setup
         self.train_ds = None
