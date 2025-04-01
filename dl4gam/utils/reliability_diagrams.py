@@ -155,7 +155,7 @@ def _confidence_histogram_subplot(ax, bin_data,
 
 def _reliability_diagram_combined(bin_data,
                                   draw_ece, draw_bin_importance, draw_averages,
-                                  title, figsize, dpi, return_fig):
+                                  title, figsize, dpi, return_fig, show):
     """Draws a reliability diagram and confidence histogram using the output
     from compute_calibration()."""
     figsize = (figsize[0], figsize[0] * 1.4)
@@ -179,7 +179,8 @@ def _reliability_diagram_combined(bin_data,
     new_ticks = np.abs(ax[1].get_yticks()).astype(int)
     ax[1].set_yticklabels(new_ticks)
 
-    plt.show()
+    if show:
+        plt.show()
 
     if return_fig: return fig
 
@@ -187,7 +188,7 @@ def _reliability_diagram_combined(bin_data,
 def reliability_diagram(true_labels, pred_labels, confidences, num_bins=10,
                         draw_ece=True, draw_bin_importance=False,
                         draw_averages=True, title="Reliability Diagram",
-                        figsize=(6, 6), dpi=72, return_fig=False):
+                        figsize=(6, 6), dpi=72, return_fig=False, show=False, return_stats=False):
     """Draws a reliability diagram and confidence histogram in a single plot.
 
     First, the model's predictions are divided up into bins based on their
@@ -229,9 +230,12 @@ def reliability_diagram(true_labels, pred_labels, confidences, num_bins=10,
         return_fig: if True, returns the matplotlib Figure object
     """
     bin_data = compute_calibration(true_labels, pred_labels, confidences, num_bins)
-    return _reliability_diagram_combined(bin_data, draw_ece, draw_bin_importance,
-                                         draw_averages, title, figsize=figsize,
-                                         dpi=dpi, return_fig=return_fig)
+    fig = _reliability_diagram_combined(bin_data, draw_ece, draw_bin_importance,
+                                        draw_averages, title, figsize=figsize,
+                                        dpi=dpi, return_fig=return_fig, show=show)
+    if return_stats:
+        return bin_data, fig
+    return fig
 
 
 def reliability_diagrams(results, num_bins=10,
