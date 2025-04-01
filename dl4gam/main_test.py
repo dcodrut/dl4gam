@@ -1,4 +1,5 @@
 import logging
+import time
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -98,8 +99,21 @@ def test_model(settings, fold, test_per_glacier=False, glacier_id_list=None, che
 
         # TODO: try to use a single dataloader but with multiple datasets or ConcatDataset
         dl_list = dm.test_dataloaders_per_glacier(fp_rasters=fp_rasters)
+        times = {}  # count the time for each glacier
         for dl in tqdm(dl_list, desc='Testing per glacier'):
+            start_time = time.time()
             trainer.test(model=task, dataloaders=dl)
+            times[dl.dataset.fp.parent.name] = time.time() - start_time
+        times_df = pd.DataFrame.from_dict(times, orient='index', columns=['time'])
+        times_df.index.name = 'entry_id'
+        logger.info(f"Time per glacier (decreasing):\n{times_df.sort_values('time', ascending=False)}")
+        logger.info(f"Time per glacier stats:\n{times_df.describe()}")
+        logger.info(f"Total time: {times_df['time'].sum() / 3600:.2f} h")
+
+        # save the time list
+        time_list_fp = task.outdir.parent / f'infer_time_per_g_{fold}.csv'
+        times_df.to_csv(time_list_fp)
+        logger.info(f"Time list saved to {time_list_fp}")
 
 
 def get_best_model_ckpt(checkpoint_dir, metric_name='val_loss_epoch', sort_method='min'):
