@@ -176,7 +176,9 @@ def _reliability_diagram_combined(bin_data,
     bin_data["counts"] = orig_counts
 
     # Also negate the ticks for the upside-down histogram.
-    new_ticks = np.abs(ax[1].get_yticks()).astype(int)
+    ticks = ax[1].get_yticks()
+    new_ticks = np.abs(ticks).astype(int)
+    ax[1].set_yticks(ticks)
     ax[1].set_yticklabels(new_ticks)
 
     if show:
