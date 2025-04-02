@@ -189,6 +189,8 @@ if __name__ == "__main__":
     # choose the glaciers for the specified fold using the split csv file (use the cl-one if provided)
     if args.split_fp is not None:
         split_fp = Path(args.split_fp)
+        # override the split file in the settings
+        all_settings['data']['all_splits_fp'] = str(split_fp)
     else:
         split_fp = Path(all_settings['data']['all_splits_fp'])
     logger.info(f"Reading the split dataframe from {split_fp}")
