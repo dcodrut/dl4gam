@@ -5,18 +5,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 
 
-def str2bool(v):
-    # https://stackoverflow.com/a/43357954
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
-
-
 def _fn_star(kwargs):
     fun = kwargs['fun']
     kwargs_others = {k: v for k, v in kwargs.items() if k != 'fun'}

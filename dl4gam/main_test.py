@@ -14,7 +14,6 @@ import models
 from config import C
 from task.data import GlSegDataModule
 from task.seg import GlSegTask
-from utils.general import str2bool
 
 # Logger (console and TensorBoard)
 root_logger = logging.getLogger('pytorch_lightning')
@@ -141,9 +140,9 @@ if __name__ == "__main__":
                              '(alternative to checkpoint_file)', default=None)
     parser.add_argument('--fold', type=str, metavar='s_train|s_valid|s_test', required=True,
                         help='which subset to test on: either s_train, s_valid or s_test')
-    parser.add_argument('--test_per_glacier', type=str2bool, required=True,
-                        help='whether to apply the model separately for each glacier instead of using the patches'
-                             '(by generating in-memory all the patches)', metavar='false|true')
+    parser.add_argument('--test_per_glacier', action='store_true',
+                        help='Flag for applying the model separately for each glacier instead of using the patches'
+                             '(by generating in-memory all the patches)')
     parser.add_argument('--rasters_dir', type=str, required=False,
                         help='directory on which to test the model, for the case when test_per_glacier is True; '
                              'if not provided, the one from the config file is used'

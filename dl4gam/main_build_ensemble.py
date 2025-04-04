@@ -58,7 +58,7 @@ if __name__ == '__main__':
                         f"python main_test.py"
                         f" --checkpoint_dir=../data/external/_experiments/s2_alps_plus/unet/split_{i_split}/seed_{seed}/{model_version}/checkpoints"
                         f" --fold={fold}"
-                        f" --test_per_glacier true"
+                        f" --test_per_glacier"
                         f" --split_fp=../data/external/wd/s2_alps_plus/cv_split_outlines/map_all_splits_all_folds.csv"
                         f" --rasters_dir=../data/external/wd/s2_alps_plus/{sub_dir}/glacier_wide"
                     )
