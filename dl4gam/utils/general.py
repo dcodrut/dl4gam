@@ -1,4 +1,3 @@
-import argparse
 import itertools
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -28,6 +27,9 @@ def run_in_parallel(fun, num_procs, pbar=False, pbar_desc=None, **kwargs):
     if pbar_desc is None:
         fun_name = fun.func.__name__ if hasattr(fun, 'func') else fun.__name__
         pbar_desc = f'Running {fun_name} with {num_procs} process(es)'
+    else:
+        # enable the progress bar automatically
+        pbar = True
 
     if num_procs > 1:
         with ProcessPoolExecutor(max_workers=num_procs) as executor:
