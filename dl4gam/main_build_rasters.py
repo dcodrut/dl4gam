@@ -282,7 +282,7 @@ def prepare_all_rasters(
         col_albedo = 'albedo_avg_gl_b50m'
 
         fp_stats_all = Path(out_rasters_dir).parent / 'aux_data' / 'stats_all.csv'
-        print(f"fp_stats_all = {fp_stats_all}")
+        print(f"fp_stats_all = {fp_stats_all}; exists already = {fp_stats_all.exists()}")
         gl_df_sel = add_stats(
             gl_df=gl_df_sel,
             bands_name_map=bands_name_map,
@@ -309,7 +309,7 @@ def prepare_all_rasters(
 
         # keep the best n images (based on cloud coverage and NDSI, plus albedo as tie-breaker) if needed
         if choose_best_auto:
-            fp_qc_stats_all = Path(out_rasters_dir).parent / 'aux_data' / f'qc_stats_max_cloud_f_{max_cloud_f}.csv'
+            fp_qc_stats_all = Path(out_rasters_dir).parent / 'aux_data' / f'qc_stats_prefiltered.csv'
             fp_qc_stats_selected = Path(out_rasters_dir).parent / 'aux_data' / 'qc_stats_selected.csv'
 
             gl_df_sel = select_best_images(
