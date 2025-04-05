@@ -185,19 +185,33 @@ def plot_glacier(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot glacier images (optionally with predictions on top)")
-    parser.add_argument('--plot_root_dir',
-                        type=str,
-                        default='../data/external/scratch_partition/plots/',
-                        help='Output root directory for plots')
-    parser.add_argument('--plot_preds', action='store_true', help='Flag to plot predictions')
+    parser.add_argument(
+        '--plot_root_dir', type=str,
+        default='../data/external/scratch_partition/plots/',
+        help='Output root directory for plots'
+    )
+    parser.add_argument(
+        '--plot_preds', action='store_true',
+        help='Flag to plot predictions'
+    )
     req_pred_args = '--plot_preds' in sys.argv
-    parser.add_argument('--model_dir',
-                        type=str,
-                        required=req_pred_args,
-                        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)')
-    parser.add_argument('--model_version', type=str, required=req_pred_args, help='Version of the model')
-    parser.add_argument('--seed', type=str, required=req_pred_args,
-                        help='Model training seed (set it to "all" for using the ensemble average results)')
+    parser.add_argument(
+        '--model_dir', type=str, required=req_pred_args,
+        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)'
+    )
+    parser.add_argument(
+        '--model_version', type=str, required=req_pred_args,
+        help='Version of the model'
+    )
+    parser.add_argument(
+        '--seed', type=str, required=req_pred_args,
+        help='Model training seed (set it to "all" for using the ensemble average results)'
+    )
+    parser.add_argument(
+        '--use_calib', action='store_true',
+        help='Flag for using the calibrated predictions'
+    )
+
     return parser.parse_args()
 
 
@@ -208,12 +222,15 @@ if __name__ == "__main__":
     model_dir = Path(args.model_dir) if plot_preds else None
     model_version = args.model_version
     seed = args.seed
+    preds_version = 'preds_calib' if args.use_calib else 'preds'
+    stats_version = 'stats_calib' if args.use_calib else 'stats'
 
     # read the inventory
     print(f"Loading the glacier outlines from {C.GLACIER_OUTLINES_FP}")
     gl_df = gpd.read_file(C.GLACIER_OUTLINES_FP)
 
     # read the paths to the rasters
+    C.ROOT_WD = Path('../data/external/wd')
     rasters_dir = Path(C.DIR_GL_RASTERS)
     subdir = C.SUBDIR
     ds_name = Path(C.WD).name
@@ -223,14 +240,19 @@ if __name__ == "__main__":
 
     # read the predicted areas and their uncertainties if we want to plot the results
     if plot_preds:
-        fp_results = model_dir / f'df_glacier_agg_{ds_name}_{model_version}.csv'
         if seed == 'all':
-            fp_results = model_dir / f"df_stats_agg_{ds_name}_{subdir}_{model_version}_ensemble.csv"
+            fp_stats = (
+                    model_dir / 'stats_all_splits' /
+                    f"df_{stats_version}_agg_{ds_name}_{subdir}_{model_version}_ensemble.csv"
+            )
         else:
-            fp_results = model_dir / f"df_stats_{ds_name}_{subdir}_{model_version}_individual.csv"
-        assert fp_results.exists(), f"Results file not found: {fp_results} (run main_postprocess_stats.py)"
-        print(f"Loading the results from {fp_results}")
-        df_results = pd.read_csv(fp_results)
+            fp_stats = (
+                    model_dir / 'stats_all_splits' /
+                    f"df_{stats_version}_{ds_name}_{subdir}_{model_version}_individual.csv"
+            )
+        assert fp_stats.exists(), f"Results file not found: {fp_stats} (run main_agg_stats.py)"
+        print(f"Loading the results from {fp_stats}")
+        df_results = pd.read_csv(fp_stats)
         if seed != 'all':
             df_results = df_results[df_results.seed == int(seed)]
             df_results['area_pred_std'] = np.nan  # no uncertainties for individual models
@@ -239,7 +261,7 @@ if __name__ == "__main__":
         # read the predicted contours
         fp_pred_outlines = (
                 model_dir / 'gdf_all_splits' /
-                f"seed_{seed}" / model_version / f"{ds_name}" / f"{subdir}" / f"{subdir}_pred.shp"
+                f"seed_{seed}" / model_version / ds_name / subdir / f"{subdir}_{preds_version}.shp"
         )
         print(f"Loading the predicted glacier outlines from {fp_pred_outlines}")
         gl_df_pred = gpd.read_file(fp_pred_outlines)
@@ -247,14 +269,14 @@ if __name__ == "__main__":
         # keep only the rasters for which we have predictions
         fp_list = [fp for fp in fp_list if fp.parent.name in gl_df_pred.entry_id.values]
         model_name = model_dir.name
-        plot_dir = plot_root_dir / ds_name / model_name / model_version / subdir
+        plot_dir = plot_root_dir / ds_name / model_name / model_version / preds_version / subdir
     else:
         df_results = None
         gl_df_pred = None
         plot_dir = plot_root_dir / ds_name / subdir
 
     # plot
-    print(f"plot_dir = {plot_dir}")
+    print(f"Plots will be exported to: {plot_dir}")
     _plot_results = partial(
         plot_glacier,
         fig_w_px=2500,

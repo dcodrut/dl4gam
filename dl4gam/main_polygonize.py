@@ -20,23 +20,36 @@ from config import C
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Polygonize model predictions")
-    parser.add_argument('--model_dir',
-                        type=str,
-                        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)')
-    parser.add_argument('--model_version', type=str, required=True, help='Version of the model')
-    parser.add_argument('--split_list', type=int, nargs='+', default=[1, 2, 3, 4, 5],
-                        help='The list of cross-validation iterations (e.g. [1, 2, 3, 4, 5])')
-    parser.add_argument('--seed', type=str, required=True,
-                        help='Model training seed (set it to "all" for using the ensemble average results)')
+    parser.add_argument(
+        '--model_dir', type=str,
+        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)'
+    )
+    parser.add_argument(
+        '--model_version', type=str, required=True,
+        help='Version of the model'
+    )
+    parser.add_argument(
+        '--split_list', type=int, nargs='+', default=[1, 2, 3, 4, 5],
+        help='The list of cross-validation iterations (e.g. [1, 2, 3, 4, 5])'
+    )
+    parser.add_argument(
+        '--seed', type=str, required=True,
+        help='Model training seed (set it to "all" for using the ensemble average results)'
+    )
+    parser.add_argument(
+        '--use_calib', action='store_true',
+        help='Flag for using the calibrated predictions'
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     model_dir = Path(args.model_dir)
-    seed = args.seed
-    split_list = list(args.split_list)
     model_version = args.model_version
+    split_list = list(args.split_list)
+    seed = args.seed
+    preds_version = 'preds_calib' if args.use_calib else 'preds'
 
     print(f"Model directory: {model_dir}")
 
@@ -47,7 +60,7 @@ if __name__ == "__main__":
     for i_split in split_list:
         infer_dir = (
                 model_dir / f'split_{i_split}' / f'seed_{seed}' / model_version /
-                'output' / 'preds' / ds_name / subdir / 's_test'
+                'output' / preds_version / ds_name / subdir / 's_test'
         )
         assert infer_dir.exists(), f"Inferences directory not found: {infer_dir}"
         print(f"Reading predictions from {infer_dir}")
@@ -68,26 +81,26 @@ if __name__ == "__main__":
         nc = xr.open_dataset(fp, decode_coords='all')
 
         # get the predictions (check if an interpolation was done)
-        preds = nc.pred_i_nn_b.values if 'pred_i_nn' in nc else nc.pred_b.values
+        preds = nc.pred_b.values
 
         # set to 0 the pixels outside the 20m buffer or those that belong to other glaciers
         mask_crt_g = (nc.mask_crt_g.values == 1)
         mask_crt_g_b20 = (nc.mask_crt_g_b20.values == 1)
         mask_other_g = (~np.isnan(nc.mask_all_g_id.values)) & (~mask_crt_g)
         preds[mask_other_g | ~mask_crt_g_b20] = 0
-        to_export = {'pred': preds}
+        to_export = {preds_version: preds}
 
         # if there is a stddev among the variables, then the predictions come from an ensemble
         # in that case, compute the lower and higher bounds of the glacier extent
         if 'pred_low_b' in nc:
-            preds_low = nc.pred_low_b_i_nn.values if 'pred_low_b_i_nn' in nc else nc.pred_low_b.values
-            preds_high = nc.pred_high_b_i_nn.values if 'pred_high_b_i_nn' in nc else nc.pred_high_b.values
+            preds_low = nc.pred_low_b.values
+            preds_high = nc.pred_high_b.values
 
             # set to 0 the pixels that belong to other glaciers
             preds_low[mask_other_g | ~mask_crt_g_b20] = 0
             preds_high[mask_other_g | ~mask_crt_g_b20] = 0
-            to_export['pred_low'] = preds_low
-            to_export['pred_high'] = preds_high
+            to_export[f'{preds_version}_low'] = preds_low
+            to_export[f'{preds_version}_high'] = preds_high
 
         # polygonize the predictions
         for k, v in to_export.items():

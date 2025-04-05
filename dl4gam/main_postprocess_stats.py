@@ -91,6 +91,7 @@ def aggregate_all_stats(
         buffer_pred_m: int = 20,
         buffer_fp_m: int = 50,
         excl_masked_pixels: bool = False,
+        use_calib: bool = False,
 ):
     """
     Aggregate the glacier-wide statistics from the testing folds of all the cross-validation iterations and seeds.
@@ -111,15 +112,17 @@ def aggregate_all_stats(
     :param buffer_fp_m: the buffer size in meters until where the predictions are considered as false positives
                         (starting from buffer_pred_m)
     :param excl_masked_pixels: whether to exclude the masked-out pixels from the statistics
+    :param use_calib: whether to use the calibrated predictions
 
     :return: the dataframe with the aggregated statistics
     """
     df_stats_list = []
+    stats_version = 'stats_calib' if use_calib else 'stats'
     for seed in seed_list:
         for i_split in split_list:
-            stats_dir = model_dir / f"split_{i_split}/seed_{seed}/{model_version}/output/stats/{ds_name}"
+            stats_dir = model_dir / f"split_{i_split}/seed_{seed}/{model_version}/output/{stats_version}/{ds_name}"
             assert stats_dir.exists(), f"{stats_dir} doesn't exist"
-            fp = stats_dir / str(subdir) / f"s_test" / f'stats_excl_{excl_masked_pixels}.csv'
+            fp = stats_dir / str(subdir) / 's_test' / f"{stats_version}_excl_{excl_masked_pixels}.csv"
             print(f'seed = {seed}; split = {i_split}; model_version = {model_version}; subdir = {subdir}')
             print(f'\tfp = {fp}')
             assert fp.exists(), f"{fp} doesn't exist"
@@ -215,7 +218,8 @@ def aggregate_all_stats(
 
     # export the processed statistics
     label = 'ensemble' if seed_list == ['all'] else 'individual'
-    fp_out = model_dir / f"df_stats_all_{ds_name}_{subdir}_{model_version}_{label}.csv"
+    fp_out = model_dir / 'stats_all_splits' / f"df_{stats_version}_all_{ds_name}_{subdir}_{model_version}_{label}.csv"
+    fp_out.parent.mkdir(parents=True, exist_ok=True)
     df_stats_all.to_csv(fp_out, index=False)
     print(f"\nSaved the processed & combined statistics to {fp_out}\n")
 
@@ -273,7 +277,7 @@ def aggregate_all_stats(
     )
 
     # export
-    fp_out = model_dir / fp_out.name.replace('df_stats_all', 'df_stats_agg')
+    fp_out = model_dir / 'stats_all_splits' / fp_out.name.replace(f'df_{stats_version}_all', f'df_{stats_version}_agg')
     df_stats_agg.to_csv(fp_out, index=False)
     print(f"\nSaved the dataframe with the aggregated predictions & uncertainties to {fp_out}")
 
@@ -346,19 +350,28 @@ def compute_change_rates(df_t0: pd.DataFrame, df_t1: pd.DataFrame):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Aggregate the glacier-wide statistics from all the folds and seeds')
-    parser.add_argument('--model_dir',
-                        type=str,
-                        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)')
+    parser.add_argument(
+        '--model_dir', type=str,
+        help='The root directory of the model outputs (e.g. /path/to/experiments/dataset/model_name)'
+    )
     parser.add_argument('--model_version', type=str, required=True, help='Version of the model')
-    parser.add_argument('--seed_list', type=str, nargs='+', required=True,
-                        help='The list of seeds (or "all" to use the ensemble-aggregated predictions)')
-    parser.add_argument('--split_list', type=int, nargs='+', default=[1, 2, 3, 4, 5],
-                        help='The list of cross-validation iterations (e.g. [1, 2, 3, 4, 5])')
-    parser.add_argument('--subdir_list', type=str, nargs='+', required=True,
-                        help='The subdirectories of the model outputs (e.g. inv, 2023). '
-                             'If two are provided, area change rates are computed between them, '
-                             'assuming they are provided in chronological order.'
-                        )
+    parser.add_argument(
+        '--seed_list', type=str, nargs='+', required=True,
+        help='The list of seeds (or "all" to use the ensemble-aggregated predictions)'
+    )
+    parser.add_argument(
+        '--split_list', type=int, nargs='+', default=[1, 2, 3, 4, 5],
+        help='The list of cross-validation iterations (e.g. [1, 2, 3, 4, 5])'
+    )
+    parser.add_argument(
+        '--subdir_list', type=str, nargs='+', required=True,
+        help='The subdirectories of the model outputs (e.g. inv, 2023). If two are provided, area change rates are '
+             'computed between them, assuming they are provided in chronological order.'
+    )
+    parser.add_argument(
+        '--use_calib', action='store_true',
+        help='Flag for using the calibrated predictions'
+    )
     return parser.parse_args()
 
 
@@ -396,6 +409,7 @@ if __name__ == "__main__":
         split_list=_split_list,
         ds_name=_ds_name,
         subdir=_subdir_list[0],
+        use_calib=args.use_calib,
     )
 
     if len(_subdir_list) == 2:
@@ -407,6 +421,7 @@ if __name__ == "__main__":
             split_list=_split_list,
             ds_name=_ds_name,
             subdir=_subdir_list[1],
+            use_calib=args.use_calib,
         )
 
         # compute the change rates

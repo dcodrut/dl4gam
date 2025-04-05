@@ -155,12 +155,14 @@ if __name__ == "__main__":
         '--inference_dir', type=str, metavar='path/to/inference_dir', required=True,
         help='directory where the model predictions are stored',
     )
-    parser.add_argument('--fold', type=str, metavar='s_train|s_valid|s_test', required=True,
-                        help='which subset to evaluate on: either s_train, s_valid or s_test')
-    parser.add_argument('--rasters_dir', type=str, required=False,
-                        help='directory where the original images are stored; '
-                             'if not provided, the one from the config file is used'
-                        )
+    parser.add_argument(
+        '--fold', type=str, metavar='s_train|s_valid|s_test', required=True,
+        help='which subset to evaluate on: either s_train, s_valid or s_test'
+    )
+    parser.add_argument(
+        '--rasters_dir', type=str, required=False,
+        help='directory where the original images are stored; if not provided, the one from the config file is used'
+    )
 
     args = parser.parse_args()
     inference_dir_root = Path(args.inference_dir)
@@ -172,11 +174,14 @@ if __name__ == "__main__":
     else:
         rasters_dir = C.DIR_GL_RASTERS
 
-    # replace the 'preds' subdirectory with 'stats'
+    # replace the 'preds' (or 'preds_calib') subdirectory with 'stats' (or 'stats_calib')
     p = list(inference_dir_root.parts)
-    stats_dir_root = Path(*p[:p.index('preds')]) / 'stats' / Path(*p[p.index('preds') + 1:])
+    preds_version = p[p.index('output') + 1]
+    stats_version = 'stats' if preds_version == 'preds' else 'stats_calib'
+    stats_dir_root = Path(*p[:p.index(preds_version)]) / stats_version / Path(*p[p.index(preds_version) + 1:])
 
     # get the training settings (needed for building the data masks)
+    p = list(inference_dir_root.parts)
     config_fp = Path(*p[:p.index('output')]) / 'settings.yaml'
 
     with open(config_fp, 'r') as fp:
@@ -206,7 +211,7 @@ if __name__ == "__main__":
             all_metrics.append(metrics)
         metrics_df = pd.DataFrame.from_records(all_metrics)
 
-        stats_fp = stats_dir_root / fold / f'stats_excl_{exclude_bad_pixels}.csv'
+        stats_fp = stats_dir_root / fold / f'{stats_version}_excl_{exclude_bad_pixels}.csv'
         stats_fp.parent.mkdir(parents=True, exist_ok=True)
         metrics_df = metrics_df.sort_values('fp')
         metrics_df.to_csv(stats_fp, index=False)
