@@ -49,11 +49,11 @@ if __name__ == '__main__':
             cmd = f"python main_train.py --config_fp={config_fp} --split=split_{i_split} --seed={seed}"
             commands.append((cmd, True))  # True = training
 
-    model_version = "version_0"
+    model_version = "version_0"  # TODO: parametrize this and the other hardcoded paths
     for seed in range(seed_base, seed_base + ensemble_size):
         for i_split in range(1, n_splits + 1):
-            for fold in ['s_valid', 's_test']:
-                for sub_dir in ['inv', '2023']:
+            for sub_dir in ['inv', '2023']:
+                for fold in ['s_valid', 's_test'] if sub_dir == 'inv' else ['s_test']:  # no need of valid set for 2023
                     cmd = (
                         f"python main_test.py"
                         f" --checkpoint_dir=../data/external/_experiments/s2_alps_plus/unet/split_{i_split}/seed_{seed}/{model_version}/checkpoints"
