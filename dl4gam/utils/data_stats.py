@@ -164,18 +164,22 @@ def compute_qc_stats(gl_sdf, bands_name_map, bands_qc_mask, buffer_px):
         with open(fp_metadata, 'r') as f:
             metadata = json.load(f)
 
-        # get the cloud percentage for the entire image which geedim should automatically compute
-        # if the image comes from multiple tiles, use the one with the highest coverage
-        _fill_portion_list = [metadata['imgs_props'][k]['FILL_PORTION'] for k in metadata['imgs_props']]
-        k = list(metadata['imgs_props'].keys())[np.argmax(_fill_portion_list)]
-        cloudless_p_meta = metadata['imgs_props'][k]['CLOUDLESS_PORTION'] / 100
-        fill_p_meta = metadata['imgs_props'][k]['FILL_PORTION'] / 100
-        stats['cloud_p_meta'] = 1 - cloudless_p_meta
-        stats['fill_p_meta'] = fill_p_meta
+        # iterate through the metadata and get the cloud percentage for each tile
+        for i, k in enumerate(metadata['imgs_props_extra'].keys()):
+            # first add the stats from geedim
+            cloudless_p = metadata['imgs_props'][k]['CLOUDLESS_PORTION'] / 100
+            fill_p = metadata['imgs_props'][k]['FILL_PORTION'] / 100
+            stats[f'geedim_cloud_p_{i}'] = 1 - cloudless_p
+            stats[f'geedim_fill_p_{i}'] = fill_p
 
-        # get the tile-level cloud percentage
-        tile_level_cloud_p = metadata['imgs_props_extra'][k]['CLOUDY_PIXEL_PERCENTAGE'] / 100
-        stats['tile_level_cloud_p'] = tile_level_cloud_p
+            # get the tile-level cloud percentage
+            tile_level_cloud_p = metadata['imgs_props_extra'][k]['CLOUDY_PIXEL_PERCENTAGE'] / 100
+            stats[f'tile_level_cloud_p_{i}'] = tile_level_cloud_p
+
+        # compute also the average tile-level cloud percentage
+        tile_level_cloud_p_avg = np.mean([stats[k] for k in stats if 'tile_level_cloud_p' in k])
+
+        stats['tile_level_cloud_p_avg'] = tile_level_cloud_p_avg
 
     # had some RAM issues, not sure why
     nc.close()  # close the dataset to avoid memory leaks
