@@ -12,7 +12,7 @@ def _fn_star(kwargs):
     return fun(**kwargs_others)
 
 
-def run_in_parallel(fun, num_procs=1, pbar=False, pbar_desc=None, **kwargs):
+def run_in_parallel(fun, num_procs, pbar=False, pbar_desc=None, **kwargs):
     # check if the arguments which are lists have the same length
     arg_lens = [len(x) for _, x in kwargs.items() if isinstance(x, list)]
     assert len(arg_lens) > 0, 'At least one argument is expected to be a list.'
