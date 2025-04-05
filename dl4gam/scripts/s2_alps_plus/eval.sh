@@ -54,7 +54,7 @@ for SPLIT in "${SPLITS[@]}"; do
     DESC="DATASET_NAME = $DATASET_NAME; EVAL_SUBDIR = $EVAL_SUBDIR; VERSION = $VERSION; SPLIT = $SPLIT; FOLD = $FOLD"
     echo -e "\n$DESC"
 
-    # first make the inferences using the ensemble members (optional), then aggregate the results and evaluate them
+    # evaluate the ensemble members separately (optional)
     for SEED in "${SEEDS[@]}"; do
       # glacier-wise evaluation
       echo "Glacier-wise evaluation for $DESC; SEED = $SEED"
@@ -75,19 +75,20 @@ for SPLIT in "${SPLITS[@]}"; do
         --fold=$FOLD \
         --seed_list "${SEEDS[@]}"
 
-      # glacier-wise evaluation of the aggregated results (before calibration)
+      # glacier-wise evaluation of the aggregated results (before calibration) - optional
       echo "Evaluating the aggregated ensemble predictions (uncalibrated) on $DESC; SEED = all"
       python main_eval.py \
         --inference_dir="$MODEL_ROOT_DIR/split_$SPLIT/seed_all/version_$VERSION/output/preds/$DATASET_NAME/$EVAL_SUBDIR" \
         --fold=$FOLD \
         --rasters_dir="../data/external/wd/$DATASET_NAME/$EVAL_SUBDIR/glacier_wide" \
 
-      # calibrate the ensemble
+      #  calibrate the ensemble
       # (first the individual members, at pixel level, then the aggregated results, at glacier-area level)
       python main_calib.py \
         --inference_dir="$MODEL_ROOT_DIR/split_$SPLIT/seed_all/version_$VERSION/output/preds/$DATASET_NAME/$EVAL_SUBDIR" \
         --fold=$FOLD \
-        --rasters_dir="../data/external/wd/$DATASET_NAME/$EVAL_SUBDIR/glacier_wide"
+        --rasters_dir="../data/external/wd/$DATASET_NAME/$EVAL_SUBDIR/glacier_wide" \
+        --ensemble_size=${#SEEDS[@]}
 
       # glacier-wise evaluation of the aggregated results (after calibration, both at pixel and glacier-area level)
       echo "Evaluating the aggregated ensemble predictions (calibrated) on $DESC; SEED = all"
