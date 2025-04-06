@@ -46,18 +46,14 @@ def sample_points(fp, fraction=0.05):
     return a dataframe with the sampled points.
     """
     with xr.open_dataset(fp, mask_and_scale=False) as ds:
-        # keep only the predictions within the 50m buffer and discard the other glaciers
-        mask_all_g = (ds.mask_all_g_id.values != -1)
-        mask_crt_g = (ds.mask_crt_g.values == 1)
-        mask_other_g = (mask_all_g != mask_crt_g)
-        ds['mask_other_g'] = (('y', 'x'), mask_other_g)
-        ds = ds.where((ds.mask_crt_g_b50 == 1) & ~ds.mask_other_g)
+        mask_gt = (ds.mask_all_g_id.values != -1)  # ground truth for the entire raster (could have multiple glaciers)
+        mask_preds_exist = ~np.isnan(ds.pred.values)  # we might not have predictions for the entire raster
 
-        mask = ~np.isnan(ds.pred.values)
-        y_pred_avg = ds.pred.values[mask]
-        y_pred_all = ds.pred_all.values[:, mask]
-        y_true = (ds.mask_crt_g.values == 1)[mask]
-        y_std = ds.pred_std.values[mask]
+        mask_ok = ~(ds.mask_nok == 1) & mask_preds_exist
+        y_true = mask_gt[mask_ok]
+        y_pred_avg = ds.pred.values[mask_ok]
+        y_pred_all = ds.pred_all.values[:, mask_ok]
+        y_std = ds.pred_std.values[mask_ok]
 
         # sample points uniformly
         idx = np.arange(0, len(y_true), step=int(1 / fraction))
