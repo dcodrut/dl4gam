@@ -86,6 +86,7 @@ def sample_points_all_glaciers(fp_list, fraction=0.05, num_procs=1):
         fp=fp_list,
         fraction=fraction,
         num_procs=num_procs,
+        pbar_desc='Sampling pixels from glacier-wide predictions'
     )
     df = pd.concat(df_all)
     df = df.sort_values('entry_id')
@@ -247,11 +248,12 @@ if __name__ == "__main__":
         print(f'No predictions found for fold = {fold}. Skipping.')
         exit(0)
 
-    # we always use the validation set of the inventory year for the calibrated temperature(s)
-    fp = stats_dir_root.parent / 'inv' / 's_valid' / 'calibration_stats_px.csv'
-    print(f"Loading calibration stats (pixel-level) from {fp}")
-    stats_df_inv_val = pd.read_csv(fp)
-    print(stats_df_inv_val)
+    # if calculated, we always use the validation set of the inventory year for the calibrated temperature(s)
+    if not is_inventory_year or fold != 's_valid':
+        fp = stats_dir_root.parent / 'inv' / 's_valid' / 'calibration_stats_px.csv'
+        print(f"Loading calibration stats (pixel-level) from {fp}")
+        stats_df_inv_val = pd.read_csv(fp)
+        print(stats_df_inv_val)
 
     ####################################################################################################################
     # in the 1st part, we sample pixels from the glacier-wide predictions and compute the temperature scaling for each
@@ -370,6 +372,10 @@ if __name__ == "__main__":
         print(f"Calibration stats saved to {fp}")
         print(stats_df)
 
+        # mark it as validation fold of the inventory year if needed
+        if fold == 's_valid':
+            stats_df_inv_val = stats_df
+
     ####################################################################################################################
     # in the 2nd part, we calibrate each ensemble member using the temperatures previously computed;
     # the calibrated rasters will contain the calibrated probabilities and the calibrated ensemble average
@@ -392,13 +398,14 @@ if __name__ == "__main__":
     # the resulting lower and upper bounds of the glacier areas are also calibrated
     # (i.e. capture the errors w.r.t the ground truth)
 
-    # we always use the validation set of the inventory year for the calibrated threshold
-    fp = stats_dir_root.parent / 'inv' / 's_valid' / 'calibration_stats_areas_thr.json'
-    print(f"Loading calibration stats (area-level) from {fp}")
-    with open(fp, 'r') as f:
-        stats_d_inv_val = json.load(f)
-        print(json.dumps(stats_d_inv_val, indent=4))
-        thr_actual = stats_d_inv_val['thr_best']
+    # if calculated, we always use the validation set of the inventory year for the calibrated threshold
+    if not is_inventory_year or fold != 's_valid':
+        fp = stats_dir_root.parent / 'inv' / 's_valid' / 'calibration_stats_areas_thr.json'
+        print(f"Loading calibration stats (area-level) from {fp}")
+        with open(fp, 'r') as f:
+            stats_d_inv_val = json.load(f)
+            print(json.dumps(stats_d_inv_val, indent=4))
+            thr_actual = stats_d_inv_val['thr_best']
 
     if is_inventory_year:
         # we run this step only if we are in the inventory year
@@ -433,6 +440,10 @@ if __name__ == "__main__":
         tdf = stats_df.groupby(['thr']).mean(numeric_only=True).reset_index()
         r_best = tdf.iloc[np.argmin(np.abs(tdf.pred_is_within_bounds.values - p_target))]
         thr_best = r_best['thr']
+
+        # save the best threshold as the actual threshold if we are on validation fold
+        if fold == 's_valid':
+            thr_actual = thr_best
 
         print(f"fold = {fold}; thr_best = {thr_best:.3f}; thr_actual = {thr_actual:.3f}")
 
