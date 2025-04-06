@@ -261,10 +261,17 @@ if __name__ == "__main__":
         print(f"Sampling pixels from {len(fp_list)} glaciers...")
         df = sample_points_all_glaciers(fp_list, fraction=0.05 if fold == 's_test' else 0.1, num_procs=C.NUM_PROCS)
         print(df.describe())
+
+        # export ~100k pixels to a csv file for later inspection
         fp = stats_dir / 'sampled_pixels.csv'
         fp.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(fp, index=False)
-        print(f"Sampled pixels saved to {fp}")
+        if len(df) > 200_000:
+            idx = np.arange(0, len(df), step=int(len(df) / 100_000))
+            sdf = df.iloc[idx]
+        else:
+            sdf = df
+        sdf.to_csv(fp, index=False)
+        print(f"Exported {len(sdf)} pixels to {fp}")
 
         # calibrate each ensemble member and plot the reliability diagrams before and after calibration
         sdf = df.filter(regex=r'^y_pred.*_\d*$', axis=1)
