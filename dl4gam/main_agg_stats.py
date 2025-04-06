@@ -14,7 +14,7 @@ import pandas as pd
 from config import C
 
 
-def print_regional_stats(
+def print_regional_area_stats(
         df_stats: pd.DataFrame,
         buffer_size_pred: int = 20,
         buffer_size_fp: int = 50,
@@ -232,7 +232,7 @@ def aggregate_all_stats(
         for seed in seed_list:
             print(f"seed = {seed}")
             df_stats_seed = df_stats_all[df_stats_all.seed == seed]
-            print_regional_stats(df_stats_seed, buffer_size_pred=buffer_pred_m, buffer_size_fp=buffer_fp_m)
+            print_regional_area_stats(df_stats_seed, buffer_size_pred=buffer_pred_m, buffer_size_fp=buffer_fp_m)
 
     # compute the uncertainties
     # is the seed is 'all', then the standard deviation is derived from the lower and upper bounds of the predictions
@@ -275,7 +275,7 @@ def aggregate_all_stats(
                 df_stats_agg.insert(df_stats_agg.columns.get_loc(c) + 1, f'{c}_std', stddevs)
 
     # print the regional statistics for the aggregated predictions
-    print_regional_stats(
+    print_regional_area_stats(
         df_stats_agg, buffer_size_pred=buffer_pred_m, buffer_size_fp=buffer_fp_m, compute_uncertainties=True
     )
 
@@ -285,6 +285,34 @@ def aggregate_all_stats(
     print(f"\nSaved the dataframe with the aggregated predictions & uncertainties to {fp_out}")
 
     return df_stats_agg
+
+
+def print_regional_area_change_stats(df_rates: pd.DataFrame):
+    t_a_t0 = df_rates.area_t0.sum()
+    t_a_t0_std = df_rates.area_t0_std.sum()  # errors are dependent # TODO: revisit this assumption and the ones below
+
+    t_a_t1 = df_rates.area_t1.sum()
+    t_a_t1_std = df_rates.area_t1_std.sum()  # errors are dependent
+
+    annual_area_change = df_rates.area_rate.sum()
+    annual_area_change_std = df_rates.area_rate_std.sum()  # errors are dependent
+
+    t_a_diff = t_a_t1 - t_a_t0
+    t_a_diff_std = (t_a_t0_std ** 2 + t_a_t1_std ** 2) ** 0.5  # errors are independent
+
+    # sanity check: the total area change should be equal to the sum of the rates of change
+    assert np.isclose((df_rates.area_rate * df_rates.num_years).sum(), t_a_diff)
+
+    print(
+        "\nRegional area changes statistics:"
+        f"\n\t#glaciers = {len(df_rates)}"
+        f"\n\ttotal area t0 = {t_a_t0:.1f} ± {t_a_t0_std:.2f} km²"
+        f"\n\ttotal area t1 = {t_a_t1:.1f} ± {t_a_t1_std:.2f} km²"
+        f"\n\tarea change = {t_a_diff:.2f} ± {t_a_diff_std:.2f} km²"
+        f"\n\tannual area change rate = {annual_area_change:.2f} ± {annual_area_change_std:.2f} km² / year"
+        f"\n\tannual area change rate (%) = {annual_area_change / t_a_t0 * 100:.2f} ± "
+        f"{annual_area_change_std / t_a_t0 * 100:.2f} % / year"
+    )
 
 
 def compute_change_rates(df_t0: pd.DataFrame, df_t1: pd.DataFrame):
@@ -324,31 +352,10 @@ def compute_change_rates(df_t0: pd.DataFrame, df_t1: pd.DataFrame):
     # compute the standard deviation of the glacier-wide change rate (assuming the errors are independent)
     df_rates['area_rate_std'] = (df_rates.area_t0_std ** 2 + df_rates.area_t1_std ** 2) ** 0.5 / df_rates.num_years
 
-    t_a_t0 = df_rates.area_t0.sum()
-    t_a_t0_std = df_rates.area_t0_std.sum()  # the errors are dependent
+    print("\nGlacier-wide area change rates statistics (before interpolation):")
+    print_regional_area_change_stats(df_rates)
 
-    t_a_t1 = df_rates.area_t1.sum()
-    t_a_t1_std = df_rates.area_t1_std.sum()  # the errors are dependent
-
-    annual_area_change = df_rates.area_rate.sum()
-    annual_area_change_std = df_rates.area_rate_std.sum()  # the errors are dependent
-
-    t_a_diff = t_a_t1 - t_a_t0
-    t_a_diff_std = (t_a_t0_std ** 2 + t_a_t1_std ** 2) ** 0.5  # the errors are independent
-
-    # sanity check: the total area change should be equal to the sum of the rates of change
-    assert np.isclose((df_rates.area_rate * df_rates.num_years).sum(), t_a_diff)
-
-    print(
-        "\nRegional area changes statistics:"
-        f"\n\t#glaciers = {len(df_rates)}"
-        f"\n\ttotal area t0  = {t_a_t0:.1f} ± {t_a_t0_std:.2f} km²"
-        f"\n\ttotal area t1 = {t_a_t1:.1f} ± {t_a_t1_std:.2f} km²"
-        f"\n\tarea change = {t_a_diff:.2f} ± {t_a_diff_std:.2f} km²"
-        f"\n\tannual area change rate = {annual_area_change:.2f} ± {annual_area_change_std:.2f} km² / year"
-        f"\n\tannual area change rate (%) = {annual_area_change / t_a_t0 * 100:.2f} ± "
-        f"{annual_area_change_std / t_a_t0 * 100:.2f} % / year"
-    )
+    return df_rates
 
 
 def parse_args():
@@ -428,4 +435,12 @@ if __name__ == "__main__":
         )
 
         # compute the change rates
-        compute_change_rates(df_stats_agg_t0, df_stats_agg_t1)
+        df_stats_changes = compute_change_rates(df_stats_agg_t0, df_stats_agg_t1)
+
+        stats_version = 'stats_calib' if args.use_calib else 'stats'
+        fp_out = (
+                _model_dir / 'stats_all_splits' /
+                f"df_changes_{stats_version}_all_{_ds_name}_{_model_version}_ensemble.csv"
+        )
+        df_stats_changes.to_csv(fp_out, index=False)
+        print(f"\nSaved the dataframe with the aggregated predicted changes & uncertainties to {fp_out}")
