@@ -14,7 +14,7 @@ from config import C
 from task.data import extract_inputs
 
 
-def compute_stats(fp, rasters_dir, input_settings, exclude_bad_pixels=False, return_rasters=False,
+def compute_stats(fp, rasters_dir, input_settings, excl_bad_pixels=False, return_rasters=False,
                   estimate_terminus_loc=True):
     stats = {'fp': fp}
 
@@ -52,7 +52,7 @@ def compute_stats(fp, rasters_dir, input_settings, exclude_bad_pixels=False, ret
     f_area = (dx ** 2) / 1e6
 
     # extract the mask for no-data pixels (which depends on the training yaml settings)
-    mask_exclude = nc_data['mask_no_data'] if exclude_bad_pixels else np.zeros_like(mask_gt)
+    mask_exclude = nc_data['mask_no_data'] if excl_bad_pixels else np.zeros_like(mask_gt)
     area_ok = np.sum(mask_gt & (~mask_exclude)) * f_area
     area_excluded = np.sum(mask_gt & mask_exclude) * f_area
     stats['area_ok'] = area_ok
@@ -163,6 +163,11 @@ if __name__ == "__main__":
         '--rasters_dir', type=str, required=False,
         help='directory where the original images are stored; if not provided, the one from the config file is used'
     )
+    parser.add_argument(
+        '--excl_bad_pixels', action='store_true',
+        help='Flag for excluding the bad pixels from the evaluation; '
+             'bad pixels = missing, cloudy or under shadow, see BANDS_QC_MASK'
+    )
 
     args = parser.parse_args()
     inference_dir_root = Path(args.inference_dir)
@@ -178,6 +183,8 @@ if __name__ == "__main__":
     p = list(inference_dir_root.parts)
     preds_version = p[p.index('output') + 1]
     stats_version = 'stats' if preds_version == 'preds' else 'stats_calib'
+    if args.excl_bad_pixels:
+        stats_version += '_excl_bad_pixels'
     stats_dir_root = Path(*p[:p.index(preds_version)]) / stats_version / Path(*p[p.index(preds_version) + 1:])
 
     # get the training settings (needed for building the data masks)
@@ -195,11 +202,10 @@ if __name__ == "__main__":
         print(f'No predictions found for fold = {fold}. Skipping.')
         exit(0)
 
-    exclude_bad_pixels = False
     _compute_stats = partial(
         compute_stats,
         rasters_dir=rasters_dir,
-        exclude_bad_pixels=exclude_bad_pixels,
+        excl_bad_pixels=args.excl_bad_pixels,
         input_settings=all_settings['model']['inputs'],
     )
 
@@ -207,11 +213,11 @@ if __name__ == "__main__":
         all_metrics = []
         for metrics in tqdm(
                 pool.imap_unordered(_compute_stats, fp_list, chunksize=1), total=len(fp_list),
-                desc=f'Computing evaluation metrics (exclude_bad_pixels = {exclude_bad_pixels})'):
+                desc=f'Computing evaluation metrics (excl_bad_pixels = {args.excl_bad_pixels})'):
             all_metrics.append(metrics)
         metrics_df = pd.DataFrame.from_records(all_metrics)
 
-        stats_fp = stats_dir_root / fold / f'{stats_version}_excl_{exclude_bad_pixels}.csv'
+        stats_fp = stats_dir_root / fold / f'{stats_version}.csv'
         stats_fp.parent.mkdir(parents=True, exist_ok=True)
         metrics_df = metrics_df.sort_values('fp')
         metrics_df.to_csv(stats_fp, index=False)

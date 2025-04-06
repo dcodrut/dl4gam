@@ -118,11 +118,14 @@ def aggregate_all_stats(
     """
     df_stats_list = []
     stats_version = 'stats_calib' if use_calib else 'stats'
+    if excl_masked_pixels:
+        stats_version += '_excl_bad_pixels'
     for seed in seed_list:
         for i_split in split_list:
             stats_dir = model_dir / f"split_{i_split}/seed_{seed}/{model_version}/output/{stats_version}/{ds_name}"
             assert stats_dir.exists(), f"{stats_dir} doesn't exist"
-            fp = stats_dir / str(subdir) / 's_test' / f"{stats_version}_excl_{excl_masked_pixels}.csv"
+
+            fp = stats_dir / str(subdir) / 's_test' / f"{stats_version}.csv"
             print(f'seed = {seed}; split = {i_split}; model_version = {model_version}; subdir = {subdir}')
             print(f'\tfp = {fp}')
             assert fp.exists(), f"{fp} doesn't exist"
