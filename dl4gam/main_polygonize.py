@@ -104,11 +104,18 @@ if __name__ == "__main__":
 
         # polygonize the predictions
         for k, v in to_export.items():
-            shapes = list(rasterio.features.shapes(to_export[k].astype(np.uint8), transform=nc.rio.transform()))
+            # apply sieve filter to remove connected components smaller than 10 pixels
+            min_size_threshold = 10
+            sieved_data = rasterio.features.sieve(to_export[k].astype(np.uint8), min_size_threshold)
+
+            # get the shapes and convert them to polygons
+            shapes = list(rasterio.features.shapes(sieved_data, transform=nc.rio.transform()))
             geometries = [shapely.geometry.shape(shape) for shape, value in shapes if value == 1]
 
+            # check if nothing was found
+            multipoly = shapely.ops.unary_union(geometries) if len(geometries) > 0 else shapely.geometry.Polygon()
+
             # combine the polygons into a single one and create a geodataframe
-            multipoly = shapely.ops.unary_union(geometries)
             geom_all['entry_id'].append(fp.parent.name)
             geom_all['geometry'].append(multipoly)
             geom_all['nc_crs'].append(nc.rio.crs)
