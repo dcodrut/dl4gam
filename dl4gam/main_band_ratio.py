@@ -17,14 +17,15 @@ from config import C
 from utils.general import run_in_parallel
 from utils.postprocessing import nn_interp
 
+# we need to export this with the results s.t. eval script works
 input_settings = {
     'bands_input': ['R', 'G', 'B', 'NIR', 'SWIR'],
-    'band_qc_mask': 'mask_nok',
+    'band_mask': 'mask_nok',
     'dem': False,
     'dhdt': False,
-    'optical_indices': False,
-    'dem_features': False,
-    'velocity': False
+    'optical_indices': None,
+    'dem_features': None,
+    'velocity': None
 }
 
 
