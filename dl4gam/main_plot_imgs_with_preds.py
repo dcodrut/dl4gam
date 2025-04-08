@@ -248,7 +248,7 @@ if __name__ == "__main__":
         else:
             fp_stats = (
                     model_dir / 'stats_all_splits' /
-                    f"df_{stats_version}_{ds_name}_{subdir}_{model_version}_individual.csv"
+                    f"df_{stats_version}_all_{ds_name}_{subdir}_{model_version}_individual.csv"
             )
         assert fp_stats.exists(), f"Results file not found: {fp_stats} (run main_agg_stats.py)"
         print(f"Loading the results from {fp_stats}")
