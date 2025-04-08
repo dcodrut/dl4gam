@@ -120,6 +120,9 @@ if __name__ == "__main__":
     # export the geodataframe(s), separated by the label
     gdf = gpd.GeoDataFrame(geom_all)
 
+    # sort by entry_id
+    gdf = gdf.sort_values(by='entry_id')
+
     # reproject to WGS84 (from the raster crs)
     gdf = gdf.groupby('nc_crs', group_keys=False, sort=False)[[c for c in gdf.columns]].apply(
         lambda sdf: sdf.set_crs(crs=sdf.nc_crs.iloc[0]).to_crs(epsg=4326)
