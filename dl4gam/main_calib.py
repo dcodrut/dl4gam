@@ -100,7 +100,7 @@ def sample_points_all_glaciers(fp_list, fraction=0.05, num_procs=1):
 def estimate_area_bounds_with_inc_thr(fp_pred, thresholds):
     with xr.open_dataset(fp_pred, mask_and_scale=False) as ds:
         stats_crt_g = {
-            'entry_id': fp.parent.name,
+            'entry_id': fp_pred.parent.name,
             'thr': [],
             'area_pred': [],
             'area_true': [],
