@@ -9,9 +9,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from config import S2_SGI as C
+
 if __name__ == "__main__":
     # read the (processed) GLAMOS inventory (SGI2016)
-    sgi_gdf = gpd.read_file('../data/outlines/sgi2016/SGI_2016_glaciers.shp')
+    sgi_gdf = gpd.read_file(C.GLACIER_OUTLINES_FP)
 
     # for each glacier and data split, get the split in which it falls under the test fold
     fp_split_all = list(Path('../data/external/wd/s2_alps_plus/cv_split_outlines/').rglob('*.shp'))
