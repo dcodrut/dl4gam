@@ -9,6 +9,8 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from sklearn.metrics import r2_score
 
 # local imports
 from config import C
@@ -65,7 +67,7 @@ def print_regional_area_stats(
         t_a_debris_recalled_std = np.nan
 
     print(
-        f'Regional statistics:'
+        f'Regional area statistics:'
         f'\n\t#glaciers = {len(df_stats)}'
         f'\n\ttotal area = {t_a_inv:.1f}; '
         f'total area NOK = {t_a_nok:.1f}; total area OK = {t_a_ok:.1f} ({t_a_ok / t_a_inv * 100:.2f}%)'
@@ -76,7 +78,7 @@ def print_regional_area_stats(
         f'of {t_a_fp:.1f} km² = {t_a_fp_pred / t_a_fp * 100:.1f} ± {t_a_fp_pred_std / t_a_fp * 100:.2f} %'
         f'\n\tdebris percentage = {t_a_debris / t_a_inv * 100:.2f} %'
         f'\n\trecall debris = {t_a_debris_recalled:.1f} ± {t_a_debris_recalled_std:.2f} of {t_a_debris:.1f} km² '
-        f'= {t_a_debris_recalled / t_a_debris * 100:.1f} ± {t_a_debris_recalled_std / t_a_debris * 100:.2f} %'
+        f'= {t_a_debris_recalled / t_a_debris * 100:.1f} ± {t_a_debris_recalled_std / t_a_debris * 100:.2f} %\n'
     )
 
 
@@ -304,14 +306,15 @@ def print_regional_area_change_stats(df_rates: pd.DataFrame):
     assert np.isclose((df_rates.area_rate * df_rates.num_years).sum(), t_a_diff)
 
     print(
-        "\nRegional area changes statistics:"
+        "Regional area change statistics:"
         f"\n\t#glaciers = {len(df_rates)}"
+        f"\n\ttotal area inv = {df_rates.area_inv.sum():.1f} km²"
         f"\n\ttotal area t0 = {t_a_t0:.1f} ± {t_a_t0_std:.2f} km²"
         f"\n\ttotal area t1 = {t_a_t1:.1f} ± {t_a_t1_std:.2f} km²"
         f"\n\tarea change = {t_a_diff:.2f} ± {t_a_diff_std:.2f} km²"
         f"\n\tannual area change rate = {annual_area_change:.2f} ± {annual_area_change_std:.2f} km² / year"
         f"\n\tannual area change rate (%) = {annual_area_change / t_a_t0 * 100:.2f} ± "
-        f"{annual_area_change_std / t_a_t0 * 100:.2f} % / year"
+        f"{annual_area_change_std / t_a_t0 * 100:.2f} % / year\n"
     )
 
 
@@ -352,10 +355,252 @@ def compute_change_rates(df_t0: pd.DataFrame, df_t1: pd.DataFrame):
     # compute the standard deviation of the glacier-wide change rate (assuming the errors are independent)
     df_rates['area_rate_std'] = (df_rates.area_t0_std ** 2 + df_rates.area_t1_std ** 2) ** 0.5 / df_rates.num_years
 
-    print("\nGlacier-wide area change rates statistics (before interpolation):")
+    print("\nGlacier-wide area change rates statistics (before filtering & interpolation):")
     print_regional_area_change_stats(df_rates)
 
     return df_rates
+
+
+def mark_noisy_change_rates(gl_df: gpd.GeoDataFrame, df_rates: pd.DataFrame, min_snr=1, recall_thr=0.8):
+    """
+    Mark the change rates based on:
+    1) SNR: the estimated changes over their uncertainties
+        and
+    2) the recall at inventory time (since the SNR filter is not perfect, due to issues with the estimated unc)
+
+    :param gl_df: the dataframe with the glacier inventory
+    :param df_rates: dataframe with the glacier-wide area change statistics at time t0 and t1
+    :param min_snr: the threshold for the signal-to-noise ratio (SNR)
+    :param recall_thr: the threshold for the recall at inventory time
+
+    :return: None
+    """
+
+    ta_inv = gl_df.area_inv.sum()
+    print(
+        f"Before filtering: "
+        f"n = {len(df_rates)}; "
+        f"total area = {df_rates.area_t0.sum():.1f} km²; "
+        f"area coverage = {df_rates.area_inv.sum() / ta_inv * 100:.2f}%"
+    )
+
+    # threshold based on the SNR
+    df_rates['snr'] = df_rates.area_rate.abs() / df_rates.area_rate_std.clip(1e-9)
+    idx_high_snr = df_rates.snr >= min_snr
+    print(
+        f"SNR >= {min_snr}: "
+        f"\n\tn = {sum(idx_high_snr)}; "
+        f"total area = {df_rates[idx_high_snr].area_t0.sum():.1f} km²; "
+        f"area coverage = {df_rates[idx_high_snr].area_inv.sum() / ta_inv * 100:.2f}%"
+    )
+
+    # threshold based on the recall at inventory time
+    idx_high_recall = (df_rates.recall >= recall_thr)
+    print(
+        f"recall >= {recall_thr}: "
+        f"\n\tn = {sum(idx_high_recall)}; "
+        f"total area = {df_rates[idx_high_recall].area_t0.sum():.1f} km²; "
+        f"area coverage = {df_rates[idx_high_recall].area_inv.sum() / ta_inv * 100:.2f}%"
+    )
+
+    # both thresholds
+    idx_ok = idx_high_snr & idx_high_recall
+    print(
+        f"SNR >= {min_snr} AND recall >= {recall_thr}: "
+        f"\n\tn = {sum(idx_ok)}; "
+        f"total area = {df_rates[idx_ok].area_t0.sum():.1f} km²; "
+        f"area coverage = {df_rates[idx_ok].area_inv.sum() / ta_inv * 100:.2f}%\n"
+    )
+
+    # save the information for each filter and their combination
+    df_rates['filtered_by_unc'] = ~idx_high_snr
+    df_rates['filtered_by_recall'] = ~idx_high_recall
+    df_rates['filtered'] = ~idx_ok
+
+    print_regional_area_change_stats(df_rates[idx_ok])
+
+    return df_rates
+
+
+def extrapolate_area_change_rates(
+        gl_df: gpd.GeoDataFrame,
+        df_rates: pd.DataFrame,
+        y_stop: int = None,
+        model_type: str = 'piecewise-linear'
+):
+    """
+    Extrapolate the area change rates to the entire glacier inventory.
+
+    The extrapolation is done using a piecewise linear interpolation based on the area of the glaciers.
+    (It's actually interpolation for glaciers larger than 0.1 km² and extrapolation for smaller ones.)
+
+    :param gl_df: the dataframe with the glacier inventory
+    :param df_rates: dataframe with the glacier-wide area change statistics at time t0 and t1
+    :param y_stop: the year of the second time step (if None, the second year is taken from the dataframe)
+    :param model_type: the type of model to use for the extrapolation ('piecewise-linear' or '2d-polynomial')
+    :return: the dataframe with the extrapolated area change rates
+    """
+
+    assert model_type in ['piecewise-linear', '2d-polynomial'], \
+        f"model_type must be 'piecewise-linear' or '2d-polynomial', not {model_type}"
+
+    # create a dataframe with all the glaciers for interpolating the area change rates
+    df_rates_all_g = df_rates.drop(columns='area_inv').merge(
+        gl_df[['entry_id', 'area_inv']], on='entry_id', how='right'
+    )
+
+    # add the years
+    df_rates_all_g['year_t0'] = gl_df.sort_values('entry_id').year_inv.values
+    if y_stop is None:
+        # we expect the second year to be the same for all glaciers
+        assert len(set(df_rates.year_t1)) == 1, \
+            f"More than one second year in the dataframe: {set(df_rates.year_t1)}"
+        y_stop = df_rates.year_t1.values[0]
+
+    df_rates_all_g['year_t1'] = y_stop
+    df_rates_all_g['num_years'] = df_rates_all_g.year_t1 - df_rates_all_g.year_t0
+
+    # needed for the interpolation
+    df_rates_all_g = df_rates_all_g.sort_values('area_inv')
+
+    # set the classes for the area which will be used for the piecewise linear interpolation or uncertainties
+    area_thrs = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, np.inf]  # based on Paul et al. 2020; # TODO: parameterize this
+    df_rates_all_g['area_class'] = None
+    area_classes = []
+    for i in range(len(area_thrs) - 1):
+        min_area = area_thrs[i]
+        max_area = area_thrs[i + 1]
+        idx_all = (min_area <= df_rates_all_g.area_inv) & (df_rates_all_g.area_inv < max_area)
+
+        area_class = f"[{min_area}, {max_area})" if max_area != np.inf else f">= {min_area}"
+        area_classes.append(area_class)
+        df_rates_all_g.loc[idx_all, 'area_class'] = area_class
+        if i == 0:
+            area_class = f"[0.01, {min_area})"
+            area_classes.insert(0, area_class)
+            idx_extrapolate = (df_rates_all_g.area_inv < min_area)
+            df_rates_all_g.loc[idx_extrapolate, 'area_class'] = area_class
+
+    print(f"model_type = {model_type}")
+    df_rates_all_g['area_rate_pred'] = np.nan
+    df_rates_all_g['area_rate_pred_std'] = np.nan
+    for i in range(len(area_thrs) - 1):
+        min_area = area_thrs[i]
+        max_area = area_thrs[i + 1]
+        idx_all = (min_area <= df_rates_all_g.area_inv) & (df_rates_all_g.area_inv < max_area)
+        idx_ok = idx_all & (df_rates_all_g.filtered == False)
+
+        print(
+            f"{min_area} <= area < {max_area}: "
+            f"n_all_g = {sum(idx_all)}; n_ok = {sum(idx_ok)} ({sum(idx_ok) / sum(idx_all) * 100:.2f} %)"
+        )
+
+        if sum(idx_all) == sum(idx_ok):
+            print(f"\tAll glaciers are covered, skipping the interpolation.")
+            continue
+
+        # interpolate the area change rate
+        x = df_rates_all_g[idx_ok].area_inv.values
+        y = df_rates_all_g[idx_ok].area_rate.values
+        x_all = df_rates_all_g[idx_all].area_inv.values
+
+        if model_type == 'piecewise-linear':
+            model = sm.OLS(y, sm.add_constant(x)).fit()
+            # display(model.summary())
+            y_pred = model.predict(sm.add_constant(x_all))
+            df_rates_all_g.loc[idx_all, 'area_rate_pred'] = y_pred
+
+        # for the standard deviations, use the average of the entire class
+        area_rate_pred_std = np.sqrt(np.mean(df_rates_all_g[idx_ok].area_rate_std.values ** 2))
+        area_t0_pred_std = np.sqrt(np.mean(df_rates_all_g[idx_ok].area_t0_std.values ** 2))
+        area_t1_pred_std = np.sqrt(np.mean(df_rates_all_g[idx_ok].area_t1_std.values ** 2))
+        df_rates_all_g.loc[idx_all, 'area_rate_pred_std'] = area_rate_pred_std
+        df_rates_all_g.loc[idx_all, 'area_t0_pred_std'] = area_t0_pred_std
+        df_rates_all_g.loc[idx_all, 'area_t1_pred_std'] = area_t1_pred_std
+
+        # for the uncovered class (i.e. < 0.1 km²), extrapolate using the following class
+        if i == 0:
+            idx_extrapolate = (df_rates_all_g.area_inv < min_area)
+            if sum(idx_extrapolate) == 0:
+                continue
+
+            if model_type == 'piecewise-linear':
+                x_extrapolate = df_rates_all_g[idx_extrapolate].area_inv.values
+                y_extrapolate = model.predict(sm.add_constant(x_extrapolate))
+                df_rates_all_g.loc[idx_extrapolate, 'area_rate_pred'] = y_extrapolate
+
+            # to compensate for the uncertainties introduced by the extrapolation,
+            # use the average standard deviation of the first class
+            df_rates_all_g.loc[idx_extrapolate, 'area_rate_pred_std'] = area_rate_pred_std
+            df_rates_all_g.loc[idx_extrapolate, 'area_t0_pred_std'] = area_t0_pred_std
+            df_rates_all_g.loc[idx_extrapolate, 'area_t1_pred_std'] = area_t1_pred_std
+
+        df_rates_all_g['area_rate_prc_pred'] = df_rates_all_g.area_rate_pred / df_rates_all_g.area_inv
+
+    if model_type == '2d-polynomial':
+        df = df_rates_all_g[df_rates_all_g.filtered == False]
+
+        log_area = np.log10(df.area_inv)
+        rel_change = df.area_rate_prc * 100
+        X = pd.DataFrame({
+            "log_area": log_area,
+            "log_area_sq": log_area ** 2
+        })
+        X = sm.add_constant(X)
+        model = sm.OLS(rel_change, X).fit()
+        # print(model.summary())
+
+        a = model.params["const"]
+        b = model.params["log_area"]
+        c = model.params["log_area_sq"]
+        print(
+            f"\nΔA/A = {a:.3f} "
+            f"{'+' if b >= 0 else '-'} {abs(b):.3f}·log10(A) "
+            f"{'+' if c >= 0 else '-'} {abs(c):.3f}·log10(A)^2"
+        )
+
+        log_area_range = np.log10(df_rates_all_g.area_inv.values)
+        X_pred = pd.DataFrame({
+            "const": 1,
+            "log_area": log_area_range,
+            "log_area_sq": log_area_range ** 2
+        })
+        rel_change_pred = model.predict(X_pred).values
+        df_rates_all_g['area_rate_prc_pred'] = rel_change_pred / 100
+        df_rates_all_g['area_rate_pred'] = rel_change_pred / 100 * df_rates_all_g.area_inv
+
+    # save the original area change rates and then replace them with the interpolated ones
+    df_rates_all_g['area_t0_orig'] = df_rates_all_g.area_t0
+    df_rates_all_g['area_t0_std_orig'] = df_rates_all_g.area_t0_std
+    df_rates_all_g['area_t1_orig'] = df_rates_all_g.area_t1
+    df_rates_all_g['area_t1_std_orig'] = df_rates_all_g.area_t1_std
+    df_rates_all_g['area_rate_orig'] = df_rates_all_g.area_rate
+    df_rates_all_g['area_rate_std_orig'] = df_rates_all_g.area_rate_std
+    idx_to_fill_in = ~(df_rates_all_g.filtered == False)
+    df_rates_all_g.loc[idx_to_fill_in, 'area_rate'] = df_rates_all_g[idx_to_fill_in].area_rate_pred
+    df_rates_all_g.loc[idx_to_fill_in, 'area_rate_std'] = df_rates_all_g[idx_to_fill_in].area_rate_pred_std
+    df_rates_all_g.loc[idx_to_fill_in, 'area_t0'] = df_rates_all_g[idx_to_fill_in].area_inv
+    df_rates_all_g.loc[idx_to_fill_in, 'area_t0_std'] = df_rates_all_g[idx_to_fill_in].area_t0_pred_std
+    df_rates_all_g.loc[idx_to_fill_in, 'area_t1'] = df_rates_all_g[idx_to_fill_in].area_t0 + df_rates_all_g[
+        idx_to_fill_in].area_rate * df_rates_all_g[idx_to_fill_in].num_years
+    df_rates_all_g.loc[idx_to_fill_in, 'area_t1_std'] = df_rates_all_g[idx_to_fill_in].area_t1_pred_std
+
+    # sort back
+    df_rates_all_g = df_rates_all_g.sort_values('entry_id')
+
+    df_rates_all_g.area_class = pd.Categorical(df_rates_all_g.area_class, categories=area_classes)
+    print(df_rates_all_g.groupby('area_class', observed=False).area_rate_prc.describe().reset_index())
+
+    # compute the R2 over all the predictions
+    idx_training = (~df_rates_all_g.area_rate_pred.isna()) & (df_rates_all_g.filtered == False)
+    y = df_rates_all_g.area_rate[idx_training].values
+    y_pred = df_rates_all_g.area_rate_pred[idx_training].values
+    r2 = r2_score(y, y_pred)
+    print(f"R² = {r2 * 100:.1f}%")
+
+    print_regional_area_change_stats(df_rates_all_g)
+
+    return df_rates_all_g
 
 
 def parse_args():
@@ -410,6 +655,7 @@ if __name__ == "__main__":
 
     print(f"Model directory: {_model_dir}")
 
+    use_calib = args.use_calib
     _ds_name = Path(C.WD).name
     df_stats_agg_t0 = aggregate_all_stats(
         gl_df=_gl_df,
@@ -419,7 +665,7 @@ if __name__ == "__main__":
         split_list=_split_list,
         ds_name=_ds_name,
         subdir=_subdir_list[0],
-        use_calib=args.use_calib,
+        use_calib=use_calib,
     )
 
     if len(_subdir_list) == 2:
@@ -431,16 +677,27 @@ if __name__ == "__main__":
             split_list=_split_list,
             ds_name=_ds_name,
             subdir=_subdir_list[1],
-            use_calib=args.use_calib,
+            use_calib=use_calib,
         )
 
         # compute the change rates
         df_stats_changes = compute_change_rates(df_stats_agg_t0, df_stats_agg_t1)
 
-        stats_version = 'stats_calib' if args.use_calib else 'stats'
+        #  mark the noisy change rates
+        df_stats_changes = mark_noisy_change_rates(_gl_df, df_stats_changes, min_snr=1, recall_thr=0.9)
+
+        stats_version = 'stats_calib' if use_calib else 'stats'
         fp_out = (
                 _model_dir / 'stats_all_splits' /
                 f"df_changes_{stats_version}_all_{_ds_name}_{_model_version}_ensemble.csv"
         )
         df_stats_changes.to_csv(fp_out, index=False)
         print(f"\nSaved the dataframe with the aggregated predicted changes & uncertainties to {fp_out}")
+
+        df_stats_changes = extrapolate_area_change_rates(_gl_df, df_stats_changes, model_type='2d-polynomial')
+        fp_out = (
+                _model_dir / 'stats_all_splits' /
+                f"df_changes_{stats_version}_all_{_ds_name}_{_model_version}_ensemble_extrapolated.csv"
+        )
+        df_stats_changes.to_csv(fp_out, index=False)
+        print(f"\nSaved the dataframe with the extrapolated changes & uncertainties to {fp_out}")
