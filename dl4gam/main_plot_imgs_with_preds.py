@@ -53,7 +53,7 @@ def plot_glacier(
 
     # prepare the figure
     fig_w = fig_w_px / dpi
-    h_title_px = img_w_px * 0.1
+    h_title_px = img_w_px * 0.2
     fig_h = (img_h_px + h_title_px) / dpi
     fig, axes = plt.subplots(1, 4, figsize=(fig_w, fig_h), dpi=dpi, width_ratios=width_ratios, layout='compressed')
 
@@ -79,7 +79,6 @@ def plot_glacier(
     ]
 
     title = (
-        f"{img_date.strftime('%Y-%m-%d')} ({source_name}, {'-'.join(bands_img_1)})\n"
         f"$A_{{inv}}$ = {r_gl.area_km2:.2f} km$^2$"
     )
 
@@ -91,10 +90,19 @@ def plot_glacier(
         recall_debris = stats.recall_debris if (
                 (stats.Country == 'CH') & (stats.area_debris / stats.area_inv > 0.01)) else np.nan
         recall_debris_txt = f"{recall_debris * 100:.2f}%" if not np.isnan(recall_debris) else "NA"
+        rel_err = (stats['area_non_g_pred_b50'] + (stats['area_inv'] - stats['area_pred_b0']) / stats['area_inv'])
         title += (
             f"; $A_{{pred}}$ = {stats.area_pred:.2f} ± {stats.area_pred_std:.3f} km$^2$\n"
-            f"$FPR_{{20-50m}}$ = {stats['area_non_g_pred_b20_50'] / stats['area_non_g_b20_50'] * 100:.2f}%; "
-            f"$recall_{{debris}}$ (CH only) = {recall_debris_txt}"
+            f"$A_{{pred, 0m}}$ = {stats['area_pred_b0']:.2f} km$^2$ "
+            f"(TPR = {stats['area_pred_b0']  / r_gl.area_km2 * 100:.1f} %)\n"
+            f"$A_{{0-50m}}$ = {stats['area_non_g_b50']:.2f} km$^2$; "
+            f"$A_{{pred, 0-50m}}$ = {stats['area_non_g_pred_b50']:.2f} km$^2$; "
+            f"$FPR_{{0-50m}}$ = {stats['area_non_g_pred_b50'] / stats['area_non_g_b50'] * 100:.2f} %\n"
+            f"$A_{{20-50m}}$ = {stats['area_non_g_b20_50']:.2f} km$^2$; "
+            f"$A_{{pred, 20-50m}}$ = {stats['area_non_g_pred_b20_50']:.2f} km$^2$; "
+            f"$FPR_{{20-50m}}$ = {stats['area_non_g_pred_b20_50'] / stats['area_non_g_b20_50'] * 100:.2f} %\n"
+            f"$(FP_{{0-50m}} + FN) / P$ = {rel_err * 100:.2f} %; "
+            f"$TPR_{{debris}}$ (CH only) = {recall_debris_txt}"
         )
     ax.set_title(title, fontsize=fontsize)
 
@@ -123,7 +131,11 @@ def plot_glacier(
     img = nc.band_data.isel(band=[band_names.index(b) for b in bands_img_2]).transpose('y', 'x', 'band').values
     img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast)
     ax.imshow(img, extent=extent, interpolation='none')
-    ax.set_title('-'.join(bands_img_2), fontsize=fontsize)
+    ax.set_title(
+        f"left: {'-'.join(bands_img_1)}, below: {'-'.join(bands_img_2)}\n"
+        f"Source: {source_name}",
+        fontsize=fontsize
+    )
 
     # Subplot 3) plot the dh/dt (if exists) and the elevation contours
     ax = axes[2]
@@ -172,7 +184,8 @@ def plot_glacier(
 
     # add a figure title with the glacier ID and the location
     fig.suptitle(
-        f"Glacier ID: {r_gl.entry_id.replace('g_', '')} ({r_gl.Country} - {r_gl.LAT:.2f}° N, {r_gl.LON:.2f}° E)",
+        f"Glacier ID: {r_gl.entry_id.replace('g_', '')} ({r_gl.Country} - {r_gl.LAT:.2f}° N, {r_gl.LON:.2f}° E)\n"
+        f"Date: {img_date.strftime('%Y-%m-%d')}\n",
         fontsize=fontsize + 2,
         x=0.46,
         y=0.98,
