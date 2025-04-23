@@ -297,8 +297,8 @@ if __name__ == "__main__":
             print(f"Finding best temperature for member {i}...")
             best_t = optimize_temperature_binary(probs, y_true)
 
-            # if we are in the inventory year and using the validation set, we use the temperature we just computed
-            if is_inventory_year and fold == 's_valid':
+            # if we are using the validation set, we use the temperature we just computed
+            if fold == 's_valid':
                 actual_t = best_t
             else:
                 actual_t = stats_df_inv_val.loc[stats_df_inv_val.member == f"member_{i}", 'best_t'].values[0]
@@ -444,21 +444,28 @@ if __name__ == "__main__":
         r_best = tdf.iloc[np.argmin(np.abs(tdf.pred_is_within_bounds.values - p_target))]
         thr_best = r_best['thr']
 
-        # save the best threshold as the actual threshold if we are on validation fold
+        # if we are using the validation set, we use the threshold we just computed
         if fold == 's_valid':
             thr_actual = thr_best
+            r_actual = r_best
+        else:
+            # we're on testing; find the actual threshold using the validation set
+            r_actual = tdf[tdf.thr == thr_actual].iloc[0]
+            thr_actual = r_actual['thr']
 
         print(f"fold = {fold}; thr_best = {thr_best:.3f}; thr_actual = {thr_actual:.3f}")
 
         # export to a json file
         fp = stats_dir / 'calibration_stats_areas_thr.json'
-        with open(fp, 'w') as f:
+        with open(fp, 'w') as f:  # TODO: save also the other stats for test
             stats_area_dict = {
                 'thr_best': thr_best,
                 'thr_actual': thr_actual,
                 'p_target': p_target,
-                'p_actual': r_best.pred_is_within_bounds,
-                'stats': r_best.to_dict()
+                'p_actual': r_actual.pred_is_within_bounds,
+                'p_best': r_best.pred_is_within_bounds,
+                'stats_actual': r_actual.to_dict(),
+                'stats_best': r_best.to_dict()
             }
             json.dump(stats_area_dict, f, indent=4)
             print(f"Calibration threshold for area bounds saved to {fp}")
