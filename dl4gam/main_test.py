@@ -10,10 +10,10 @@ import yaml
 from tqdm import tqdm
 
 # local imports
-import models
 from config import C
-from task.data import GlSegDataModule
-from task.seg import GlSegTask
+from pl_modules import seg_model as models
+from pl_modules.data import GlSegDataModule
+from pl_modules.seg_task import GlSegTask
 
 # Logger (console and TensorBoard)
 root_logger = logging.getLogger('pytorch_lightning')

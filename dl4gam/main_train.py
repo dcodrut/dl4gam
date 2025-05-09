@@ -11,9 +11,9 @@ import yaml
 
 # local imports
 import config
-import models
-from task.data import GlSegDataModule
-from task.seg import GlSegTask
+from pl_modules import seg_model as models
+from pl_modules.data import GlSegDataModule
+from pl_modules.seg_task import GlSegTask
 
 # https://github.com/PyTorchLightning/pytorch-lightning/issues/5225
 if 'SLURM_NTASKS' in os.environ:
