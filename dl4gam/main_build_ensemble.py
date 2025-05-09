@@ -107,6 +107,7 @@ if __name__ == '__main__':
     df = df.sort_values(by="start_time")
     fn = f"task_times_models_{model_version}_{time.strftime('%Y%m%d_%H%M%S')}.csv"
     fp_out = Path(f'../data/external/_experiments/s2_alps_plus/unet/') / fn
+    fp_out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(fp_out, index=False)
     print(df)
-    print(f"Task timing details exported to task_times.csv")
+    print(f"Task timing details exported to {fp_out}")
