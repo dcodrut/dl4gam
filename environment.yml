@@ -27,9 +27,7 @@ dependencies:
       - pyproj==3.7.0
       - scikit-learn==1.5.2
       - numpy==1.26.4  # version required by xdem
-      - oggm==1.6.2
       - xdem==0.1.0
-      - salem==0.3.11
       - statsmodels==0.14.4
       - plotnine==0.14.3
       - seaborn==0.13.2

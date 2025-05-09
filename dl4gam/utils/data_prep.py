@@ -2,8 +2,6 @@ from pathlib import Path
 
 import geopandas
 import numpy as np
-import oggm
-import oggm.core.gis
 import pyproj
 import rasterio
 import rasterio as rio
@@ -13,6 +11,7 @@ import shapely
 import shapely.ops
 import xarray as xr
 import xdem
+from scipy.ndimage import gaussian_filter
 
 
 def build_binary_mask(nc_data, geoms):
@@ -228,6 +227,7 @@ def prep_glacier_dataset(
 
     if return_nc:
         return nc
+    return None
 
 
 def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):
@@ -310,7 +310,7 @@ def add_dem_features(fp_gl, no_data):
                 assert np.sum(np.isnan(dem_data)) == 0
 
                 # smooth the DEM with a 3x3 gaussian kernel
-                dem_data = oggm.core.gis.gaussian_blur(dem_data, size=1)
+                dem_data = gaussian_filter(dem_data, sigma=1, mode='nearest', radius=1)
 
                 # prepare a XDEM object
                 dataset.write(dem_data, 1)
