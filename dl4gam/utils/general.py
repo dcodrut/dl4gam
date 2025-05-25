@@ -3,6 +3,21 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
+DEFAULT_NUM_PROCS = 1
+DEFAULT_PBAR = False
+
+
+def set_default_num_procs(num_procs):
+    """Set the default number of processes to use in parallel processing"""
+    global DEFAULT_NUM_PROCS
+    DEFAULT_NUM_PROCS = num_procs
+
+
+def set_default_pbar(pbar):
+    """Set the default progress bar to use in parallel processing"""
+    global DEFAULT_PBAR
+    DEFAULT_PBAR = pbar
+
 
 def _fn_star(kwargs):
     fun = kwargs['fun']
@@ -11,7 +26,13 @@ def _fn_star(kwargs):
     return fun(**kwargs_others)
 
 
-def run_in_parallel(fun, num_procs, pbar=False, pbar_desc=None, **kwargs):
+def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, **kwargs):
+    # use the global default values if not provided
+    if num_procs is None:
+        num_procs = DEFAULT_NUM_PROCS
+    if pbar is None:
+        pbar = DEFAULT_PBAR
+
     # check if the arguments which are lists have the same length
     arg_lens = [len(x) for _, x in kwargs.items() if isinstance(x, list)]
     assert len(arg_lens) > 0, 'At least one argument is expected to be a list.'
@@ -27,9 +48,6 @@ def run_in_parallel(fun, num_procs, pbar=False, pbar_desc=None, **kwargs):
     if pbar_desc is None:
         fun_name = fun.func.__name__ if hasattr(fun, 'func') else fun.__name__
         pbar_desc = f'Running {fun_name} with {num_procs} process(es)'
-    else:
-        # enable the progress bar automatically
-        pbar = True
 
     if num_procs > 1:
         with ProcessPoolExecutor(max_workers=num_procs) as executor:
