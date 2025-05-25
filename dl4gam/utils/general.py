@@ -1,10 +1,13 @@
 import itertools
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
 DEFAULT_NUM_PROCS = 1
 DEFAULT_PBAR = False
+
+log = logging.getLogger(__name__)
 
 
 def set_default_num_procs(num_procs):
@@ -75,7 +78,7 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, **kwargs):
                             result = future.result()
                             all_res.append(result)
                         except Exception as e:
-                            print(f"[ERROR]: {e}\nInput:\n {kw} \n")
+                            log.error(f"Error occurred while processing the input: {kw}")
                             raise e
 
                         pbar.update()
