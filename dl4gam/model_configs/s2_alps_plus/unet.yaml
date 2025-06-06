@@ -33,7 +33,7 @@ trainer:
   deterministic: True
 
 model:
-  class: 'SegModel'
+  class: 'SegModelSMP'
   name: 'Unet'
   inputs:
     bands_input: [ 'R', 'G', 'B', 'NIR', 'SWIR' ]
