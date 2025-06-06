@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 # local imports
 from config import C
-from task.data import extract_inputs
+from pl_modules.data import extract_inputs
 
 
 def compute_stats(fp, rasters_dir, input_settings, excl_bad_pixels=False, return_rasters=False,

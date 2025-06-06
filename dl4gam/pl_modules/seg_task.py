@@ -8,8 +8,8 @@ import torchmetrics as tm
 import xarray as xr
 
 # local imports
-from task.data import extract_inputs
-from task.loss import MaskedLoss
+from pl_modules.data import extract_inputs
+from pl_modules.loss import MaskedLoss
 from utils.postprocessing import nn_interp, hypso_interp
 
 
