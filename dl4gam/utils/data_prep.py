@@ -25,7 +25,7 @@ def build_binary_mask(nc_data, geoms):
 
     # replace the nodata values with a dummy value
     nodata_val = nc_data.band_data.rio.nodata
-    dummy_val = 0 if np.isnan(nodata_val) else nodata_val - 1
+    dummy_val = 0 if np.isnan(nodata_val) else int(nodata_val) - 1
     tmp_raster = nc_data.band_data.isel(band=0)  # use any band
     tmp_raster = tmp_raster.where(tmp_raster != nodata_val, dummy_val)
 
