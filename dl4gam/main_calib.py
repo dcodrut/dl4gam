@@ -12,7 +12,7 @@ from sklearn.metrics import log_loss
 
 # local imports
 from config import C
-from utils.general import run_in_parallel
+from utils.parallel_utils import run_in_parallel
 from utils.reliability_diagrams import reliability_diagram
 
 

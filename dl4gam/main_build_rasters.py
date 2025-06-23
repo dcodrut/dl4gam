@@ -12,7 +12,7 @@ import xarray as xr
 from config import C
 from utils.data_prep import prep_glacier_dataset, add_external_rasters, add_dem_features
 from utils.data_stats import compute_qc_stats
-from utils.general import run_in_parallel
+from utils.parallel_utils import run_in_parallel
 
 
 def add_stats(

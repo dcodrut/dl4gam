@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 # local imports
 from config import C
-from utils.general import run_in_parallel
+from utils.parallel_utils import run_in_parallel
 from utils.postprocessing import nn_interp
 
 # we need to export this with the results s.t. eval script works

@@ -15,7 +15,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 
 # local imports
 from config import C
-from utils.general import run_in_parallel
+from utils.parallel_utils import run_in_parallel
 from utils.viz_utils import contrast_stretch
 
 with plt.style.context(("tableau-colorblind10")):

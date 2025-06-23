@@ -15,7 +15,7 @@ import pandas as pd
 # local imports
 from config import C
 from utils.sampling_utils import patchify_data, data_cv_split
-from utils.general import run_in_parallel
+from utils.parallel_utils import run_in_parallel
 from utils.data_stats import compute_normalization_stats, aggregate_normalization_stats
 
 if __name__ == "__main__":

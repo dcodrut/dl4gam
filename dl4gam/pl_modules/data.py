@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 import xarray as xr
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 
-from utils.general import run_in_parallel
+from utils.parallel_utils import run_in_parallel
 from utils.sampling_utils import get_patches_df
 
 
