@@ -38,3 +38,4 @@ dependencies:
       - earthpy==0.9.4
       - matplotlib_scalebar==0.8.1
       - leafmap==0.42.5
+      - hydra-core==1.3.2
