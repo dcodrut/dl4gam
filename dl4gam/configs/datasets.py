@@ -24,6 +24,9 @@ class BaseDatasetConfig:
     crs: str = "UTM"  # we use local UTM projection by default; use "EPSG:XXXXX" for a specific projection
     gsd: Union[int, float] = MISSING
 
+    # Whether to download the raw data automatically from Google Earth Engine (see raw_data settings below)
+    gee_download: bool = False
+
     @dataclass
     class RawDataConfig:
         """
@@ -52,7 +55,6 @@ class BaseDatasetConfig:
         ################################################################################################################
         # The following settings can be set for automatic data downloading using Google Earth Engine
         # Note that currently this was tested for Sentinel-2 data only.  # TODO: add Landsat-8
-        download: bool = False
 
         # (rectangular) buffer around the glaciers (in meters) used for downloading
         buffer_roi: Union[int, float] = None
@@ -227,7 +229,7 @@ class BaseDatasetConfig:
                 )
 
         # Check if the required raw data settings are set
-        if self.raw_data.download:
+        if self.gee_download:
             if self.raw_data.buffer_roi is None:
                 raise ValueError("raw_data.buffer_roi must be set for automatic download.")
             if self.raw_data.gee_project_name is None or self.raw_data.img_collection_name is None:
@@ -264,10 +266,9 @@ class S2AlpsConfig(BaseDatasetConfig):
 
     raw_data: BaseDatasetConfig.RawDataConfig = field(
         default_factory=lambda: BaseDatasetConfig.RawDataConfig(
-            root_dir="../data/external/raw_data/s2_alps/yearly",
+            root_dir="../data/external/dl4gam/raw_data/images/s2_alps/yearly",
             automated_selection=False,
             dates_csv="../data/inv_images_qc/final_dates.csv",
-            download=True,  # we download the data automatically from GEE for the given dates
             # we need a buffer >= patch radius,
             # but we use a larger buffer in case we later want to increase the patch size and avoid redownloading
             buffer_roi=(S2AlpsConfig.patch_radius * 2 + 5) * S2AlpsConfig.gsd,
