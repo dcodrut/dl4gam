@@ -40,6 +40,19 @@ class DL4GAMConfig:
     pbar: bool = True  # whether to show progress bars when processing time-consuming steps
     preload_data: bool = False  # whether to load the netcdf files in memory before patchifying them
 
+    # Workflow step configs: all the parameters are derived from the existing settings
+    @property
+    def step_process_inventory(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.process_inventory.main',
+            'fp_in': self.dataset.outlines_fp,
+            'fp_out': self.dataset.geoms_fp,
+            'min_glacier_area': self.min_glacier_area,
+            'buffers': self.dataset.buffers,
+            'crs': self.dataset.crs,
+            'gsd': self.dataset.gsd,
+        }
+
 
 # Register configs with Hydra's ConfigStore
 def register_configs():
