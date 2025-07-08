@@ -64,6 +64,17 @@ class DL4GAMConfig:
             'bands_name_map': self.dataset.bands_rename,
         } | self.dataset.raw_data.__dict__
 
+    @property
+    def step_oggm_data_download(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.download_oggm_data.main',
+            'geoms_fp': self.dataset.geoms_fp,
+            'working_dir': self.dataset.oggm_data.base_dir,
+            'gsd': self.dataset.oggm_data.gsd,
+            'border_m': self.dataset.buffers.cube,
+            'dem_source': self.dataset.oggm_data.dem_source,
+            'num_procs': self.num_procs,
+        }
 
 
 # Register configs with Hydra's ConfigStore

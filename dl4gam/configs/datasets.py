@@ -35,7 +35,7 @@ class BaseDatasetConfig:
         """
         # Where the original raw (tif) images are stored needed to produce the glacier cubes
         # If the data is manually downloaded, we expect to find it stored as root_dir/year/glacier_id/date.tif
-        root_dir: str = MISSING
+        base_dir: str = MISSING
 
         # Whether to automatically select the best images for each glacier based on cloud coverage, NDSI and albedo
         # This is useful if we have multiple images per glacier and want to select the best one.
@@ -96,6 +96,24 @@ class BaseDatasetConfig:
         try_reading: bool = True  # whether to try reading the images before skipping the existing ones
 
     raw_data: RawDataConfig = field(default_factory=RawDataConfig)
+
+    @dataclass
+    class OGGMDataConfig:
+        """
+        Settings for the OGGM data, which will be downloaded automatically and later added to the training data after
+        reprojection and clipping.
+        """
+
+        # Root data directory
+        base_dir: str = "${working_dir}/raw_data/oggm"
+
+        # Where to get the DEMs from (see https://tutorials.oggm.org/stable/notebooks/tutorials/dem_sources.html)
+        dem_source = 'NASADEM'  # or None, for using the default OGGM DEM source
+
+        # GSD of the data (most of the variables in OGGM have maximum 30m so we set it to this by default)
+        gsd: int = 30
+
+    oggm_data: OGGMDataConfig = field(default_factory=OGGMDataConfig)
 
     # Patch radius in pixels
     patch_radius: int = MISSING
@@ -266,7 +284,7 @@ class S2AlpsConfig(BaseDatasetConfig):
 
     raw_data: BaseDatasetConfig.RawDataConfig = field(
         default_factory=lambda: BaseDatasetConfig.RawDataConfig(
-            root_dir="../data/external/dl4gam/raw_data/images/s2_alps/yearly",
+            base_dir="../data/external/dl4gam/raw_data/images/s2_alps/yearly",
             automated_selection=False,
             dates_csv="../data/inv_images_qc/final_dates.csv",
             # we need a buffer >= patch radius,

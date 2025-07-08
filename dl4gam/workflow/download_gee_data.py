@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 
 def main(
-        root_dir: str | Path,
+        base_dir: str | Path,
         gee_project_name: str,
         geoms_fp: str | Path,
         buffer_roi: int,
@@ -28,7 +28,7 @@ def main(
     The downloading will be done in parallel, per entry in the inventory (see the main config for the number of processes).
     If multiple images per entry are requested, then these will be downloaded sequentially for each entry.
 
-    :param root_dir: output directory (root) where the images will be downloaded; a subdirectory will be then created as `out_dir/year/entry_id`
+    :param base_dir: output directory (root) where the images will be downloaded; a subdirectory will be then created as `out_dir/year/entry_id`
     :param gee_project_name: name of the Google Earth Engine project to use for the download
     :param geoms_fp: file path to the processed glacier outlines
     :param buffer_roi: buffer size in meters for the region of interest around each glacier
@@ -80,7 +80,7 @@ def main(
     geoms_ndsi = [r.geometry.intersection(geom_non_glacier) for r in geoms_glacier_buffered]
 
     # Prepare the output directory structure
-    out_dirs = [Path(root_dir) / str(y) / entry_id for entry_id, y in zip(list(gdf.entry_id), years)]
+    out_dirs = [Path(base_dir) / str(y) / entry_id for entry_id, y in zip(list(gdf.entry_id), years)]
 
     run_in_parallel(
         download_best_images,
