@@ -53,6 +53,18 @@ class DL4GAMConfig:
             'gsd': self.dataset.gsd,
         }
 
+    @property
+    def step_raw_data_download(self) -> dict:
+        # We take a few parameters from the dataset config plus (most of) the raw data settings
+        return {
+            '_target_': 'dl4gam.workflow.download_gee_data.main',
+            'geoms_fp': self.dataset.geoms_fp,
+            'year': self.dataset.year,
+            'gsd': self.dataset.gsd,
+            'bands_name_map': self.dataset.bands_rename,
+        } | self.dataset.raw_data.__dict__
+
+
 
 # Register configs with Hydra's ConfigStore
 def register_configs():
