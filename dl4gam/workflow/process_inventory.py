@@ -179,7 +179,6 @@ def main(
 
     # Select the glaciers with the area larger than the minimum required
     glaciers_to_process = list(gdf[gdf['area_km2'] >= min_glacier_area].entry_id)
-    glaciers_to_process = glaciers_to_process[:50]  # TODO: remove this line to process all glaciers
     log.info(
         f"Selected glaciers with area larger than {min_glacier_area} km^2: "
         f"{(n_crt:= len(glaciers_to_process))} / {(n := len(gdf))} glaciers ({n_crt / n:.2%})"

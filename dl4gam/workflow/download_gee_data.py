@@ -45,7 +45,7 @@ def main(
     ee.Initialize(project=gee_project_name)
 
     log.info(f"Reading the glacier outlines from {geoms_fp}")
-    gdf = gpd.read_file(geoms_fp, layer='glacier_sel').iloc[10:]
+    gdf = gpd.read_file(geoms_fp, layer='glacier_sel')
 
     # Set the start-end dates (use the csv if provided, otherwise the year + download_window)
     if not automated_selection:
