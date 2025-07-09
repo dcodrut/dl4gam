@@ -58,29 +58,21 @@ def add_auxiliary_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf
 
 
-def add_buffers(
-        entry_id: str,
+def compute_buffers(
         gdf: gpd.GeoDataFrame,
         buffers: BaseDatasetConfig.Buffers
-):
+) -> dict[str, gpd.GeoDataFrame]:
     """
-    Computes the following geometries for a glacier:
+    Computes the following geometries for each glacier:
     1. Box for the final processed glacier cube
     2. Geometry from which the patch centres will be sampled
     3. Geometry within which the inference will be performed
     4. Geometry within which false positives will be calculated
 
-    :param entry_id: the ID of the current glacier entry
     :param gdf: GeoDataFrame with all the glacier polygons
     :param buffers: Buffers object with the buffer sizes
     :return: a dictionary with the GeoDataFrames for each geometry
     """
-
-    # reproject to the target CRS of the current glacier
-    idx_crt_entry = gdf[gdf['entry_id'] == entry_id].index[0]
-    target_crs = gdf.loc[idx_crt_entry].crs_epsg
-    gdf = gdf.to_crs(target_crs)
-    gdf_entry = gdf.loc[idx_crt_entry]
 
     gdfs_out = {}
 
@@ -88,35 +80,29 @@ def add_buffers(
     # 1. The box for the final processed glacier cube
     # (should be large enough to cover the sampled patches but small enough to have enough raw data)
     # 2. The geometry from which the patch centres will be sampled
-    for k in ['cube', 'patch_sampling']:
-        buffer_geom = gdf_entry.geometry.buffer(getattr(buffers, k))
-
-        # For the cube boxe, we use the box of the buffer geometry
-        if k  == 'cube':
-            buffer_geom = buffer_geom.envelope
-
-        gdfs_out[f'buffer_{k}'] = gpd.GeoDataFrame(
-            {'entry_id': [entry_id]}, geometry=[buffer_geom], crs=target_crs
-        )
+    gdfs_out['buffer_cube'] = gdf.buffer(buffers.cube).envelope
+    gdfs_out['buffer_patch_sampling'] = gdf.buffer(buffers.patch_sampling)
 
     # The next geometries require non-overlapping buffers (=> we need to use all the neighbours):
     # 3. The geometry within which the inference will be performed
     # 4. The geometry within which false positives will be calculated
-    gdf_entry_with_neighbours = gdf[gdf.geometry.intersects(gdfs_out['buffer_cube'].geometry.iloc[0])]
-    gdf_infer = utils.buffer_non_overlapping(gdf=gdf_entry_with_neighbours, buffer_distance=buffers.infer)
-    gdf_fp_min = utils.buffer_non_overlapping(gdf=gdf_entry_with_neighbours, buffer_distance=buffers.fp[0])
-    gdf_fp_max = utils.buffer_non_overlapping(gdf=gdf_entry_with_neighbours, buffer_distance=buffers.fp[1])
-    gdf_fp = gdf_fp_max.difference(gdf_fp_min)
-    gdfs_out['buffer_infer'] = gpd.GeoDataFrame(
-        {'entry_id': [entry_id]}, geometry=[gdf_infer.geometry.loc[idx_crt_entry]], crs=target_crs
-    )
-    gdfs_out['buffer_fp'] = gpd.GeoDataFrame(
-        {'entry_id': [entry_id]}, geometry=[gdf_fp.geometry.loc[idx_crt_entry]], crs=target_crs
+    geoms_infer, geoms_fp_min, geoms_fp_max = utils.multi_buffer_non_overlapping_parallel(
+        gdf=gdf,
+        buffers=[buffers.infer, buffers.fp[0], buffers.fp[1]],
     )
 
-    # Covert the GeoDataFrames to WGS84 for the output
-    for _label, _gdf in gdfs_out.items():
-        gdfs_out[_label] = _gdf.to_crs('epsg:4326')
+    # Make sure the infer buffer includes the current glacier, whereas the FP buffers do not
+    # (in case of approximations done by momepy)
+    geoms_infer = geoms_infer.union(gdf.geometry)
+    geoms_fp = geoms_fp_max.difference(geoms_fp_min).difference(gdf.geometry)
+    gdfs_out['buffer_infer'] = geoms_infer
+    gdfs_out['buffer_fp'] = geoms_fp
+
+    # Covert the geometries to GeoDataFrames (we will export them as layers) and reproject them to WGS84
+    for label, geom in gdfs_out.items():
+        gdfs_out[label] = gpd.GeoDataFrame(
+            {'entry_id': gdf.entry_id}, geometry=geom, crs=gdf.crs
+        )
 
     return gdfs_out
 
@@ -181,26 +167,24 @@ def main(
     glaciers_to_process = list(gdf[gdf['area_km2'] >= min_glacier_area].entry_id)
     log.info(
         f"Selected glaciers with area larger than {min_glacier_area} km^2: "
-        f"{(n_crt:= len(glaciers_to_process))} / {(n := len(gdf))} glaciers ({n_crt / n:.2%})"
+        f"{(n_crt := len(glaciers_to_process))} / {(n := len(gdf))} glaciers ({n_crt / n:.2%})"
     )
-    log.info(f"Preparing the buffered outlines")
-    res = utils.run_in_parallel(
-        fun=add_buffers,
-        pbar_desc="Adding buffers to glacier outlines",
-        entry_id=glaciers_to_process,
-        gdf=gdf,
-        buffers=buffers,
-    )
-    gdfs_out = {}
-    for k in res[0]:
-        gdfs_out[k] = gpd.GeoDataFrame(
-            pd.concat([r[k] for r in res], ignore_index=True),
-            crs='epsg:4326',  # all buffers are in WGS84
-        )
 
-    # Add the selected glacier outlines and also all of them
-    gdfs_out['glacier_sel'] = gdf[gdf['entry_id'].isin(glaciers_to_process)].to_crs('epsg:4326')
-    gdfs_out['glacier_all'] = gdf.to_crs('epsg:4326')
+    # Store the selected glacier outlines separately
+    gdfs_out = {
+        'glacier_sel': gdf[gdf['entry_id'].isin(glaciers_to_process)],
+        'glacier_all': gdf
+    }
+
+    log.info("Preparing the buffered outlines (using all the glaciers)")
+    gdfs_buffers = compute_buffers(gdf=gdf, buffers=buffers)
+    gdfs_out.update(gdfs_buffers)
+
+    # Subset also the buffered outlines to the selected glaciers; reproject all to WGS84
+    for _label, _gdf in gdfs_out.items():
+        if 'buffer' in _label:
+            gdfs_out[_label] = _gdf[_gdf['entry_id'].isin(glaciers_to_process)]
+        gdfs_out[_label] = _gdf.to_crs('epsg:4326')
 
     # Export the processed outlines with the auxiliary columns (after reprojecting to WGS84)
     fp_out = Path(fp_out)

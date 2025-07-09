@@ -3,8 +3,12 @@ import logging
 import geopandas as gpd
 import momepy
 import numpy as np
+import pandas as pd
+import scipy
 import shapely.geometry
 import shapely.ops
+
+from .parallel_utils import run_in_parallel
 
 log = logging.getLogger(__name__)
 
@@ -129,7 +133,36 @@ def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0
     return buffer_distance
 
 
-def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float) -> gpd.GeoSeries:
+def get_connected_components(gdf: gpd.GeoDataFrame, buffer_distance: float | int) -> np.ndarray:
+    """
+    Builds a symmetric adjacency matrix of overlapping glacier polygons compared to their buffers and extracts connected
+    components.
+
+    :param gdf: GeoDataFrame with glacier polygons
+    :param buffer_distance: the buffer distance to apply to each polygon (in meters) before checking for overlaps
+    :return: labels: array of labels for each polygon
+    """
+
+    # First, compute the pairs of polygons that overlap with their buffers
+    _gdf_left = gdf.reset_index(drop=True).reset_index().rename(columns={'index': 'idx'})[['idx', 'geometry']]
+    _gdf_right = gdf.reset_index(drop=True).reset_index().rename(columns={'index': 'idx'})[['idx', 'geometry']]
+    max_buffer = buffer_distance * 2 + 1  # double the buffer distance to account for overlaps
+    _gdf_right['geometry'] = _gdf_right.geometry.buffer(max_buffer)
+    pairs = gpd.sjoin(_gdf_left, _gdf_right, how='inner', predicate='intersects')
+    pairs = pairs[pairs.idx_left < pairs.idx_right]  # remove self-matches and duplicate pairs
+
+    # Cluster the polygons based on the pairs
+    left = pairs['idx_left'].to_numpy(dtype=int)
+    right = pairs['idx_right'].to_numpy(dtype=int)
+    data = np.ones(len(left), dtype=bool)
+    adj = scipy.sparse.coo_matrix((data, (left, right)), shape=(len(gdf), len(gdf)))
+    adj = adj + adj.T  # make it undirected
+    _, labels = scipy.sparse.csgraph.connected_components(csgraph=adj, directed=False, return_labels=True)
+
+    return labels
+
+
+def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float | int) -> gpd.GeoSeries:
     """
     Extend the outlines of the polygons in the GeoDataFrame by a specified buffer distance without overlapping.
     Based on https://github.com/geopandas/geopandas/issues/2015.
@@ -144,6 +177,10 @@ def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float) -> gpd
     if not gdf.crs or gdf.crs.is_geographic:
         raise ValueError("GeoDataFrame must have a projected CRS with metric units")
 
+    # If we have a single geometry, we can return a simple buffer
+    if len(gdf) == 1:
+        return gdf.buffer(buffer_distance, join_style=2, resolution=1)
+
     # Create a limit for the final combined buffers
     limit = gdf.union_all().buffer(buffer_distance, join_style=2, resolution=1)
 
@@ -152,3 +189,51 @@ def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float) -> gpd
     buffered_geoms = momepy.morphological_tessellation(_gdf, clip=limit, simplify=False).geometry
 
     return buffered_geoms
+
+
+def multi_buffer_non_overlapping_parallel(
+        gdf: gpd.GeoDataFrame,
+        buffers: list[float | int],
+        num_procs: int = None
+) -> list[gpd.GeoSeries]:
+    """
+    Calls buffer_non_overlapping (in parallel) after clustering the polygons into connected components.
+    :param gdf: GeoDataFrame with the glacier polygons
+    :param buffers: list of distances to extend the outlines for each buffer (in meters)
+    :param num_procs: number of parallel processes to use (if None, we will use the default from run_in_parallel)
+    :return:
+    """
+
+    # To get non-overlapping buffers, we will use momepy.morphological_tessellation
+    # However, it the polygons are spatially dispersed, we run into memory issues (or takes too long).
+    # So we will first cluster the polygons using connected components and then apply the tessellation in each cluster.
+    # We run the clustering only once in the worst case scenario, i.e. when the buffer distance is the largest
+    clustering_dist = np.max(buffers) * 2 + 1  # double the buffer distance to account for overlaps
+    log.info(f"Clustering polygons into connected components with buffer distance {clustering_dist} m")
+    clusters = get_connected_components(gdf=gdf, buffer_distance=clustering_dist)
+
+    # Run buffer_non_overlapping in parallel for each cluster
+    all_buffered_geoms = []
+    for buffer_distance in buffers:
+        log.info(f"Computing non-overlapping buffers for {buffer_distance} m")
+        gdf_per_cluster = [gdf[clusters == i] for i in range(np.max(clusters) + 1)]
+        assert sum(len(gdf_per_cluster[i]) for i in range(len(gdf_per_cluster))) == len(gdf), \
+            "The clustering did not cover all polygons."
+
+        # Start with the largest clusters for a better balance of workload
+        gdf_per_cluster = sorted(gdf_per_cluster, key=lambda x: len(x), reverse=True)
+
+        res = run_in_parallel(
+            fun=buffer_non_overlapping,
+            pbar_desc=f"Buffering polygons with {buffer_distance} m",
+            gdf=gdf_per_cluster,
+            buffer_distance=buffer_distance,
+            num_procs=num_procs,
+            gc_collect_step=100  # Ran into some memory issues
+        )
+        # Now concatenate the results and put them back in order
+        buffered_geom = gpd.GeoSeries(pd.concat(res, ignore_index=False), crs=gdf.crs)
+        buffered_geom = buffered_geom[gdf.index]
+        all_buffered_geoms.append(buffered_geom)
+
+    return all_buffered_geoms
