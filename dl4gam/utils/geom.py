@@ -148,6 +148,7 @@ def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float) -> gpd
     limit = gdf.union_all().buffer(buffer_distance, join_style=2, resolution=1)
 
     # Build the non-overlapping Voronoi polygons
-    buffered_geoms = momepy.morphological_tessellation(gdf, clip=limit, simplify=False).geometry
+    _gdf = gdf.buffer(1e-3)  # Work-around (failed somewhere internally when calling shapely.coverage_union_all)
+    buffered_geoms = momepy.morphological_tessellation(_gdf, clip=limit, simplify=False).geometry
 
     return buffered_geoms
