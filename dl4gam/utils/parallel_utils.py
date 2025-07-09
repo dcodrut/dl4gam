@@ -1,3 +1,4 @@
+import gc
 import itertools
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -29,7 +30,22 @@ def _fn_star(kwargs):
     return fun(**kwargs_others)
 
 
-def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, **kwargs):
+def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_step=None, **kwargs):
+    """
+    Wraps the function `fun` to run it in parallel using multiple processes.
+    The function can take multiple arguments, some of which can be lists of the same length.
+    The function will be called with each combination of the arguments, and the results will be collected in a list.
+    For the other arguments that are not lists, the function will be called with the same value for each combination
+    (tuples are also considered constant).
+
+    :param fun: the function to run in parallel; it should accept keyword arguments
+    :param num_procs: the number of processes to use for parallel processing; if None, the default global value will be used if set
+    :param pbar: whether to show a progress bar; if None, the default global value will be used if set
+    :param pbar_desc: the description for the progress bar; if None, it will be set to the function name and number of processes
+    :param gc_collect_step: if provided, the garbage collector will be called every `gc_collect_step` iterations to free memory
+    :param kwargs: the keyword arguments to pass to the function
+    :return: a list of results from the function calls, in the same order as the input arguments
+    """
     # use the global default values if not provided
     if num_procs is None:
         num_procs = DEFAULT_NUM_PROCS
@@ -82,6 +98,10 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, **kwargs):
                             raise e
 
                         pbar.update()
+
+                        # Clean up memory once in a while
+                        if gc_collect_step and pbar.n % gc_collect_step == 0:
+                            gc.collect()
 
                         # Submit next task
                         try:
