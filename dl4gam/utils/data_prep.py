@@ -1,7 +1,9 @@
+import re
 from pathlib import Path
 
 import geopandas
 import numpy as np
+import pandas as pd
 import pyproj
 import rasterio
 import rasterio as rio
@@ -12,6 +14,22 @@ import shapely.ops
 import xarray as xr
 import xdem
 from scipy.ndimage import gaussian_filter
+
+# regex for standalone YYYYMMDD
+_DATE_REGEX = re.compile(r'(?<!\d)(\d{8})(?!\d)')
+
+
+def extract_date_from_fn(fn: str) -> str | None:
+    """
+    Return the first YYYYMMDD found in the filename and returns the date as 'YYYY-MM-DD', or None if absent.
+    """
+    m = _DATE_REGEX.search(fn)
+    if not m:
+        return None
+
+    # convert to 'YYYY-MM-DD'
+    date_str = m.group(1)
+    return pd.to_datetime(date_str, format='%Y%m%d').strftime('%Y-%m-%d')
 
 
 def build_binary_mask(nc_data, geoms):
