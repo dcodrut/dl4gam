@@ -56,7 +56,7 @@ def query_images(
     imgs = imgs.map(lambda img: img.set({
         'id': img.get('system:index'),
         'processing_time': ee.String(img.get('system:index')).split('_').get(1),
-        'acquisition_date': ee.Date(img.get('system:time_start')).format('YYYY-MM-dd'),
+        'date': ee.Date(img.get('system:time_start')).format('YYYY-MM-dd'),
         'tile': ee.String(img.get('system:index')).split('_').get(2)
     }))
 
@@ -85,7 +85,7 @@ def query_images(
     # Step 4: Keep the latest processed tile per acquisition day (in case of multiple reprocessed versions)
     ####################################################################################################################
     imgs = imgs.map(
-        lambda img: img.set({'date_tile_key': ee.String(img.get('acquisition_date')).cat('_').cat(img.get('tile'))})
+        lambda img: img.set({'date_tile_key': ee.String(img.get('date')).cat('_').cat(img.get('tile'))})
     )
     imgs = imgs.sort('processing_time', False).distinct('date_tile_key').sort('system:index', True)
 
@@ -135,14 +135,14 @@ def query_images(
         imgs
         .filter(ee.Filter.eq('coverage', 1))
         .sort('tile_code', True)
-        .distinct('acquisition_date')
+        .distinct('date')
     )
 
     # For the rest of the dates, we keep all tiles with partial coverage and mosaic them
-    all_dates = imgs.aggregate_array('acquisition_date').distinct()
-    dates_full = imgs_full.aggregate_array('acquisition_date').distinct()
+    all_dates = imgs.aggregate_array('date').distinct()
+    dates_full = imgs_full.aggregate_array('date').distinct()
     dates_needing_mosaics = ee.List(all_dates).removeAll(dates_full).sort()
-    imgs_needing_mosaics = imgs.filter(ee.Filter.inList('acquisition_date', dates_needing_mosaics))
+    imgs_needing_mosaics = imgs.filter(ee.Filter.inList('date', dates_needing_mosaics))
 
     ####################################################################################################################
     # Step 6: Attach the cloud masks if a collection is provided
@@ -193,7 +193,7 @@ def query_images(
         Keep the metadata for all the tiles in the mosaic and recompute the coverage.
         """
         date_str = ee.String(date)
-        imgs_crt_date = imgs_needing_mosaics.filter(ee.Filter.eq('acquisition_date', date_str))
+        imgs_crt_date = imgs_needing_mosaics.filter(ee.Filter.eq('date', date_str))
         mosaic = ee.ImageCollection(imgs_crt_date).mosaic()
         mosaic = mosaic.setDefaultProjection(target_crs)
 
@@ -202,7 +202,7 @@ def query_images(
 
         # set other properties for the mosaic
         return mosaic.set({
-            'acquisition_date': date_str,
+            'date': date_str,
             'id': imgs_crt_date.aggregate_array('system:index').join('-'),
             'tiles': imgs_crt_date.aggregate_array('tile'),
             'metadata_tiles': ee.Dictionary.fromLists(
@@ -368,7 +368,7 @@ def sort_images(df_meta: pd.DataFrame, sort_by: tuple, weights: tuple = None):
         den = df_meta[metric].max() - df_meta[metric].min()
         if den == 0:
             den = 1
-        df_meta[f"score_{metric}"] = ((df_meta[metric] - df_meta[metric].min()) / den)
+        df_meta[f"score_{metric}"] = 1 - ((df_meta[metric] - df_meta[metric].min()) / den)
     # If weights are not provided, use equal weights
     if weights is None:
         weights = [1 / len(sort_by)] * len(sort_by)
@@ -378,7 +378,7 @@ def sort_images(df_meta: pd.DataFrame, sort_by: tuple, weights: tuple = None):
 
     # Compute the weighted score for each image and sort the DataFrame by it (lower is better)
     df_meta['score'] = sum(df_meta[f"score_{metric}"] * weight for metric, weight in zip(sort_by, weights))
-    df_meta = df_meta.sort_values(by='score')
+    df_meta = df_meta.sort_values(by='score', ascending=False)
 
     return df_meta
 
@@ -525,10 +525,10 @@ def download_best_images(
     info = imgs_all.getInfo()
     feats = info['features']
     df_meta = pd.DataFrame([f['properties'] for f in feats])
-    df_meta = df_meta.sort_values(by='acquisition_date')
+    df_meta = df_meta.sort_values(by='date')
 
     # Print and export the statistics to a CSV file
-    cols2keep = ['id', 'acquisition_date', 'coverage'] + list(sort_by)
+    cols2keep = ['id', 'date', 'coverage'] + list(sort_by)
     df_meta_export = df_meta[cols2keep]
     with pd.option_context('display.max_columns', None, 'display.width', 240):
         fp_out_meta = Path(out_dir) / 'metadata_all.csv'
