@@ -52,6 +52,16 @@ def main(
         assert dates_csv is not None, "If automated_selection is False, dates_csv must be provided."
         log.info(f"Reading the start and end dates from {dates_csv}")
         dates_df = pd.read_csv(dates_csv, index_col='entry_id')
+
+        # Check if all the selected glaciers are present in the dates dataframe
+        missing_entries = set(gdf.entry_id) - set(dates_df.index)
+        if missing_entries:
+            log.warning(
+                f"No dates provided for {len(missing_entries)} glaciers: {missing_entries}. "
+                f"We will skip these glaciers in the download process."
+            )
+
+        gdf = gdf[gdf.entry_id.isin(dates_df.index)]
         start_dates = list(dates_df.loc[gdf.entry_id, 'date'])
         end_dates = [(pd.to_datetime(s) + pd.Timedelta(days=1)).strftime('%Y-%m-%d') for s in start_dates]
         years = [pd.to_datetime(s).year for s in start_dates]
