@@ -64,28 +64,23 @@ def compute_buffers(
 ) -> dict[str, gpd.GeoDataFrame]:
     """
     Computes the following geometries for each glacier:
-    1. Box for the final processed glacier cube
-    2. Geometry from which the patch centres will be sampled
-    3. Geometry within which the inference will be performed
-    4. Geometry within which false positives will be calculated
+    1. Geometry from which the patch centres will be sampled
+    2. Geometry within which the inference will be performed
+    3. Geometry within which false positives will be calculated
+
+    These geometries will be turned into binary masks later on.
 
     :param gdf: GeoDataFrame with all the glacier polygons
     :param buffers: Buffers object with the buffer sizes
     :return: a dictionary with the GeoDataFrames for each geometry
     """
 
-    gdfs_out = {}
+    # 1. The geometry from which the patch centres will be sampled (simple buffer)
+    gdfs_out = {'buffer_patch_sampling': gdf.buffer(buffers.patch_sampling)}
 
-    # The next geometries are simple buffers of the current glacier:
-    # 1. The box for the final processed glacier cube
-    # (should be large enough to cover the sampled patches but small enough to have enough raw data)
-    # 2. The geometry from which the patch centres will be sampled
-    gdfs_out['buffer_cube'] = gdf.buffer(buffers.cube).envelope
-    gdfs_out['buffer_patch_sampling'] = gdf.buffer(buffers.patch_sampling)
-
-    # The next geometries require non-overlapping buffers (=> we need to use all the neighbours):
-    # 3. The geometry within which the inference will be performed
-    # 4. The geometry within which false positives will be calculated
+    # The next geometries require non-overlapping buffers:
+    # 2. The geometry within which the inference will be performed
+    # 3. The geometry within which false positives will be calculated
     geoms_infer, geoms_fp_min, geoms_fp_max = utils.multi_buffer_non_overlapping_parallel(
         gdf=gdf,
         buffers=[buffers.infer, buffers.fp[0], buffers.fp[1]],
