@@ -433,7 +433,7 @@ def download_image(
     log.info(f"Downloading image to {fp}")
 
     # Convert the image to a geedim BaseImage object for downloading
-    img = gd.download.BaseImage(img)
+    img = gd.download.BaseImage(img.clip(geom_gee))
 
     fp.parent.mkdir(parents=True, exist_ok=True)
     img.download(

@@ -74,7 +74,7 @@ def main(
     # Prepare the geometries for each glacier in the GeoDataFrame (to run in parallel)
     entries = [gdf.iloc[i:i + 1] for i in range(len(gdf))]
     geoms_glacier = [r.geometry for r in entries]
-    geoms_roi = [r.geometry.to_crs(r.iloc[0].crs_epsg).buffer(buffer_roi).to_crs('epsg:4326') for r in entries]
+    geoms_roi = [r.geometry.to_crs(r.iloc[0].crs_epsg).buffer(buffer_roi).to_crs('epsg:4326').envelope for r in entries]
     geoms_glacier_buffered = [
         r.geometry.to_crs(r.iloc[0].crs_epsg).buffer(buffer_qc_metrics).to_crs('epsg:4326') for r in entries
     ]
