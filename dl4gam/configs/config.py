@@ -76,6 +76,9 @@ class DL4GAMConfig:
             'num_procs': self.num_procs,
         }
 
+    # Which step to execute
+    current_step: str = MISSING
+
 
 # Register configs with Hydra's ConfigStore
 def register_configs():
