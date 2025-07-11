@@ -1,4 +1,3 @@
-import json
 import logging
 from pathlib import Path
 
@@ -386,7 +385,6 @@ def sort_images(df_meta: pd.DataFrame, sort_by: tuple, weights: tuple = None):
 def download_image(
         fp: str | Path,
         img: ee.Image,
-        metadata: dict,
         geom: gpd.GeoSeries,
         gsd: int,
         skip_existing: bool = True,
@@ -398,7 +396,6 @@ def download_image(
 
     :param fp: file path where the image will be saved (as a string or Path object).
     :param img: ee.Image object to download (can be a single image or a mosaic).
-    :param metadata: dict containing metadata for the image, which will be saved as a JSON file alongside the image.
     :param geom: gpd.GeoSeries with a single geometry defining the region of interest (ROI) for downloading the image.
     :param gsd: ground sample distance (pixel size in meters) for the downloaded image.
     :param skip_existing: if True, skips downloading if the file already exists; if False, always downloads.
@@ -444,10 +441,6 @@ def download_image(
         scale=gsd,
         num_threads=num_threads
     )
-
-    # Save the metadata to a JSON file
-    with open(fp.with_suffix('.json'), 'w') as f:
-        json.dump(metadata, f, indent=4)
 
 
 def download_best_images(
@@ -566,12 +559,10 @@ def download_best_images(
     # Download the best images in parallel
     ordered_ids = df_meta['id'].tolist()[:num_imgs_to_keep]
     fp_out_list = [Path(out_dir) / f"{img_id}.tif" for img_id in ordered_ids]
-    metadata_list = [df_meta[df_meta['id'] == img_id].metadata_tiles.iloc[0] for img_id in ordered_ids]
     run_in_parallel(
         fun=download_image,
         img=[ee.Image(imgs_all.filter(ee.Filter.eq('id', img_id)).first()) for img_id in ordered_ids],
         fp=fp_out_list,
-        metadata=metadata_list,
         geom=geom,
         gsd=gsd,
         skip_existing=skip_existing,
