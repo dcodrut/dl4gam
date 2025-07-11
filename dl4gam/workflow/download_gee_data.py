@@ -71,13 +71,11 @@ def main(
         start_dates = [f"{y}-{download_window[0]}" for y in years]
         end_dates = [f"{y}-{download_window[1]}" for y in years]
 
-    # Prepare the geometries for each glacier in the GeoDataFrame (to run in parallel)
-    entries = [gdf.iloc[i:i + 1] for i in range(len(gdf))]
-    geoms_glacier = [r.geometry for r in entries]
-    geoms_roi = [r.geometry.to_crs(r.iloc[0].crs_epsg).buffer(buffer_roi).to_crs('epsg:4326').envelope for r in entries]
-    geoms_glacier_buffered = [
-        r.geometry.to_crs(r.iloc[0].crs_epsg).buffer(buffer_qc_metrics).to_crs('epsg:4326') for r in entries
-    ]
+    # Project each geometry to the local CRS (EPSG code) provided in the GeoDataFrame
+    # And build a list of GeoDataFrames for each glacier to run in parallel
+    geoms_glacier = [gdf.iloc[i:i + 1].to_crs(gdf.iloc[i].crs_epsg).geometry for i in range(len(gdf))]
+    geoms_roi = [r.buffer(buffer_roi).envelope for r in geoms_glacier]
+    geoms_glacier_buffered = [r.buffer(buffer_qc_metrics) for r in geoms_glacier]
 
     # For cloud coverage and albedo, we use the simple buffered glacier geometries
     geoms_clouds = geoms_glacier_buffered

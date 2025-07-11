@@ -162,6 +162,9 @@ def query_images(
             cp_img = cloud_masks.filter(ee.Filter.eq('system:index', img.get('system:index'))).first()
             cp_img = ee.Image(cp_img).select('cloud_p')
 
+            # Reproject the cloud probability image to the same CRS as the image
+            cp_img = cp_img.resample('bilinear').reproject(crs=target_crs, scale=gsd)
+
             # If we are using the Google Cloud Score+ collection, invert & multiply the cloud probability by 100
             # (we will export the results as int16)
             if 'CLOUD_SCORE_PLUS' in cloud_collection_name:
