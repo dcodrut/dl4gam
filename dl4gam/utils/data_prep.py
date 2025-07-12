@@ -89,9 +89,7 @@ def add_glacier_masks(
     crt_g_shp = gl_proj_df[gl_proj_df.entry_id_i == entry_id_int]
 
     # create a bounding box which contains any possible patch which will be sampled around the current glacier
-    g_bbox = shapely.geometry.box(*crt_g_shp.iloc[0].geometry.bounds)
-    g_buff = g_bbox.buffer(buffer)
-    g_buff_bbox = shapely.geometry.box(*g_buff.bounds)
+    g_buff_bbox = crt_g_shp.geometry.iloc[0].envelope.buffer(buffer).envelope
 
     # check if the bounding box with the buffer is completely contained in the data boundaries
     data_bbox = shapely.geometry.box(*nc_data.rio.bounds())
