@@ -20,7 +20,7 @@ def compute_normalization_stats(fp):
     """
 
     with xr.open_dataset(fp, decode_coords='all') as nc:
-        band_data = nc.band_data.values[:13]  # TODO: parameterize the number of bands to consider
+        band_data = nc.band_data.values
         list_arrays = [band_data]
 
         # add the other variables (except the masks and the already added band_data), assuming that they are 2D
