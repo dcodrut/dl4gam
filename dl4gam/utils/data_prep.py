@@ -41,17 +41,17 @@ def build_binary_mask(nc_data, geoms):
     :return: the binary mask
     """
 
-    # replace the nodata values with a dummy value
-    nodata_val = nc_data.band_data.rio.nodata
-    dummy_val = 0 if np.isnan(nodata_val) else int(nodata_val) - 1
-    tmp_raster = nc_data.band_data.isel(band=0)  # use any band
-    tmp_raster = tmp_raster.where(tmp_raster != nodata_val, dummy_val)
+    # Get a single band
+    tmp_raster = nc_data.band_data.isel(band=0)
 
-    # clip the raster using the given geometry
-    tmp_raster = tmp_raster.rio.clip(geoms, drop=False).values
+    # Ensure the nodata value is NaN (should be the case if xr.open_dataset was called with mask_and_scale=True)
+    if not np.isnan(tmp_raster.rio.nodata):
+        tmp_raster = xr.decode_cf(tmp_raster.to_dataset(name='data'))['data']
+        assert np.isnan(tmp_raster.rio.nodata), \
+            f"Unexpected error: the nodata value is not NaN, but {tmp_raster.rio.nodata}."
 
-    # create the binary mask
-    mask = (tmp_raster != nodata_val)
+    # Clip the raster using the given geometries and get the binary mask
+    mask = tmp_raster.rio.clip(geoms, drop=False).notnull().values
 
     return mask
 
