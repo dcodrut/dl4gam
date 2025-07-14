@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Optional
 
 import geopandas as gpd
 import numpy as np
@@ -60,7 +61,8 @@ def add_auxiliary_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 def compute_buffers(
         gdf: gpd.GeoDataFrame,
-        buffers: BaseDatasetConfig.Buffers
+        buffers: BaseDatasetConfig.Buffers,
+        tol: Optional[float] = None
 ) -> dict[str, gpd.GeoDataFrame]:
     """
     Computes the following geometries for each glacier:
@@ -72,6 +74,7 @@ def compute_buffers(
 
     :param gdf: GeoDataFrame with all the glacier polygons
     :param buffers: Buffers object with the buffer sizes
+    :param tol: tolerance for simplifying the geometries (in meters)
     :return: a dictionary with the GeoDataFrames for each geometry
     """
 
@@ -121,6 +124,9 @@ def main(
     """
     log.info(f"Reading from {fp_in}")
     gdf = gpd.read_file(fp_in)
+
+    # Get rid of the z-coordinates if present
+    gdf['geometry'] = gdf.geometry.force_2d()
 
     # Use (temporarily) a projected CRS for the processing; in case crs is 'UTM' we use a global equal-area projection
     # because we don't know the UTM zone yet and there might be multiple of them in the dataset
@@ -172,7 +178,7 @@ def main(
     }
 
     log.info("Preparing the buffered outlines (using all the glaciers)")
-    gdfs_buffers = compute_buffers(gdf=gdf, buffers=buffers)
+    gdfs_buffers = compute_buffers(gdf=gdf, buffers=buffers, tol=gsd / 2)
     gdfs_out.update(gdfs_buffers)
 
     # Subset also the buffered outlines to the selected glaciers; reproject all to WGS84

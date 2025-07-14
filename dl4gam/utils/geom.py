@@ -108,7 +108,8 @@ def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0
     :return: the buffer distance required to obtain an area equal to the original glacier area
     """
 
-    # first let's simplify the polygons to make it faster
+    # First let's simplify the polygons to make it faster;
+    # We will also use a low resolution (1) which is enough for the purpose of this function
     gdf = gdf.copy()
     gdf['geometry'] = gdf.geometry.simplify(step, preserve_topology=True)
 
@@ -117,7 +118,7 @@ def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0
     initial_area = init_geom.area / 1e6
 
     log.debug(f"Applying starting buffer of {start_distance:.2f} m")
-    init_geom = init_geom.buffer(start_distance, join_style=2, resolution=1)
+    init_geom = init_geom.buffer(start_distance, resolution=1)
     buffer_distance = start_distance
     crt_buffer_area = init_geom.area / 1e6
 
@@ -126,7 +127,7 @@ def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0
 
         # buffer the union (to avoid double counting)
         log.debug(f"Applying buffer of {buffer_distance:.2f} m")
-        crt_geom = init_geom.buffer(buffer_distance, join_style=2, resolution=1)
+        crt_geom = init_geom.buffer(buffer_distance, resolution=1)
         crt_buffer_area = crt_geom.area / 1e6
         log.debug(f"Buffer area: {crt_buffer_area:.2f} km²")
 
@@ -179,14 +180,12 @@ def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float | int) 
 
     # If we have a single geometry, we can return a simple buffer
     if len(gdf) == 1:
-        return gdf.buffer(buffer_distance, join_style=2, resolution=1)
+        return gdf.buffer(buffer_distance, resolution=2)
 
     # Create a limit for the final combined buffers
-    limit = gdf.union_all().buffer(buffer_distance, join_style=2, resolution=1)
+    limit = gdf.union_all().buffer(buffer_distance, resolution=2)
 
-    # Build the non-overlapping Voronoi polygons
-    _gdf = gdf.buffer(1e-3)  # Work-around (failed somewhere internally when calling shapely.coverage_union_all)
-    buffered_geoms = momepy.morphological_tessellation(_gdf, clip=limit, simplify=False).geometry
+    buffered_geoms = momepy.morphological_tessellation(gdf, clip=limit, simplify=False).geometry
 
     return buffered_geoms
 
