@@ -158,7 +158,7 @@ def main(
         log.info(f"Computing the upper bound for the FP buffer (this might take a while)")
         lim_max = utils.calculate_equal_area_buffer(
             gdf,
-            start_distance=buffers.fp[0] + 5 * gsd,  # start with at least 5 pixels
+            start_distance=buffers.fp[0],
             step=gsd,
         )
         log.info(f"Upper bound for the FP buffer: {lim_max} m")
@@ -185,7 +185,7 @@ def main(
     for _label, _gdf in gdfs_out.items():
         if 'buffer' in _label:
             gdfs_out[_label] = _gdf[_gdf['entry_id'].isin(glaciers_to_process)]
-        gdfs_out[_label] = _gdf.to_crs('epsg:4326')
+        gdfs_out[_label] = gdfs_out[_label].to_crs('epsg:4326')
 
     # Export the processed outlines with the auxiliary columns (after reprojecting to WGS84)
     fp_out = Path(fp_out)

@@ -99,7 +99,8 @@ def latlon_to_utm_epsg(lat: float, lon: float) -> str:
 def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0.0, step: float = 10.0) -> float:
     """
     Given a GeoDataFrame, we calculate the additional buffer distance (starting from the start_distance) that is
-    required to obtain an area equal to the original area.
+    required to obtain an area equal to the original area, while subtracting the area between the initial geometries
+    and the start_distance buffer.
 
     :param gdf: GeoDataFrame with the polygons to be buffered
     :param start_distance: initial buffer distance (in meters)
@@ -113,16 +114,16 @@ def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0
     gdf = gdf.copy()
     gdf['geometry'] = gdf.geometry.simplify(step, preserve_topology=True)
 
-    log.debug("Applying union_all to polygons")
     init_geom = gdf.geometry.union_all()
     initial_area = init_geom.area / 1e6
 
     log.debug(f"Applying starting buffer of {start_distance:.2f} m")
     init_geom = init_geom.buffer(start_distance, resolution=1)
     buffer_distance = start_distance
-    crt_buffer_area = init_geom.area / 1e6
+    start_buffer_area = init_geom.area / 1e6
+    crt_buffer_area = start_buffer_area
 
-    while crt_buffer_area < 2 * initial_area:
+    while (crt_buffer_area - start_buffer_area) < initial_area:
         buffer_distance += step
 
         # buffer the union (to avoid double counting)
