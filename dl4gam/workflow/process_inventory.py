@@ -66,9 +66,11 @@ def compute_buffers(
 ) -> dict[str, gpd.GeoDataFrame]:
     """
     Computes the following geometries for each glacier:
-    1. Geometry from which the patch centres will be sampled
-    2. Geometry within which the inference will be performed
-    3. Geometry within which false positives will be calculated
+    1. Geometry for computing the cloud coverage (and albedo), i.e. glacier + simple buffer
+    2. Geometry for computing the NDSI, i.e. non-glacier pixels within the glacier buffer
+    3. Geometry from which the patch centres will be sampled (simple buffer)
+    4. Geometry within which the inference will be performed (non-overlapping buffer)
+    5. Geometry within which false positives will be calculated (non-overlapping buffer)
 
     These geometries will be turned into binary masks later on.
 
@@ -78,19 +80,44 @@ def compute_buffers(
     :return: a dictionary with the GeoDataFrames for each geometry
     """
 
-    # 1. The geometry from which the patch centres will be sampled (simple buffer)
-    gdfs_out = {'buffer_patch_sampling': gdf.buffer(buffers.patch_sampling)}
+    # Before computing the buffers, let's simplify the geometries to reduce the processing time & storage size
+    _gdf = gdf.copy()
+    if tol is not None:
+        log.info(f"Simplifying the geometries with tolerance {tol} m")
+        _gdf['geometry'] = _gdf.geometry.simplify(tolerance=tol, preserve_topology=True).buffer(0)
+
+    gdfs_out = {}
+
+    # 1. The geometry for computing the cloud coverage (and albedo), i.e. glacier + simple buffer
+    # We will also set the resolution to 2 (to avoid too many vertices in the buffer)
+    log.info(f"Computing the glacier buffers for cloud coverage (and albedo) with size {buffers.buffer_qc_metrics} m")
+    geoms_buffered = _gdf.buffer(buffers.buffer_qc_metrics, resolution=2)
+    gdfs_out['buffer_clouds'] = geoms_buffered
+
+    # 2. The geometry for computing the NDSI, i.e. non-glacier pixels within the glacier buffer
+    log.info("Computing the glacier buffers for NDSI (non-glacier pixels within the glacier buffer)")
+    gdfs_out['buffer_ndsi'] = gpd.overlay(
+        gpd.GeoDataFrame(geometry=geoms_buffered),
+        _gdf,
+        how='difference',
+        keep_geom_type=False
+    ).geometry
+
+    # 3. The geometry from which the patch centres will be sampled (simple buffer)
+    gdfs_out['buffer_patch_sampling'] = _gdf.buffer(buffers.patch_sampling, resolution=2)
 
     # The next geometries require non-overlapping buffers:
-    # 2. The geometry within which the inference will be performed
-    # 3. The geometry within which false positives will be calculated
-    geoms_infer, geoms_fp_min, geoms_fp_max = utils.multi_buffer_non_overlapping_parallel(
-        gdf=gdf,
-        buffers=[buffers.infer, buffers.fp[0], buffers.fp[1]],
-    )
+    # 4. The geometry within which the inference will be performed
+    log.info(f"Computing the non-overlapping buffers for inference with size {buffers.infer} m")
+    geoms_infer = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.infer, grid_size=tol)
+
+    # 5. The geometry within which false positives will be calculated
+    log.info(f"Computing the non-overlapping buffers for false positives with sizes {buffers.fp}")
+    geoms_fp_min = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[0], grid_size=tol)
+    geoms_fp_max = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[1], grid_size=tol)
 
     # Make sure the infer buffer includes the current glacier, whereas the FP buffers do not
-    # (in case of approximations done by momepy)
+    # (in case of approximations done by libpysal or due to our simplification)
     geoms_infer = geoms_infer.union(gdf.geometry)
     geoms_fp = geoms_fp_max.difference(geoms_fp_min).difference(gdf.geometry)
     gdfs_out['buffer_infer'] = geoms_infer
@@ -99,7 +126,7 @@ def compute_buffers(
     # Covert the geometries to GeoDataFrames (we will export them as layers) and reproject them to WGS84
     for label, geom in gdfs_out.items():
         gdfs_out[label] = gpd.GeoDataFrame(
-            {'entry_id': gdf.entry_id}, geometry=geom, crs=gdf.crs
+            {'entry_id': gdf.entry_id}, geometry=geom.buffer(0), crs=gdf.crs  # make sure the geometries are valid
         )
 
     return gdfs_out

@@ -1,7 +1,7 @@
 import logging
 
 import geopandas as gpd
-import momepy
+import libpysal
 import numpy as np
 import pandas as pd
 import scipy
@@ -164,13 +164,17 @@ def get_connected_components(gdf: gpd.GeoDataFrame, buffer_distance: float | int
     return labels
 
 
-def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float | int) -> gpd.GeoSeries:
+def buffer_non_overlapping(
+        gdf: gpd.GeoDataFrame,
+        buffer_distance: float | int,
+        grid_size: float | int) -> gpd.GeoSeries:
     """
     Extend the outlines of the polygons in the GeoDataFrame by a specified buffer distance without overlapping.
     Based on https://github.com/geopandas/geopandas/issues/2015.
 
     :param gdf: GeoDataFrame with the glacier polygons
     :param buffer_distance: distance to extend the outlines
+    :param grid_size: size of the grid to use for the voronoi tessellation (in meters)
 
     :return: GeoSeries with the non-overlapping buffers
     """
@@ -181,12 +185,18 @@ def buffer_non_overlapping(gdf: gpd.GeoDataFrame, buffer_distance: float | int) 
 
     # If we have a single geometry, we can return a simple buffer
     if len(gdf) == 1:
-        return gdf.buffer(buffer_distance, resolution=2)
+        return gdf.buffer(buffer_distance, resolution=2).buffer(0)
 
     # Create a limit for the final combined buffers
-    limit = gdf.union_all().buffer(buffer_distance, resolution=2)
+    limit = gdf.buffer(buffer_distance, resolution=2).buffer(0).union_all()
 
-    buffered_geoms = momepy.morphological_tessellation(gdf, clip=limit, simplify=False).geometry
+    buffered_geoms = libpysal.cg.voronoi_frames(
+        gdf,
+        clip=limit,
+        grid_size=grid_size,
+        return_input=False,
+        as_gdf=False,
+    ).geometry.buffer(0)
 
     return buffered_geoms
 

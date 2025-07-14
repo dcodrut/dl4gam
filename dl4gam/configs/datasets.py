@@ -75,12 +75,9 @@ class BaseDatasetConfig:
         cloud_mask_thresh_p: Optional[float] = None  # threshold for binarizing the cloud probability mask, e.g. 0.4
 
         # Once we computed the cloud mask, we can set a maximum cloud coverage to accept for the images
-        # Note that the cloud coverage percentage is computed on the glacier + a buffer around it, if set.
-        # The same buffer will be used for the other metrics computed for the images (e.g. NDSI, albedo).
-        # Note that the NDSI will be computed on non-ice and non-cloud pixels only; albedo on non-cloud pixels only.
-        # See gee_download.py for details.
+        # Note that the cloud coverage (incl. other stats) is computed on the glacier + a buffer
+        # (see the class `Buffers`).
         min_coverage: float = 0.9  # minimum coverage percentage to accept the scene
-        buffer_qc_metrics: Union[int, float] = 100  # in meters; if None, the entire ROI will be used for the metrics
         max_cloud_p: float = 0.3  # max cloud coverage (glacier + buffer); if fixed dates are used, this will be ignored
 
         # number of images to download per glacier (we choose the best automatically if strict dates are not imposed)
@@ -146,6 +143,10 @@ class BaseDatasetConfig:
     # Buffer sizes (in meters) around the glacier outlines for the different steps of the pipeline
     @dataclass
     class Buffers:
+        # Buffer for computing the Quality Control (QC) metrics, e.g. cloud coverage, NDSI, albedo.
+        # For NDSI, only non-ice & non-cloud pixels will be used. See `gee_download.py` or 'rank_images.py` for details.
+        buffer_qc_metrics: Union[int, float] = 100  # in meters; if None, the entire ROI will be used for the metrics
+
         # Buffer for the final processed glacier cube (should be large enough to allow patch sampling)
         cube: Optional[Union[int, float]] = None  # will be set automatically in __post_init__
 
