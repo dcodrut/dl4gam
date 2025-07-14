@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import geopandas as gpd
 import libpysal
@@ -96,13 +97,20 @@ def latlon_to_utm_epsg(lat: float, lon: float) -> str:
     return f"epsg:{code}"
 
 
-def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0.0, step: float = 10.0) -> float:
+def calculate_equal_area_buffer(
+        gdf: gpd.GeoDataFrame,
+        min_area_thr: Optional[float] = None,
+        start_distance: float = 0.0,
+        step: float = 10.0
+) -> float:
     """
     Given a GeoDataFrame, we calculate the additional buffer distance (starting from the start_distance) that is
-    required to obtain an area equal to the original area, while subtracting the area between the initial geometries
-    and the start_distance buffer.
+    required to obtain an area equal to the original area.
+    We use only the polygons with an area larger than min_area_thr (in km²) to calculate the buffer, but we don't allow
+    intersecting the smaller polygons (which is why we use the union of all geometries as starting point).
 
-    :param gdf: GeoDataFrame with the polygons to be buffered
+    :param gdf: GeoDataFrame with all polygons
+    :param min_area_thr: minimum area threshold to consider a polygon (in km²) when calculating the buffer
     :param start_distance: initial buffer distance (in meters)
     :param step: step size for the buffer distance (in meters)
 
@@ -111,28 +119,41 @@ def calculate_equal_area_buffer(gdf: gpd.GeoDataFrame, start_distance: float = 0
 
     # First let's simplify the polygons to make it faster;
     # We will also use a low resolution (1) which is enough for the purpose of this function
-    gdf = gdf.copy()
-    gdf['geometry'] = gdf.geometry.simplify(step, preserve_topology=True)
+    _gdf = gdf.copy()
+    _gdf['geometry'] = _gdf.geometry.simplify(step, preserve_topology=True)
 
-    init_geom = gdf.geometry.union_all()
-    initial_area = init_geom.area / 1e6
+    # Let's apply the initial buffer to all the geometries and union them (this region will always be subtracted later)
+    geom_to_avoid = _gdf.geometry.buffer(start_distance, resolution=1).buffer(0).union_all()
 
-    log.debug(f"Applying starting buffer of {start_distance:.2f} m")
-    init_geom = init_geom.buffer(start_distance, resolution=1)
-    buffer_distance = start_distance
-    start_buffer_area = init_geom.area / 1e6
-    crt_buffer_area = start_buffer_area
+    # Group the geometries into two sets based on the area threshold
+    idx_large = (_gdf.area / 1e6 >= (min_area_thr if min_area_thr is not None else 0))
+    gdf_l = _gdf[idx_large]  # these are the main ones we will use to calculate the non-overlapping buffer
+    gdf_s = _gdf[~idx_large]  # we use these only to simulate the tessellation
 
-    while (crt_buffer_area - start_buffer_area) < initial_area:
-        buffer_distance += step
+    # Calculate the total area of the large polys (i.e. our target area)
+    target_area = gdf_l.area.sum() / 1e6
 
-        # buffer the union (to avoid double counting)
-        log.debug(f"Applying buffer of {buffer_distance:.2f} m")
-        crt_geom = init_geom.buffer(buffer_distance, resolution=1)
-        crt_buffer_area = crt_geom.area / 1e6
-        log.debug(f"Buffer area: {crt_buffer_area:.2f} km²")
+    # Now we grow our polys, subtract the initial buffered region and check when we reach the target area
+    buffer_dx = 0.0  # on top of the start_distance
+    crt_area = 0.0
+    while crt_area < target_area:
+        buffer_dx += step
 
-    return buffer_distance
+        # Buffer, union and subtract the initial buffered region
+        crt_geom = gdf_l.buffer(start_distance + buffer_dx, resolution=1).union_all().difference(geom_to_avoid)
+
+        # In the second step, we will simulate the tessellation by buffering the small polygons with half the distance
+        if not gdf_s.empty:
+            geom_to_avoid_s = gdf_s.buffer(start_distance + buffer_dx / 2, resolution=1).union_all()
+            crt_geom = crt_geom.difference(geom_to_avoid_s)
+
+        crt_area = crt_geom.area / 1e6
+        log.debug(
+            f"current buffer = {start_distance + buffer_dx}: "
+            f"non-overlapping buffered area: {crt_area:.2f} km² (target: {target_area:.2f} km²)"
+        )
+
+    return start_distance + buffer_dx
 
 
 def get_connected_components(gdf: gpd.GeoDataFrame, buffer_distance: float | int) -> np.ndarray:

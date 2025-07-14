@@ -185,6 +185,7 @@ def main(
         log.info(f"Computing the upper bound for the FP buffer (this might take a while)")
         lim_max = utils.calculate_equal_area_buffer(
             gdf,
+            min_area_thr=min_glacier_area,
             start_distance=buffers.fp[0],
             step=gsd,
         )
