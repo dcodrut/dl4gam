@@ -164,6 +164,10 @@ class BaseDatasetConfig:
 
     buffers: Buffers = field(default_factory=Buffers)
 
+    # Whether to check if the raw data covers 100% of the glacier outlines (incl. the buffer) when building the glacier
+    # cubes. If False, we will keep the desired buffer but fill the missing pixels with NaNs.
+    check_data_coverage = True
+
     # Bands re-naming when processing the raw data. Note that only the bands used as keys will be kept, the rest will be
     # dropped. We also need this information to compute the NDSI and albedo.
     bands_rename: Dict[str, str] = MISSING

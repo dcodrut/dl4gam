@@ -1,7 +1,9 @@
+import logging
 import re
 from pathlib import Path
+from typing import Optional
 
-import geopandas
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyproj
@@ -14,6 +16,8 @@ import shapely.ops
 import xarray as xr
 import xdem
 from scipy.ndimage import gaussian_filter
+
+log = logging.getLogger(__name__)
 
 # regex for standalone YYYYMMDD
 _DATE_REGEX = re.compile(r'(?<!\d)(\d{8})(?!\d)')
@@ -56,21 +60,21 @@ def build_binary_mask(nc_data, geoms):
     return mask
 
 
-def add_glacier_masks(
+def crop_and_add_glacier_masks(
         nc_data,
         gl_df,
         entry_id_int,
         buffer=0,
         check_data_coverage=True,
-        buffers_masks=(-20, -10, 0, 10, 20, 50)
+        buffers_masks=(0,)
 ):
     """
-    Adds glacier masks to the given dataset after cropping it using the given buffer.
+    Add glacier masks to the given dataset after cropping it using the given buffer.
 
     The masks are:
-        * mask_all_g_id: a mask with the IDs of all the glaciers in the current glacier's bounding box
-        * mask_crt_g: a binary mask with the current glacier
-        * mask_crt_g_bX: a binary mask with the current glacier and a buffer of X meters around it
+        * mask_all_glaciers_id: a mask with the IDs of all the glaciers in the current glacier's bounding box
+        * mask_glacier: a binary mask with the current glacier
+        * mask_glacier_bX: a binary mask with the current glacier and a buffer of X meters around it
 
     :param nc_data: the xarray dataset with the (raw) image data
     :param gl_df: the geopandas dataframe with all the glaciers' outlines
@@ -111,9 +115,8 @@ def add_glacier_masks(
         row = gl_crt_buff_df.iloc[i]
         mask_crt_g = build_binary_mask(nc_data_crop, geoms=[row.geometry])
         mask_rgi_id[mask_crt_g] = row.entry_id_i
-    nc_data_crop['mask_all_g_id'] = (('y', 'x'), mask_rgi_id)
-    nc_data_crop['mask_all_g_id'].attrs['_FillValue'] = -1
-    nc_data_crop['mask_all_g_id'].rio.write_crs(nc_data.rio.crs, inplace=True)
+    nc_data_crop['mask_all_glaciers_id'] = (('y', 'x'), mask_rgi_id)
+    nc_data_crop['mask_all_glaciers_id'].attrs['_FillValue'] = -1
 
     # 2. binary mask only for the current glacier, also with various buffers (in meters)
     for buffer_mask in buffers_masks:
@@ -121,13 +124,12 @@ def add_glacier_masks(
         if not _crt_g_shp.is_empty:
             mask_crt_g = build_binary_mask(nc_data_crop, geoms=[_crt_g_shp])
         else:
-            mask_crt_g = np.zeros_like(nc_data_crop.mask_all_g_id)
+            mask_crt_g = np.zeros_like(nc_data_crop.mask_all_glaciers_id)
 
         label = '' if buffer_mask == 0 else f'_b{buffer_mask}'
-        k = 'mask_crt_g' + label
+        k = 'mask_glacier' + label
         nc_data_crop[k] = (('y', 'x'), mask_crt_g.astype(np.int8))
         nc_data_crop[k].attrs['_FillValue'] = -1
-        nc_data_crop[k].rio.write_crs(nc_data.rio.crs, inplace=True)
 
     return nc_data_crop
 
@@ -135,222 +137,264 @@ def add_glacier_masks(
 def prep_glacier_dataset(
         fp_img: str | Path,
         entry_id: str,
-        gl_df: geopandas.GeoDataFrame,
-        bands_name_map: dict | None = None,
-        bands_qc_mask=None,
-        extra_gdf_dict: dict | None = None,
-        buffer_px: int = 0,
+        gl_df: gpd.GeoDataFrame,
+        buffer: int = 0,
         check_data_coverage=True,
-        fp_out: str | Path | None = None,
-        return_nc: bool = False
+        bands_name_map: Optional[dict[str, str]] = None,
+        bands_nok_mask: Optional[list[str]] = None,
+        extra_geodataframes: Optional[dict[str, gpd.GeoDataFrame]] = None,
+        extra_rasters: Optional[dict[str, str | Path]] = None,
+        no_data: int = -9999,
+        fp_out: Optional[str | Path] = None,
 ):
     """
-    Prepare a glacier dataset by adding the glacier masks and possibly extra masks (see add_glacier_masks).
+    Prepare a glacier dataset by cropping the raw data within a buffer around the glacier outline, and then
+    adding the glacier masks (one for the current glacier, and one for all glaciers in the bounding box).
+    Optionally, it can also add extra vector data (e.g. debris cover) and extra raster data (e.g. DEM features).
 
     :param fp_img: the path to the raw image
     :param entry_id: the ID of the current glacier
     :param gl_df: the geopandas dataframe with all the glacier outlines
-    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values);
-        if None, all the bands are kept
-    :param bands_qc_mask: the names of the bands to be used for building the mask for bad pixels
-    :param extra_gdf_dict: a dictionary with the extra masks to be added
-    :param buffer_px: the buffer around the current glacier (in pixels) to be used when cropping the image data
+    :param buffer: the buffer (in meters) around the current glacier to be used when cropping the image data
     :param check_data_coverage: whether to check if the data covers the current glacier + buffer
-    :param fp_out: the path to the output glacier dataset (if None, the raster is returned without saving it)
-    :param return_nc: whether to return the xarray dataset
+    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values); If None, all the bands are kept, with their original names.
+    :param bands_nok_mask: the names of the bands to be used for building the mask for bad pixels
+    :param extra_geodataframes: a dict with keys as variable names and values as GeoDataFrames containing the extra vector data (e.g. debris cover) to be added as additional binary masks
+    :param extra_rasters: a dict with keys as variable names and values as directories containing the rasters (.tif) to be added as additional variables
+    :param no_data: the value to be used as NODATA for the raster data; for the binary masks, it will be -1
+    :param fp_out: the path to the output glacier dataset (if None, the raster is returned)
     :return: None or the xarray dataset
     """
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
     assert len(row_crt_g) == 1
 
-    # read the raw image
-    nc = xr.open_dataset(fp_img, mask_and_scale=False)
+    # Read the raw image
+    log.debug(f"Reading the raw image {fp_img} for glacier {entry_id}")
+    ds = xr.open_dataset(fp_img, mask_and_scale=False)
 
-    # check if the name of the bands is given, otherwise name them
-    if 'long_name' not in nc.band_data.attrs:
-        nc.band_data.attrs['long_name'] = [f'B{i + 1}' for i in range(len(nc.band_data))]
+    # Set the NODATA value for the dataset and the band data
+    ds.attrs['_FillValue'] = no_data
+    ds.band_data.attrs['_FillValue'] = no_data
 
-    # set the band names for indexing
-    nc = nc.assign_coords(band=list(nc.band_data.long_name))
+    # Save the glacier ID in the dataset attributes
+    ds.attrs['entry_id'] = entry_id
 
-    # build the mask for the bad (e.g. cloudy, shadowed or missing) pixels if needed
-    if bands_qc_mask is not None:
-        # ensure the bands to keep are in the image
-        bands_missing = [b for b in bands_qc_mask if b.replace('~', '') not in nc.band_data.long_name]
-        assert len(bands_missing) == 0, f"{bands_missing} not found in the image bands = {nc.band_data.long_name}"
+    # Check if the name of the bands is given, otherwise name them
+    if 'long_name' not in ds.band_data.attrs:
+        ds.band_data.attrs['long_name'] = [f'B{i + 1}' for i in range(len(ds.band_data))]
 
-        # build the mask
-        mask_nok = np.zeros_like(nc.band_data.isel(band=0).values, dtype=bool)
-        for b in bands_qc_mask:
-            crt_mask = (nc.band_data.sel(band=b.replace('~', '')).values == 1)
-            # invert the mask if needed
+    # Set the band names for indexing
+    ds = ds.assign_coords(band=list(ds.band_data.long_name))
+
+    # Build the mask for the bad (e.g. cloudy, shadowed or missing) pixels if needed
+    if bands_nok_mask is not None:
+        # Ensure the bands to keep are in the image
+        bands_missing = [b for b in bands_nok_mask if b.replace('~', '') not in ds.band_data.long_name]
+        assert len(bands_missing) == 0, f"{bands_missing} not found in the image bands = {ds.band_data.long_name}"
+
+        # Build the mask
+        mask_nok = np.zeros_like(ds.band_data.isel(band=0).values, dtype=bool)
+        for b in bands_nok_mask:
+            crt_mask = (ds.band_data.sel(band=b.replace('~', '')).values == 1)
+            # Invert the mask if needed
             if b[0] == '~':
                 crt_mask = ~crt_mask
             mask_nok |= crt_mask
 
-        # add the mask to the dataset
-        nc['mask_nok'] = (('y', 'x'), mask_nok.astype(np.int8))
-        nc['mask_nok'].attrs['_FillValue'] = -1
-        nc['mask_nok'].attrs['bands_qc_mask'] = tuple(bands_qc_mask)
-        nc['mask_nok'].rio.write_crs(nc.rio.crs, inplace=True)
+        # Add the mask to the dataset
+        ds['mask_nok'] = (('y', 'x'), mask_nok.astype(np.int8))
+        ds['mask_nok'].attrs['_FillValue'] = -1
+        ds['mask_nok'].attrs['bands_mask_nok'] = tuple(bands_nok_mask)
 
-    # keep only the bands we will need later if given
+    # Keep only the bands we will need later if given
     if bands_name_map is not None:
-        # ensure the bands to keep are in the image
-        bands_missing = [b for b in bands_name_map if b not in nc.band_data.long_name]
-        assert len(bands_missing) == 0, f"{bands_missing} not found in the image bands = {nc.band_data.long_name}"
+        # Ensure the bands to keep are in the image
+        bands_missing = [b for b in bands_name_map if b not in ds.band_data.long_name]
+        assert len(bands_missing) == 0, f"{bands_missing} not found in the image bands = {ds.band_data.long_name}"
 
-        # subset the bands
+        # Subset the bands
         bands_to_keep = list(bands_name_map.keys())
-        nc = nc.sel(band=list(bands_to_keep))
+        ds = ds.sel(band=list(bands_to_keep))
 
-        # rename the bands
+        # Rename the bands
         new_band_names = [bands_name_map[b] for b in bands_to_keep]
-        nc = nc.assign_coords(band=new_band_names)
-        nc.band_data.attrs['long_name'] = new_band_names
+        ds = ds.assign_coords(band=new_band_names)
+        ds.band_data.attrs['long_name'] = new_band_names
+        ds.band_data.attrs['description'] = new_band_names
 
-    # add the glacier masks
+    # Add the glacier masks
+    log.debug(f"Cropping and adding glacier masks for glacier {entry_id} with buffer {buffer}m")
     entry_id_int = row_crt_g.iloc[0].entry_id_i
-    dx = nc.rio.resolution()[0]
-    buffer = buffer_px * dx
-    nc = add_glacier_masks(
-        nc_data=nc,
+    ds = crop_and_add_glacier_masks(
+        nc_data=ds,
         gl_df=gl_df,
         entry_id_int=entry_id_int,
         buffer=buffer,
         check_data_coverage=check_data_coverage
     )
 
-    # add the extra masks if given
-    if extra_gdf_dict is not None:
-        for k, gdf in extra_gdf_dict.items():
-            mask_name = f"mask_{k}"
-            mask = build_binary_mask(nc, geoms=gdf.geometry.values)
-            nc[mask_name] = (('y', 'x'), mask.astype(np.int8))
-            nc[mask_name].attrs['_FillValue'] = -1
-            nc[mask_name].rio.write_crs(nc.rio.crs, inplace=True)
+    # Add the extra vector data if provided
+    if extra_geodataframes is not None:
+        log.debug(f"Adding extra masks (names = {list(extra_geodataframes.keys())}) for glacier {entry_id}")
+        ds = add_extra_vectors(ds, extra_geodataframes)
 
-    # not sure why but needed for QGIS
-    nc['band_data'].rio.write_crs(nc.rio.crs, inplace=True)
+    # Add the extra raster data if provided
+    if extra_rasters is not None:
+        log.debug(f"Adding extra rasters (names = {list(extra_rasters.keys())}) for glacier {entry_id}")
+        ds = add_extra_rasters(ds, extra_rasters, no_data)
+
+    # Add DEM features computed with xDEM
+    if 'dem' in ds.data_vars:
+        log.debug(f"Adding DEM features for glacier {entry_id}")
+        ds = add_dem_features(ds, no_data)
+
+    # Not sure why but needed for QGIS
+    for v in ds.data_vars:
+        ds[v].rio.write_crs(ds.rio.crs, inplace=True)
 
     # export if needed
     if fp_out is not None:
         fp_out.parent.mkdir(exist_ok=True, parents=True)
-        nc.attrs['fn'] = fp_img.name
-        nc.attrs['glacier_area'] = row_crt_g.area_km2.iloc[0]
-        nc.to_netcdf(fp_out)
-        nc.close()
+        ds.attrs['fn'] = fp_img.name
+        ds.attrs['glacier_area'] = row_crt_g.area_km2.iloc[0]
+        ds.to_netcdf(fp_out)
+        ds.close()
+        return None
+    else:
+        return ds
 
-    if return_nc:
-        return nc
-    return None
 
-
-def add_external_rasters(fp_gl, extra_rasters_bb_dict, no_data):
+def add_extra_vectors(ds: xr.Dataset, extra_geodataframes: dict[str, gpd.GeoDataFrame]):
     """
-    Adds extra rasters to the glacier dataset.
+    Add extra vector data to the glacier dataset, e.g. debris cover, as additional variables (binary masks).
 
-    :param fp_gl: str, path to the glacier dataset
-    :param extra_rasters_bb_dict: dict, the paths to the extra rasters as keys and their bounding boxes that will be
-    used to determine which of them intersect the current glacier
+    :param ds: the Xarray glacier dataset to which the extra vectors will be added.
+    :param extra_geodataframes: dict with keys as variable names and values as GeoDataFrames containing the extra vector data (e.g. debris cover).
+
+    :return: the updated dataset
+    """
+
+    for k, gdf in extra_geodataframes.items():
+        gdf_proj = gdf.to_crs(ds.rio.crs)
+        mask = build_binary_mask(ds, geoms=gdf_proj.geometry.values)
+        mask_name = f"mask_{k}"
+        ds[mask_name] = (('y', 'x'), mask.astype(np.int8))
+        ds[mask_name].attrs['_FillValue'] = -1
+
+    return ds
+
+
+def add_extra_rasters(ds: xr.Dataset, extra_rasters: dict[str, str | Path], no_data: int):
+    """
+    Add extra rasters to the glacier dataset as additional variables.
+
+    For the given glacier dataset, it checks which of the provided rasters intersect the glacier's bounding box,
+    reprojects them to the glacier's CRS, merges them if needed, and adds them as new variables.
+
+    :param ds: the Xarray glacier dataset to which the extra rasters will be added.
+    :param extra_rasters: dict with keys as variable names and values as directories containing the rasters (.tif).
     :param no_data: the value to be used as NODATA
 
-    :return: None
+    :return: the updated dataset
     """
-    with xr.open_dataset(fp_gl, decode_coords='all', mask_and_scale=False) as nc_gl:
-        nc_gl.load()  # needed to be able to close the file and save the changes to the same file
-        nc_gl_bbox = shapely.geometry.box(*nc_gl.rio.bounds())
 
-        # add a buffer to make sure we include all the rasters possibly intersecting the current glacier
-        # (otherwise we may miss some due to re-projection errors)
-        nc_gl_bbox = nc_gl_bbox.buffer(100)
+    # Save the bounding boxes of all the provided rasters (needed for computing the intersection with the glacier)
+    extra_rasters_bb_dict = {}
+    for k, crt_dir in extra_rasters.items():
+        rasters_crt_dir = list(Path(crt_dir).rglob('*.tif'))
+        extra_rasters_bb_dict[k] = {
+            fp: shapely.geometry.box(*xr.open_dataset(fp).rio.bounds()) for fp in rasters_crt_dir
+        }
 
-        for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
-            # check which raster files intersect the current glacier
-            crt_nc_list = []
-            for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
-                crt_nc = xr.open_dataarray(fp, mask_and_scale=False)
-                transform = pyproj.Transformer.from_crs(crt_nc.rio.crs, nc_gl.rio.crs, always_xy=True).transform
-                if nc_gl_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
-                    crt_nc_list.append(crt_nc)
+    # Save the bounding box of the current glacier dataset and add a buffer to make sure we include all the rasters
+    # possibly intersecting the current glacier (otherwise we may miss some pixels due to re-projection errors)
+    ds_bbox = shapely.geometry.box(*ds.rio.bounds())
+    ds_bbox = ds_bbox.buffer(100)
 
-            # ensure at least one intersection was found
-            assert len(crt_nc_list) > 0, f"No intersection found for {k} and fp_gl = {fp_gl}"
+    for k, crt_extra_rasters_bb_dict in extra_rasters_bb_dict.items():
+        # Check which raster files intersect the current glacier
+        crt_nc_list = []
+        for fp, raster_bbox in crt_extra_rasters_bb_dict.items():
+            crt_nc = xr.open_dataarray(fp, mask_and_scale=False)
+            transform = pyproj.Transformer.from_crs(crt_nc.rio.crs, ds.rio.crs, always_xy=True).transform
+            if ds_bbox.intersects(shapely.ops.transform(transform, raster_bbox)):
+                crt_nc_list.append(crt_nc)
 
-            # merge the datasets if needed
-            nc_raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
+        # Ensure at least one intersection was found
+        assert len(crt_nc_list) > 0, f"No intersection found for {k} (glacier ID = {ds.attrs['entry_id']})"
 
-            # reproject
-            nc_raster = nc_raster.isel(band=0).rio.reproject_match(
-                nc_gl, resampling=rasterio.enums.Resampling.bilinear).astype(np.float32)
-            nc_raster.rio.write_crs(nc_gl.rio.crs, inplace=True)  # not sure why but needed for QGIS
-            nc_raster.attrs['_FillValue'] = np.float32(no_data)
+        # Merge the datasets if needed
+        raster = rxr.merge.merge_arrays(crt_nc_list) if len(crt_nc_list) > 1 else crt_nc_list[0]
 
-            # add the current raster to the glacier dataset
-            nc_gl[k] = nc_raster
+        # Reproject
+        raster = (
+            raster.isel(band=0).rio.reproject_match(ds, resampling=rasterio.enums.Resampling.bilinear)
+            .astype(np.float32)
+        )
 
-    # export
-    nc_gl.to_netcdf(fp_gl)
-    nc_gl.close()
+        # Set the NODATA value
+        raster.attrs['_FillValue'] = np.float32(no_data)
+
+        # Add the current raster to the glacier dataset
+        ds[k] = raster
+
+    return ds
 
 
-def add_dem_features(fp_gl, no_data):
+def add_dem_features(ds, no_data):
     """
     Add DEM features to the glacier dataset using the XDEM library.
     The features are: slope, aspect, planform curvature, profile curvature, terrain ruggedness index.
 
-    :param fp_gl: the path to the glacier dataset (the result will be saved in the same file)
+    :param ds: the Xarray glacier dataset to which the DEM features will be added.
     :param no_data: the value to be used as NODATA
 
     :return: None
     """
-    # read the glacier dataset
-    with xr.open_dataset(fp_gl, decode_coords='all', mask_and_scale=False) as nc_gl:
-        nc_gl.load()  # needed to be able to close the file and save the changes to the same file
-        assert 'dem' in nc_gl.data_vars, "The DEM is missing."
 
-        # create a rasterio dataset in memory with the DEM data
-        with rio.io.MemoryFile() as memfile:
-            with memfile.open(
-                    driver='GTiff',
-                    height=nc_gl.dem.data.shape[0],
-                    width=nc_gl.dem.data.shape[1],
-                    count=1,
-                    dtype=nc_gl.dem.data.dtype,
-                    crs=nc_gl.rio.crs,
-                    transform=nc_gl.rio.transform(),
-            ) as dataset:
-                dem_data = nc_gl.dem.data.copy()
+    # Ensure the dataset has a DEM variable
+    assert 'dem' in ds.data_vars, "The DEM is missing."
 
-                # we expect DEMs without data gaps (NA values for the DEM features are not allowed in the data loading)
-                assert np.sum(np.isnan(dem_data)) == 0
+    # Create a rasterio dataset in memory with the DEM data
+    with rio.io.MemoryFile() as memfile:
+        with memfile.open(
+                driver='GTiff',
+                height=ds.dem.data.shape[0],
+                width=ds.dem.data.shape[1],
+                count=1,
+                dtype=ds.dem.data.dtype,
+                crs=ds.rio.crs,
+                transform=ds.rio.transform(),
+        ) as dataset:
+            dem_data = ds.dem.data.copy()
 
-                # smooth the DEM with a 3x3 gaussian kernel
-                dem_data = gaussian_filter(dem_data, sigma=1, mode='nearest', radius=1)
+            # We expect DEMs without data gaps (NA values for the DEM features are not allowed in the data loading)
+            assert np.sum(np.isnan(dem_data)) == 0, \
+                "The DEM contains NA values. Please fill them before computing the DEM features."
 
-                # prepare a XDEM object
-                dataset.write(dem_data, 1)
-                dem = xdem.DEM.from_array(dataset.read(1), transform=nc_gl.rio.transform(), crs=nc_gl.rio.crs)
+            # Smooth the DEM with a 3x3 gaussian kernel (otherwise the DEM features are too noisy)
+            dem_data = gaussian_filter(dem_data, sigma=1, mode='nearest', radius=1)
 
-                # compute the DEM features
-                attrs_names = [
-                    'slope',
-                    'aspect',
-                    'planform_curvature',
-                    'profile_curvature',
-                    'terrain_ruggedness_index'
-                ]
-                attributes = xdem.terrain.get_terrain_attribute(
-                    dem.data, resolution=dem.res, attribute=attrs_names
-                )
+            # Prepare a xDEM object
+            dataset.write(dem_data, 1)
+            dem = xdem.DEM.from_array(dataset.read(1), transform=ds.rio.transform(), crs=ds.rio.crs)
 
-                # add the features to the glacier dataset (remove the NANs from the margins)
-                for k, data in zip(attrs_names, attributes):
-                    data_padded = np.pad(data[1:-1, 1:-1].astype(np.float32), pad_width=1, mode='edge')
-                    nc_gl[k] = (('y', 'x'), data_padded)
-                    nc_gl[k].attrs['_FillValue'] = np.float32(no_data)
-                    nc_gl[k].rio.write_crs(nc_gl.rio.crs, inplace=True)
+            # Compute the DEM features
+            attrs_names = [
+                'slope',
+                'aspect',
+                'planform_curvature',
+                'profile_curvature',
+                'terrain_ruggedness_index'
+            ]
+            attributes = xdem.terrain.get_terrain_attribute(
+                dem.data, resolution=dem.res, attribute=attrs_names
+            )
 
-    # export to the same file
-    nc_gl.to_netcdf(fp_gl)
-    nc_gl.close()
+            # Add the features to the glacier dataset (remove the NANs from the margins)
+            for k, data in zip(attrs_names, attributes):
+                data_padded = np.pad(data[1:-1, 1:-1].astype(np.float32), pad_width=1, mode='edge')
+                ds[k] = (('y', 'x'), data_padded)
+                ds[k].attrs['_FillValue'] = np.float32(no_data)
+
+    return ds

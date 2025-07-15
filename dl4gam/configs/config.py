@@ -76,6 +76,23 @@ class DL4GAMConfig:
             'num_procs': self.num_procs,
         }
 
+    @property
+    def step_build_dataset(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.build_dataset.main',
+            'geoms_fp': self.dataset.geoms_fp,
+            'buffer': self.dataset.buffers.cube,
+            'check_data_coverage': self.dataset.check_data_coverage,
+            'base_dir': self.dataset.base_dir,
+            'raw_data_base_dir': self.dataset.raw_data.base_dir,
+            'year': self.dataset.year,
+            'dates_csv': self.dataset.raw_data.dates_csv,
+            'bands_name_map': self.dataset.bands_rename,
+            'bands_nok_mask': self.dataset.bands_nok_mask,
+            'extra_vectors': self.dataset.extra_vectors,
+            'extra_rasters': self.dataset.extra_rasters,
+        }
+
     # Which step to execute
     current_step: str = MISSING
 
