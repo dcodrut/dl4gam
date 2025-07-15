@@ -4,7 +4,6 @@ from pathlib import Path
 import ee
 import geopandas as gpd
 import pandas as pd
-import shapely.ops
 
 from dl4gam.utils import download_best_images, run_in_parallel
 
@@ -16,7 +15,6 @@ def main(
         gee_project_name: str,
         geoms_fp: str | Path,
         buffer_roi: int,
-        buffer_qc_metrics: int,
         year: str | int,
         download_window: tuple[str, str] = None,
         automated_selection: bool = False,
@@ -32,7 +30,6 @@ def main(
     :param gee_project_name: name of the Google Earth Engine project to use for the download
     :param geoms_fp: file path to the processed glacier outlines
     :param buffer_roi: buffer size in meters for the region of interest around each glacier
-    :param buffer_qc_metrics: buffer size in meters for the quality control metrics (e.g. NDSI, cloud coverage)
     :param year: year for which to download the images
     :param download_window: MM:DD tuple with the start and end dates for the download window (e.g. '08-01', '10-15')
     :param automated_selection: whether to use the automated selection of the best images (if not, dates_csv must be provided)
@@ -44,7 +41,7 @@ def main(
     log.info(f"Initializing Earth Engine API for project: {gee_project_name}")
     ee.Initialize(project=gee_project_name)
 
-    log.info(f"Reading the glacier outlines from {geoms_fp}")
+    log.info(f"Reading the glacier outlines from {geoms_fp} (layer 'glacier_sel')")
     gdf = gpd.read_file(geoms_fp, layer='glacier_sel')
 
     # Set the start-end dates (use the csv if provided, otherwise the year + download_window)
@@ -75,17 +72,17 @@ def main(
     # And build a list of GeoDataFrames for each glacier to run in parallel
     geoms_glacier = [gdf.iloc[i:i + 1].to_crs(gdf.iloc[i].crs_epsg).geometry for i in range(len(gdf))]
     geoms_roi = [r.buffer(buffer_roi).envelope for r in geoms_glacier]
-    geoms_glacier_buffered = [r.buffer(buffer_qc_metrics) for r in geoms_glacier]
 
-    # For cloud coverage and albedo, we use the simple buffered glacier geometries
-    geoms_clouds = geoms_glacier_buffered
-    geoms_albedo = geoms_glacier_buffered
+    # Read the additional geometries needed for the QC metrics and turn them into lists
+    log.info(f"Reading the QC geometries from {geoms_fp} ('buffer_clouds' and 'buffer_ndsi' layers)")
+    gdf_clouds = gpd.read_file(geoms_fp, layer='buffer_clouds')
+    gdf_ndsi = gpd.read_file(geoms_fp, layer='buffer_ndsi')
 
-    # Prepare the NDSI geometries (non-glacier pixels within the buffered glacier geometries)
-    geom_all_glaciers = shapely.ops.unary_union(geoms_glacier)
-    geom_all_glaciers_buffered = shapely.ops.unary_union(geoms_glacier_buffered)
-    geom_non_glacier = geom_all_glaciers_buffered.difference(geom_all_glaciers)
-    geoms_ndsi = [r.geometry.intersection(geom_non_glacier) for r in geoms_glacier_buffered]
+    # Align them with the glacier geometries and turn them into lists
+    gdf_clouds = gdf_clouds.set_index('entry_id').reindex(gdf.entry_id).reset_index()
+    gdf_ndsi = gdf_ndsi.set_index('entry_id').reindex(gdf.entry_id).reset_index()
+    geoms_clouds = [gdf_clouds.iloc[i:i + 1].geometry for i in range(len(gdf_clouds))]
+    geoms_ndsi = [gdf_ndsi.iloc[i:i + 1].geometry for i in range(len(gdf_ndsi))]
 
     # Prepare the output directory structure
     out_dirs = [Path(base_dir) / str(y) / entry_id for entry_id, y in zip(list(gdf.entry_id), years)]
@@ -96,7 +93,7 @@ def main(
         geom=geoms_roi,
         geom_clouds=geoms_clouds,
         geom_ndsi=geoms_ndsi,
-        geom_albedo=geoms_albedo,
+        geom_albedo=geoms_clouds, # we use the same buffered geometries for albedo as for clouds
         start_date=start_dates,
         end_date=end_dates,
         **kwargs,
