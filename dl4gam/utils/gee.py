@@ -31,7 +31,7 @@ def query_images(
     It also computes the coverage of the images over the ROI.
 
     :param img_collection_name: Google Earth Engine image collection name (e.g., 'COPERNICUS/S2_HARMONIZED')
-    :param geom: the region of interest as a GeoSeries with a single geometry
+    :param geom: the region of interest as a GeoSeries with a single geometry (the data will be downloaded in the CRS of this geometry)
     :param start_date: start date for filtering images (in 'YYYY-MM-dd' format)
     :param end_date: end date for filtering images (in 'YYYY-MM-dd' format)
     :param gsd: ground sample distance (pixel size in meters)
@@ -226,10 +226,11 @@ def query_images(
     return imgs
 
 
-def prepare_geom(g: gpd.GeoSeries):
+def prepare_geom(g: gpd.GeoSeries, return_as_gee_geom: bool = True):
     """
     Validate and process the geometry for Google Earth Engine compatibility.
     :param g: gpd.GeoSeries - The geometry to validate
+    :param return_as_gee_geom: bool - If True, coverts the geometry to a format compatible with Earth Engine.
     :return:
     """
 
@@ -249,8 +250,20 @@ def prepare_geom(g: gpd.GeoSeries):
     # Make sure the geometry is 2D (drop z-dimension if any)
     g = g.force_2d()
 
-    # Return the geometry in the Earth Engine format
-    return g.iloc[0].__geo_interface__
+    if return_as_gee_geom:
+        return g.iloc[0].__geo_interface__
+
+    return g
+
+
+def check_if_subset(geom_roi: gpd.GeoSeries, geom: gpd.GeoSeries, name: str):
+    _geom_roi = prepare_geom(geom_roi, return_as_gee_geom=False)
+    _geom = prepare_geom(geom, return_as_gee_geom=False)
+    if not _geom.within(_geom_roi):
+        raise ValueError(
+            f"The provided geometry ({name}) is not a subset of the region of interest. "
+            "Please ensure that the geometry is within the bounds of the ROI."
+        )
 
 
 def compute_image_cloud_percentage(img: ee.Image, geom: gpd.GeoSeries, gsd: int = 10):
@@ -410,7 +423,7 @@ def download_image(
     fp = Path(fp)
 
     # Convert the geometry for Earth Engine compatibility
-    geom_gee = ee.Geometry(geom.to_crs('EPSG:4326').iloc[0].__geo_interface__)
+    geom_gee = prepare_geom(geom)
 
     # Check if the file already exists and skip downloading if requested
     if skip_existing and fp.exists():
@@ -495,6 +508,23 @@ def download_best_images(
     :param try_reading: if True, attempts to read the existing file to check if it is valid before skipping download.
     :return: None
     """
+
+    # Validate the geometries
+    _roi = prepare_geom(geom, return_as_gee_geom=False).iloc[0]
+    if geom_clouds is not None:
+        geom_clouds = prepare_geom(geom_clouds, return_as_gee_geom=False)
+        if not geom_clouds.iloc[0].within(_roi):
+            raise ValueError("The geometry for computing cloud percentage must be within the main geometry.")
+
+    if geom_ndsi is not None:
+        geom_ndsi = prepare_geom(geom_ndsi, return_as_gee_geom=False)
+        if not geom_ndsi.iloc[0].within(_roi):
+            raise ValueError("The geometry for computing NDSI must be within the main geometry.")
+
+    if geom_albedo is not None:
+        geom_albedo = prepare_geom(geom_albedo, return_as_gee_geom=False)
+        if not geom_albedo.iloc[0].within(_roi):
+            raise ValueError("The geometry for computing albedo must be within the main geometry.")
 
     log.info(f"Querying images from {img_collection_name} for {start_date} to {end_date}")
     imgs_all = query_images(
