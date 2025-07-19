@@ -6,4 +6,4 @@ The framework is glacier-centric, meaning that data is processed and analyzed on
 This allows us to download the best images independently for each glacier, minimizing cloud/shadow coverage and seasonal snow as much as possible. 
 This approach also makes the parallelization straightforward.
 
-This repository extends the codebase of [DL4GAM-Alps](https://huggingface.co/dcodrut/dl4gam_alps) by making it more modular and easier to apply to other regions or setups.
+This repository extends the codebase of [DL4GAM-Alps](https://github.com/dcodrut/dl4gam_alps) by making it more modular and easier to apply to other regions or setups.
