@@ -144,9 +144,10 @@ def query_images(
     imgs = imgs.map(_compute_coverage)
 
     # From the full tiles, keep the first one alphabetically; for the partial tiles, keep all for later mosaicking.
+    # We consider a tile to be fully covering the ROI if its coverage is >= 98% to allow for reprojection errors.
     imgs_full = (
         imgs
-        .filter(ee.Filter.gte('coverage', 1 - 1e-4))  # allow for a small numerical error
+        .filter(ee.Filter.gte('coverage', 0.98))
         .sort('tile_code', True)
         .distinct('date')
     )
