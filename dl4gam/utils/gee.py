@@ -18,7 +18,6 @@ def query_images(
         geom: gpd.GeoSeries,
         start_date: str,
         end_date: str,
-        gsd: float | None = None,
         bands: list | str = 'all',
         cloud_collection_name: str | None = None,
         cloud_band: str = 'probability',
@@ -36,7 +35,6 @@ def query_images(
     Note than the data will be downloaded in the CRS of this geometry.
     :param start_date: start date for filtering images (in 'YYYY-MM-dd' format)
     :param end_date: end date for filtering images (in 'YYYY-MM-dd' format)
-    :param gsd: ground sample distance (pixel size in meters)
     :param bands: list of bands to keep in the images; if 'all', all bands are kept
     :param cloud_collection_name: Optional, Google Earth Engine image collection name for cloud masks
     (e.g., 'COPERNICUS/S2_CLOUD_PROBABILITY').
@@ -80,10 +78,17 @@ def query_images(
         imgs = imgs.select(bands)
 
     ####################################################################################################################
-    # Step 3: Reproject the images to the target CRS and scale
+    # Step 3: Reproject the images to the target CRS
     ####################################################################################################################
     target_crs = ee.Projection(crs_orig)
-    imgs = imgs.map(lambda img: ee.Image(img).resample('bilinear').reproject(crs=target_crs, scale=gsd))
+
+    # Get the band with the highest resolution (smallest scale) to determine the GSD
+    bands = imgs.first().bandNames()
+    band_scales = bands.map(lambda b: ee.Number(imgs.first().select([b]).projection().nominalScale()))
+    min_scale = band_scales.reduce(ee.Reducer.min())
+
+    # Reproject the images to the target CRS using bilinear interpolation
+    imgs = imgs.map(lambda img: ee.Image(img).resample('bilinear').reproject(crs=target_crs, scale=min_scale))
 
     ####################################################################################################################
     # Step 4: Keep the latest processed tile per acquisition day (in case of multiple reprocessed versions)
@@ -102,16 +107,11 @@ def query_images(
         Adds a mask band to the image indicating the coverage of the data over the region of interest.
         We use the band with the highest resolution (smallest scale) to create the mask.
         """
-        # Get the band names and their scales
         img = ee.Image(img)
-        bands = img.bandNames()
-        band_scales = ee.Dictionary.fromLists(
-            bands,
-            bands.map(lambda b: ee.Number(img.select([b]).projection().nominalScale()))
-        )
 
         # Get the band with the highest resolution (smallest scale)
-        higres_band = ee.String(band_scales.keys().sort(band_scales.values()).get(0))
+        band_scales_dict = ee.Dictionary.fromLists(bands, band_scales)
+        higres_band = ee.String(band_scales_dict.keys().sort(band_scales_dict.values()).get(0))
         mask = img.select(higres_band).mask().unmask(0).rename('mask_ok')
         img = img.addBands(mask)
         return img
@@ -121,22 +121,20 @@ def query_images(
         Computes the coverage of an image over the region of interest at the native resolution.
         """
         img = ee.Image(img)
-        mask = img.select('mask_ok')
-
-        native_scale = mask.projection().nominalScale()
+        mask = img.select(['mask_ok'])
 
         # Count the number of pixels in the mask_ok band that are not NODATA
         sum_ones = mask.reduceRegion(
             reducer=ee.Reducer.sum(),
             geometry=geom_gee,
-            scale=native_scale,
+            scale=min_scale,
             maxPixels=1e9
         ).get('mask_ok')
         area_ok = ee.Number(sum_ones).multiply(ee.Number(min_scale).pow(2))
 
         # Compute the total number of pixels in the region of interest
-        total_pixels = ee.Geometry(geom_gee).area().divide(native_scale.pow(2))
-        coverage = ee.Number(sum_ones).divide(total_pixels)
+        area_target = ee.Geometry(geom_gee).area()
+        coverage = area_ok.divide(area_target)
 
         return img.set({
             'coverage': coverage,
@@ -177,10 +175,10 @@ def query_images(
             cloud coverage.
             """
             cp_img = cloud_masks.filter(ee.Filter.eq('system:index', img.get('system:index'))).first()
-            cp_img = ee.Image(cp_img).select('cloud_p')
+            cp_img = ee.Image(cp_img).select(['cloud_p'])
 
             # Reproject the cloud probability image to the same CRS as the image
-            cp_img = cp_img.resample('bilinear').reproject(crs=target_crs, scale=gsd)
+            cp_img = cp_img.resample('bilinear').reproject(crs=target_crs, scale=min_scale)
 
             # If we are using the Google Cloud Score+ collection, invert & multiply the cloud probability by 100
             # (we will export the results as int16)
@@ -193,8 +191,8 @@ def query_images(
             img = ee.Image(img).addBands(cp_img)
 
             # Binarize the probability map to create a binary mask & include the NODATA pixels
-            cloud_mask = img.select('cloud_p').gt(cloud_mask_thresh_p * 100)
-            mask_nok = img.select('mask_ok').eq(0)  # NODATA pixels
+            cloud_mask = img.select(['cloud_p']).gt(cloud_mask_thresh_p * 100)
+            mask_nok = img.select(['mask_ok']).eq(0)  # NODATA pixels
             cloud_mask = cloud_mask.Or(mask_nok)
             img = img.addBands(cloud_mask.rename('cloud_mask'))
 
@@ -283,38 +281,37 @@ def check_if_subset(geom_roi: gpd.GeoSeries, geom: gpd.GeoSeries, name: str):
         )
 
 
-def compute_image_cloud_percentage(img: ee.Image, geom: gpd.GeoSeries, gsd: int = 10):
+def compute_image_cloud_percentage(img: ee.Image, geom: gpd.GeoSeries):
     """
-    Compute cloud percentage for a single image.
+    Compute cloud percentage for a single image at the native resolution.
     We expect the image to have a 'cloud_mask' band which is a binary mask where 1 indicates cloud presence.
 
     :param img: The image to process
     :param geom: Region to compute clouds over
-    :param gsd: Ground sample distance (pixel size in meters)
     :return: ee.Image with cloud_p property added
     """
 
     # Validate and prepare the geometry
     geom_gee = prepare_geom(geom)
 
-    avg_cloud_p = img.select('cloud_mask').reduceRegion(
+    cloud_mask = img.select(['cloud_mask'])
+    avg_cloud_p = cloud_mask.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=geom_gee,
-        scale=gsd,
+        scale=cloud_mask.projection().nominalScale(),
         maxPixels=1e9
     ).get('cloud_mask')
 
     return img.set({'cloud_p': avg_cloud_p})
 
 
-def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict, gsd: int = 10):
+def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict):
     """
-    Compute NDSI (Normalized Difference Snow Index) for a single image.
+    Compute NDSI (Normalized Difference Snow Index) for a single image at its native resolution.
 
     :param img: yhe image to process
     :param geom: region to compute NDSI over
     :param bands_name_map: band name mapping dictionary (e.g., {'B3': 'G', 'B11': 'SWIR'})
-    :param gsd: ground sample distance (pixel size in meters)
     :return: ee.Image with ndsi property added
     """
 
@@ -329,27 +326,26 @@ def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict,
     # Invert the bands_name_map to get the mapping from band names to their original names
     bands_name_map_inv = {v: k for k, v in bands_name_map.items()}
 
-    cloud_free_mask = img.select('cloud_mask').eq(0)
+    cloud_free_mask = img.select(['cloud_mask']).eq(0)
     ndsi = img.normalizedDifference([bands_name_map_inv['G'], bands_name_map_inv['SWIR']]).rename('NDSI')
     ndsi_masked = ndsi.updateMask(cloud_free_mask)
     avg_ndsi = ndsi_masked.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=geom_gee,
-        scale=gsd,
+        scale=img.select(bands_name_map_inv['R']).projection().nominalScale(),
         maxPixels=1e9
     ).get('NDSI')
 
     return img.set({'ndsi': avg_ndsi})
 
 
-def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict, gsd: int = 10):
+def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict):
     """
-    Compute albedo for a single image.
+    Compute albedo for a single image at its native resolution.
 
     :param img: the image to process
     :param geom: region to compute albedo over
     :param bands_name_map: mapping of band names to their original names (e.g., {'B': 'B2', 'G': 'B3', 'R': 'B4'})
-    :param gsd: ground sample distance (pixel size in meters)
     :return: ee.Image with albedo property added
     """
 
@@ -364,7 +360,7 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
     # Invert the bands_name_map to get the mapping from band names to their original names
     bands_name_map_inv = {v: k for k, v in bands_name_map.items()}
 
-    cloud_free_mask = img.select('cloud_mask').eq(0)
+    cloud_free_mask = img.select(['cloud_mask']).eq(0)
     albedo = img.expression(
         '0.5621 * B + 0.1479 * G + 0.2512 * R + 0.0015',
         {
@@ -377,7 +373,7 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
     avg_albedo = albedo_masked.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=geom_gee,
-        scale=gsd,
+        scale=img.select(bands_name_map_inv['R']).projection().nominalScale(),
         maxPixels=1e9
     ).get('albedo')
 
@@ -570,7 +566,6 @@ def download_best_images(
         geom=geom,
         start_date=start_date,
         end_date=end_date,
-        gsd=gsd,
         bands=bands_to_keep,
         cloud_collection_name=cloud_collection_name,
         cloud_band=cloud_band,
@@ -593,11 +588,11 @@ def download_best_images(
         metrics.append('cloud_p')
 
     if 'cloud_p' in metrics:
-        imgs_all = imgs_all.map(lambda img: compute_image_cloud_percentage(ee.Image(img), geom_clouds, gsd))
+        imgs_all = imgs_all.map(lambda img: compute_image_cloud_percentage(ee.Image(img), geom_clouds))
     if 'ndsi' in metrics:
-        imgs_all = imgs_all.map(lambda img: compute_image_ndsi(ee.Image(img), geom_ndsi, bands_name_map, gsd))
+        imgs_all = imgs_all.map(lambda img: compute_image_ndsi(ee.Image(img), geom_ndsi, bands_name_map))
     if 'albedo' in metrics:
-        imgs_all = imgs_all.map(lambda img: compute_image_albedo(ee.Image(img), geom_albedo, bands_name_map, gsd))
+        imgs_all = imgs_all.map(lambda img: compute_image_albedo(ee.Image(img), geom_albedo, bands_name_map))
 
     # Save metadata to a DataFrame
     info = imgs_all.getInfo()
