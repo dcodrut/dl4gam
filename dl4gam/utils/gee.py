@@ -112,7 +112,7 @@ def query_images(
 
         # Get the band with the highest resolution (smallest scale)
         higres_band = ee.String(band_scales.keys().sort(band_scales.values()).get(0))
-        mask = img.select(higres_band).mask().rename('mask_ok')
+        mask = img.select(higres_band).mask().unmask(0).rename('mask_ok')
         img = img.addBands(mask)
         return img
 
