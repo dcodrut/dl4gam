@@ -18,11 +18,12 @@ def query_images(
         geom: gpd.GeoSeries,
         start_date: str,
         end_date: str,
-        gsd: int,
-        bands: list = None,
-        cloud_collection_name: str = 'COPERNICUS/S2_CLOUD_PROBABILITY',
+        gsd: float | None = None,
+        bands: list | str = 'all',
+        cloud_collection_name: str | None = None,
         cloud_band: str = 'probability',
         cloud_mask_thresh_p: float = 0.4,
+        latest_tile_only: bool = True
 ):
     """
     It queries the Google Earth Engine image collection for images that cover the specified region of interest (ROI)
@@ -31,14 +32,18 @@ def query_images(
     It also computes the coverage of the images over the ROI.
 
     :param img_collection_name: Google Earth Engine image collection name (e.g., 'COPERNICUS/S2_HARMONIZED')
-    :param geom: the region of interest as a GeoSeries with a single geometry (the data will be downloaded in the CRS of this geometry)
+    :param geom: the region of interest as a GeoSeries with a single geometry;
+    Note than the data will be downloaded in the CRS of this geometry.
     :param start_date: start date for filtering images (in 'YYYY-MM-dd' format)
     :param end_date: end date for filtering images (in 'YYYY-MM-dd' format)
     :param gsd: ground sample distance (pixel size in meters)
-    :param bands: list of bands to keep in the images; if None, all bands are kept
-    :param cloud_collection_name: Google Earth Engine image collection name for cloud masks (e.g., 'COPERNICUS/S2_CLOUD_PROBABILITY')
+    :param bands: list of bands to keep in the images; if 'all', all bands are kept
+    :param cloud_collection_name: Optional, Google Earth Engine image collection name for cloud masks
+    (e.g., 'COPERNICUS/S2_CLOUD_PROBABILITY').
     :param cloud_band: which band to use for cloud probability (depends on the cloud collection)
     :param cloud_mask_thresh_p: which threshold (in [0, 1]) to use for binarizing the cloud probability
+    :param latest_tile_only: if True, keeps only the last processed tile per acquisition day
+    (in case of multiple reprocessed versions).
     :return: ee.ImageCollection with the filtered images
     """
 
@@ -62,7 +67,7 @@ def query_images(
     ####################################################################################################################
     # Step 2: Keep only the required bands if provided
     ####################################################################################################################
-    if bands is not None:
+    if bands != 'all':
         # First check if all the required bands are present in the images
         required_bands = set(bands)
         all_bands = set(ee.Image(imgs.first()).bandNames().getInfo())
@@ -83,10 +88,11 @@ def query_images(
     ####################################################################################################################
     # Step 4: Keep the latest processed tile per acquisition day (in case of multiple reprocessed versions)
     ####################################################################################################################
-    imgs = imgs.map(
-        lambda img: img.set({'date_tile_key': ee.String(img.get('date')).cat('_').cat(img.get('tile'))})
-    )
-    imgs = imgs.sort('processing_time', False).distinct('date_tile_key').sort('system:index', True)
+    if latest_tile_only:
+        imgs = imgs.map(
+            lambda img: img.set({'date_tile_key': ee.String(img.get('date')).cat('_').cat(img.get('tile'))})
+        )
+        imgs = imgs.sort('processing_time', False).distinct('date_tile_key').sort('system:index', True)
 
     ####################################################################################################################
     # Step 5: Keep only one tile per acquisition day if already fully covers our ROI
@@ -106,7 +112,7 @@ def query_images(
 
         # Get the band with the highest resolution (smallest scale)
         higres_band = ee.String(band_scales.keys().sort(band_scales.values()).get(0))
-        mask = img.select([higres_band]).mask().rename('mask_ok')
+        mask = img.select(higres_band).mask().rename('mask_ok')
         img = img.addBands(mask)
         return img
 
@@ -157,7 +163,8 @@ def query_images(
         def _attach_cloud_mask(img):
             """
             Attaches the cloud probability band to the image from the cloud masks collection.
-            Note that we include also missing pixels in the cloud mask, so that we can later sort only by cloud coverage.
+            Note that we also include the missing pixels in the cloud mask, so that later we can sort only by
+            cloud coverage.
             """
             cp_img = cloud_masks.filter(ee.Filter.eq('system:index', img.get('system:index'))).first()
             cp_img = ee.Image(cp_img).select('cloud_p')
@@ -372,7 +379,7 @@ def sort_images(df_meta: pd.DataFrame, sort_by: tuple, weights: tuple = None):
     Computes a weighted score for each image based on the specified metrics and weights, then sorts the DataFrame by it.
 
     :param df_meta: DataFrame containing metadata for the images, including the metrics to sort by.
-    :param sort_by: tuple of metric names to sort by (e.g., ('cloud_p', 'ndsi')).
+    :param sort_by: tuple of metric names to sort by; subset of ('cloud_p', 'ndsi', 'albedo').
     :param weights: weights for each metric in the sort_by tuple. If None, equal weights are used.
     :return: pd.DataFrame sorted by the computed score.
     """
@@ -402,7 +409,7 @@ def download_image(
         fp: str | Path,
         img: ee.Image,
         geom: gpd.GeoSeries,
-        gsd: int,
+        gsd: float | None = None,
         skip_existing: bool = True,
         try_reading: bool = True,
         num_threads: int = None  # default is None, which uses the default from geedim.download.BaseImage.download
@@ -414,9 +421,11 @@ def download_image(
     :param img: ee.Image object to download (can be a single image or a mosaic).
     :param geom: gpd.GeoSeries with a single geometry defining the region of interest (ROI) for downloading the image.
     :param gsd: ground sample distance (pixel size in meters) for the downloaded image.
+    If None, GEE will decide the scale.
     :param skip_existing: if True, skips downloading if the file already exists; if False, always downloads.
     :param try_reading: if True, attempts to read the existing file to check if it is valid before skipping download.
-    :param num_threads: number of threads to use for downloading the image; if None, uses the default from geedim.download.BaseImage.download.
+    :param num_threads: number of threads to use for downloading the image;
+    if None, uses the default from geedim.download.BaseImage.download.
     :return: None
     """
 
@@ -464,16 +473,18 @@ def download_best_images(
         geom: gpd.GeoSeries,
         start_date: str,
         end_date: str,
-        gsd: int,
+        gsd: float | None,
         out_dir: str | Path,
-        num_imgs_to_keep: int = 1,
+        num_days_to_keep: int = 1,
+        latest_tile_only: bool = True,
+        bands_to_keep: list | str = 'all',
         bands_name_map: dict = None,
-        cloud_collection_name: str = 'COPERNICUS/S2_CLOUD_PROBABILITY',
+        cloud_collection_name: str | None = None,
         cloud_band: str = 'probability',
         cloud_mask_thresh_p: float = 0.4,
         max_cloud_p: float = 0.3,
         min_coverage: float = 0.9,
-        sort_by: tuple = ('cloud_p', 'ndsi'),
+        sort_by: tuple | None = ('cloud_p',),
         score_weights: tuple = None,
         geom_clouds: gpd.GeoSeries = None,
         geom_ndsi: gpd.GeoSeries = None,
@@ -490,31 +501,48 @@ def download_best_images(
     :param start_date: start date for filtering images (in 'YYYY-MM-dd' format).
     :param end_date: end date for filtering images (in 'YYYY-MM-dd' format).
     :param gsd: ground sample distance (pixel size in meters) for the downloaded images.
+    If None, we will let GEE decide. Note that this gsd will also be used for computing the various metrics.
     :param out_dir: directory where the images will be saved.
-    :param num_imgs_to_keep: how many best images to keep and download.
-    :param bands_name_map: dictionary re-mapping the band names (e.g., {'B3': 'G', 'B11': 'SWIR'}). We need this to compute NDSI and albedo, if requested.
-    :param cloud_collection_name: collection name for cloud masks (e.g., 'COPERNICUS/S2_CLOUD_PROBABILITY').
+    :param num_days_to_keep: how many best images/days to keep and download.
+    :param latest_tile_only: if True, keeps only the latest processed tile per acquisition day
+    (in case of multiple reprocessed versions).
+    :param bands_to_keep: list of bands to keep in the images; if 'all', all bands are kept.
+    :param bands_name_map: dictionary re-mapping the band names (e.g., {'B3': 'G', 'B11': 'SWIR'}).
+    We need this to compute NDSI and albedo, if requested.
+    :param cloud_collection_name: collection name for cloud masks (e.g., 'COPERNICUS/S2_CLOUD_PROBABILITY') if cloud
+    masks are needed (i.e. if geom_clouds is provided).
     :param cloud_band: which band to use for cloud probability (depends on the cloud collection).
     :param cloud_mask_thresh_p: threshold for binarizing the cloud probability band (in [0, 1]).
-    :param max_cloud_p: maximum allowed cloud percentage for the images to be considered (in [0, 1]), computed over the ROI.
+    :param max_cloud_p: maximum allowed cloud percentage for the images to be considered (in [0, 1]) computed over
+    geom_clouds. Ignored if geom_clouds is None.
     :param min_coverage: minimum required coverage of the images over the ROI (in [0, 1]).
-    :param sort_by: tuple of metric names to sort by (e.g., ('cloud_p', 'ndsi')). The images will be sorted by these metrics using a weighted score.
+    :param sort_by: tuple of metric names to sort by (subset of {'cloud_p', 'ndsi', 'albedo'}).
+    The images will be sorted by a score combining these metrics. If None, date is used for sorting.
     :param score_weights: weights for each metric in the sort_by tuple. If None, equal weights are used.
-    :param geom_clouds: gpd.GeoSeries with a single geometry defining the region of interest for computing cloud percentage.
-    :param geom_ndsi: gpd.GeoSeries with a single geometry defining the region of interest for computing NDSI.
-    :param geom_albedo: gpd.GeoSeries with a single geometry defining the region of interest for computing albedo.
+    :param geom_clouds: gpd.GeoSeries with a single geometry defining the ROI for computing cloud percentage.
+    :param geom_ndsi: gpd.GeoSeries with a single geometry defining the ROI for computing NDSI.
+    Note that only cloud-free pixels within this geometry will be used, so cloud mask collection is required.
+    :param geom_albedo: gpd.GeoSeries with a single geometry defining the ROI for computing albedo.
+    Note that only cloud-free pixels within this geometry will be used, so cloud mask collection is required.
     :param num_procs: number of processes to use for downloading the images in parallel.
     :param skip_existing: if True, skips downloading if the file already exists; if False, always downloads.
     :param try_reading: if True, attempts to read the existing file to check if it is valid before skipping download.
     :return: None
     """
 
-    # Validate the geometries
+    # Validate the geometries and other parameters
     _roi = prepare_geom(geom, return_as_gee_geom=False).iloc[0]
     if geom_clouds is not None:
         geom_clouds = prepare_geom(geom_clouds, return_as_gee_geom=False)
         if not geom_clouds.iloc[0].within(_roi):
             raise ValueError("The geometry for computing cloud percentage must be within the main geometry.")
+
+        # We also expect a cloud collection to be provided if we want to compute cloud percentage
+        if cloud_collection_name is None:
+            raise ValueError(
+                "A cloud collection must be provided if you want to compute cloud percentage. "
+                "Please provide a valid cloud_collection_name."
+            )
 
     if geom_ndsi is not None:
         geom_ndsi = prepare_geom(geom_ndsi, return_as_gee_geom=False)
@@ -533,18 +561,32 @@ def download_best_images(
         start_date=start_date,
         end_date=end_date,
         gsd=gsd,
-        bands=list(bands_name_map.keys()) if bands_name_map else None,
+        bands=bands_to_keep,
         cloud_collection_name=cloud_collection_name,
         cloud_band=cloud_band,
-        cloud_mask_thresh_p=cloud_mask_thresh_p
+        cloud_mask_thresh_p=cloud_mask_thresh_p,
+        latest_tile_only=latest_tile_only
     )
 
-    # Compute the metrics for each image needed for sorting
-    if 'cloud_p' in sort_by:
+    # Compute the metrics for each image needed for filtering / sorting (if requested)
+    metrics = ['coverage']  # always computed
+    if sort_by is not None:
+        if not set(sort_by).issubset({'cloud_p', 'ndsi', 'albedo'}):
+            raise ValueError(
+                f"sort_by must be a subset of {{'cloud_p', 'ndsi', 'albedo'}}. "
+                f"Provided: {sort_by}. Please check the input parameters."
+            )
+        metrics += list(sort_by)
+
+    # If we want to filter by cloud percentage, we need to compute it even if it is not in sort_by
+    if geom_clouds is not None and 'cloud_p' not in metrics:
+        metrics.append('cloud_p')
+
+    if 'cloud_p' in metrics:
         imgs_all = imgs_all.map(lambda img: compute_image_cloud_percentage(ee.Image(img), geom_clouds, gsd))
-    if 'ndsi' in sort_by:
+    if 'ndsi' in metrics:
         imgs_all = imgs_all.map(lambda img: compute_image_ndsi(ee.Image(img), geom_ndsi, bands_name_map, gsd))
-    if 'albedo' in sort_by:
+    if 'albedo' in metrics:
         imgs_all = imgs_all.map(lambda img: compute_image_albedo(ee.Image(img), geom_albedo, bands_name_map, gsd))
 
     # Save metadata to a DataFrame
@@ -552,9 +594,10 @@ def download_best_images(
     feats = info['features']
     df_meta = pd.DataFrame([f['properties'] for f in feats])
     df_meta = df_meta.sort_values(by='date')
+    log.info(f"Found {len(df_meta)} images in the collection {img_collection_name} with the specified criteria.")
 
     # Print and export the statistics to a CSV file
-    cols2keep = ['id', 'date', 'coverage'] + list(sort_by)
+    cols2keep = ['id', 'date'] + metrics
     df_meta_export = df_meta[cols2keep]
     with pd.option_context('display.max_columns', None, 'display.width', 240):
         fp_out_meta = Path(out_dir) / 'metadata_all.csv'
@@ -563,34 +606,40 @@ def download_best_images(
         log.info(f"Stats (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
 
     # Impose the minimum coverage and maximum cloud percentage
-    df_meta = df_meta[(df_meta['coverage'] >= min_coverage) & (df_meta['cloud_p'] <= max_cloud_p)]
-    log.info(
-        f"After filtering by coverage >= {min_coverage} and cloud_p <= {max_cloud_p}, "
-        f"we have {len(df_meta)} images left."
-    )
+    if min_coverage > 0:
+        df_meta = df_meta[df_meta['coverage'] >= min_coverage]
+        log.info(f"After filtering by coverage >= {min_coverage}, we have {len(df_meta)} images left.")
+
+    if geom_clouds is not None and max_cloud_p < 1:
+        df_meta = df_meta[df_meta['cloud_p'] <= max_cloud_p]
+        log.info(f"After filtering by cloud_p <= {max_cloud_p}, we have {len(df_meta)} images left.")
 
     if len(df_meta) == 0:
-        return  # No images left after filtering
+        log.warning("No images left after filtering. Please check the input parameters.")
+        return
 
     # Compute the QC scores, sort images and export the filtered metadata
-    df_meta = sort_images(df_meta, sort_by, score_weights)
+    if sort_by is not None:
+        df_meta = sort_images(df_meta, sort_by, score_weights)
+
+    # Export the filtered metadata with scores
     cols2keep += [c for c in df_meta.columns if c.startswith('score')]
     df_meta_export = df_meta[cols2keep]
     with pd.option_context('display.max_columns', None, 'display.width', 240):
         fp_out_meta = Path(out_dir) / 'metadata_filtered.csv'
         df_meta_export.to_csv(fp_out_meta, index=False)
-        log.info(f"Filtered stats (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
+        log.info(f"Filtered stats + scores (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
 
     # Keep the best images based on the number requested
-    if len(df_meta) < num_imgs_to_keep:
+    if len(df_meta) < num_days_to_keep:
         log.warning(
-            f"Requested {num_imgs_to_keep} images, but only {len(df_meta)} images left after filtering. "
+            f"Requested {num_days_to_keep} images, but only {len(df_meta)} images left after filtering. "
             f"Downloading all available images."
         )
-        num_imgs_to_keep = len(df_meta)
+        num_days_to_keep = len(df_meta)
 
     # Download the best images in parallel
-    ordered_ids = df_meta['id'].tolist()[:num_imgs_to_keep]
+    ordered_ids = df_meta['id'].tolist()[:num_days_to_keep]
     fp_out_list = [Path(out_dir) / f"{img_id}.tif" for img_id in ordered_ids]
     run_in_parallel(
         fun=download_image,
@@ -657,7 +706,7 @@ if __name__ == "__main__":
         end_date='2015-10-15',
         gsd=_gsd,
         out_dir=Path('/tmp/dl4gam_dl_example'),
-        num_imgs_to_keep=4,
+        num_days_to_keep=4,
         bands_name_map=_bands_name_map,
         # cloud_collection_name='COPERNICUS/S2_CLOUD_PROBABILITY',
         # cloud_band='probability',

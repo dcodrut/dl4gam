@@ -80,8 +80,9 @@ class BaseDatasetConfig:
         min_coverage: float = 0.9  # minimum coverage percentage to accept the scene
         max_cloud_p: float = 0.3  # max cloud coverage (glacier + buffer); if fixed dates are used, this will be ignored
 
-        # number of images to download per glacier (we choose the best automatically if strict dates are not imposed)
-        num_imgs_to_keep: int = 1
+        # number of images (i.e. days) to download per glacier
+        # (we choose the best automatically if strict dates are not imposed)
+        num_days_to_keep: int = 1
 
         # Specify how to sort the images for each glacier when selecting the best one.
         # After filtering the scenes using min_coverage, max_cloud_p we sort the rest by a (weighted) score using:
@@ -301,7 +302,7 @@ class S2AlpsConfig(BaseDatasetConfig):
             cloud_band='cs',  # band name for the cloud probability mask
             cloud_mask_thresh_p=0.6,  # threshold for binarizing the cloud probability mask
             max_cloud_p=0.3,  # filter out scenes with more than 30% cloud coverage
-            num_imgs_to_keep=1,  # we will select the best image automatically using the next metrics
+            num_days_to_keep=1,  # we will select the best image automatically using the next metrics
             sort_by=('cloud_p', 'ndsi'),  # sort by cloud coverage and NDSI (see also `download_best_images`)
             download_window=('08-01', '10-15')  # default interval for downloading if strict dates are not imposed
         )

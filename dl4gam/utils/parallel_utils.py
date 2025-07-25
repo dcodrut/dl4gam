@@ -55,7 +55,10 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_s
     # check if the arguments which are lists have the same length
     arg_lens = [len(x) for _, x in kwargs.items() if isinstance(x, list)]
     assert len(arg_lens) > 0, 'At least one argument is expected to be a list.'
-    assert max(arg_lens) == min(arg_lens), 'The arguments provided as lists should have the same length'
+    assert max(arg_lens) == min(arg_lens), (
+        'The arguments provided as lists should have the same length. '
+        'If you want to repeat an argument that is a list, provide it as tuple instead of list.'
+    )
 
     # repeat the arguments which are not lists
     kwargs['fun'] = fun
