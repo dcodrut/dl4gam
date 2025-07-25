@@ -118,15 +118,25 @@ def query_images(
 
     def _compute_coverage(img):
         """
-        Computes the coverage of an image over the region of interest.
+        Computes the coverage of an image over the region of interest at the native resolution.
         """
         img = ee.Image(img)
-        coverage = img.select('mask_ok').reduceRegion(
-            reducer=ee.Reducer.mean(),
+        mask = img.select('mask_ok')
+
+        native_scale = mask.projection().nominalScale()
+
+        # Count the number of pixels in the mask_ok band that are not NODATA
+        sum_ones = mask.reduceRegion(
+            reducer=ee.Reducer.sum(),
             geometry=geom_gee,
-            scale=gsd,
+            scale=native_scale,
             maxPixels=1e9
         ).get('mask_ok')
+        area_ok = ee.Number(sum_ones).multiply(ee.Number(min_scale).pow(2))
+
+        # Compute the total number of pixels in the region of interest
+        total_pixels = ee.Geometry(geom_gee).area().divide(native_scale.pow(2))
+        coverage = ee.Number(sum_ones).divide(total_pixels)
 
         return img.set({
             'coverage': coverage,
@@ -138,7 +148,7 @@ def query_images(
     # From the full tiles, keep the first one alphabetically; for the partial tiles, keep all for later mosaicking.
     imgs_full = (
         imgs
-        .filter(ee.Filter.eq('coverage', 1))
+        .filter(ee.Filter.gte('coverage', 1 - 1e-4))  # allow for a small numerical error
         .sort('tile_code', True)
         .distinct('date')
     )
