@@ -496,7 +496,7 @@ def download_best_images(
         geom_clouds: gpd.GeoSeries = None,
         geom_ndsi: gpd.GeoSeries = None,
         geom_albedo: gpd.GeoSeries = None,
-        num_procs: int = 1,
+        num_procs_download: int = 1,
         skip_existing: bool = True,
         try_reading: bool = True
 ):
@@ -531,7 +531,7 @@ def download_best_images(
     Note that only cloud-free pixels within this geometry will be used, so cloud mask collection is required.
     :param geom_albedo: gpd.GeoSeries with a single geometry defining the ROI for computing albedo.
     Note that only cloud-free pixels within this geometry will be used, so cloud mask collection is required.
-    :param num_procs: number of processes to use for downloading the images in parallel.
+    :param num_procs_download: number of processes to use for downloading the images in parallel.
     :param skip_existing: if True, skips downloading if the file already exists; if False, always downloads.
     :param try_reading: if True, attempts to read the existing file to check if it is valid before skipping download.
     :return: None
@@ -655,7 +655,7 @@ def download_best_images(
         gsd=gsd,
         skip_existing=skip_existing,
         try_reading=try_reading,
-        num_procs=num_procs,
+        num_procs=num_procs_download,
         num_threads=1  # this goes to geedim.download; use only one thread per image to avoid issues with GEE API limits
     )
 
@@ -726,7 +726,7 @@ if __name__ == "__main__":
         score_weights=None,  # use equal weights for sorting
         geom_clouds=_geom_clouds,
         geom_ndsi=_geom_ndsi,
-        num_procs=1,
+        num_procs_download=1,
         skip_existing=True,
         try_reading=True
     )
