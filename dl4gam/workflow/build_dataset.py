@@ -112,8 +112,18 @@ def filter_and_assign_images(
     )
 
     # Collect all the dates and file paths from the results, filtering out None values
-    dates, fp_images = map(list, zip(*[x for x in res if x is not None]))
-    glacier_ids = [gid for gid, r in zip(glacier_ids, res) if r is not None]
+    glacier_ids_with_images, dates, fp_images = [], [], []
+    for gid, r in zip(glacier_ids, res):
+        if r is not None:
+            date, fp_image = r
+            glacier_ids_with_images.append(gid)
+            dates.append(date)
+            fp_images.append(fp_image)
+    if len(glacier_ids_with_images) == 0:
+        raise FileNotFoundError(
+            f"No images found for any glacier in the provided raw data base directory: {raw_data_base_dir}. "
+            f"Please check the directory structure and the glacier IDs."
+        )
 
     return glacier_ids, dates, fp_images
 
