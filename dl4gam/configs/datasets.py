@@ -189,6 +189,10 @@ class BaseDatasetConfig:
     # We will automatically reproject and clip the data to the glacier cube.
     extra_vectors: Dict[str, str] = field(default_factory=dict)
 
+    # A list of features to compute using xDEM (e.g. slope, aspect, etc.)
+    # See https://xdem.readthedocs.io/en/stable/gen_modules/xdem.DEM.get_terrain_attribute.html
+    xdem_features: Optional[List[str]] = None
+
     # ==================================================================================================================
     # Local paths; # TODO: see later if these should be set in __post_init__ such that they are frozen
     # ==================================================================================================================
@@ -346,6 +350,17 @@ class S2AlpsConfig(BaseDatasetConfig):
     extra_vectors: Dict[str, str] = field(default_factory=lambda: {
         'debris': '../data/outlines/debris_multisource/debris_multisource.shp'
     })
+
+    # Which features to compute using xDEM
+    xdem_features: List[str] = field(
+        default_factory=lambda: [
+            'slope',
+            'aspect',
+            'planform_curvature',
+            'profile_curvature',
+            'terrain_ruggedness_index'
+        ]
+    )
 
     def __post_init__(self):
         super().__post_init__()

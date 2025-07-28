@@ -91,6 +91,7 @@ class DL4GAMConfig:
             'bands_nok_mask': self.dataset.bands_nok_mask,
             'extra_vectors': self.dataset.extra_vectors,
             'extra_rasters': self.dataset.extra_rasters,
+            'xdem_features': self.dataset.xdem_features,
         }
 
     # Which step to execute

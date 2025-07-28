@@ -144,6 +144,7 @@ def prep_glacier_dataset(
         bands_nok_mask: Optional[list[str]] = None,
         extra_geodataframes: Optional[dict[str, gpd.GeoDataFrame]] = None,
         extra_rasters: Optional[dict[str, str | Path]] = None,
+        xdem_features: Optional[list[str]] = None,
         no_data: int = -9999,
         fp_out: Optional[str | Path] = None,
 ):
@@ -157,10 +158,17 @@ def prep_glacier_dataset(
     :param gl_df: the geopandas dataframe with all the glacier outlines
     :param buffer: the buffer (in meters) around the current glacier to be used when cropping the image data
     :param check_data_coverage: whether to check if the data covers the current glacier + buffer
-    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values); If None, all the bands are kept, with their original names.
+    :param bands_name_map: A dict containing the bands we keep from the raw data (as keys) and their new names (values);
+        If None, all the bands are kept, with their original names.
     :param bands_nok_mask: the names of the bands to be used for building the mask for bad pixels
-    :param extra_geodataframes: a dict with keys as variable names and values as GeoDataFrames containing the extra vector data (e.g. debris cover) to be added as additional binary masks
-    :param extra_rasters: a dict with keys as variable names and values as directories containing the rasters (.tif) to be added as additional variables
+    :param extra_geodataframes: a dict with keys as variable names and values as GeoDataFrames containing the extra
+        vector data (e.g. debris cover) to be added as additional binary masks
+    :param extra_rasters: a dict with keys as variable names and values as directories containing the rasters (.tif) to
+        be added as additional variables
+    :param xdem_features: a list of DEM features to be added to the dataset computed with xDEM.
+        (see https://xdem.readthedocs.io/en/stable/gen_modules/xdem.DEM.get_terrain_attribute.html).
+        Any attribute can be used, e.g. ['slope', 'aspect', 'profile_curvature', 'terrain_ruggedness_index'].
+        If None, no DEM features are added.
     :param no_data: the value to be used as NODATA for the raster data; for the binary masks, it will be -1
     :param fp_out: the path to the output glacier dataset (if None, the raster is returned)
     :return: None or the xarray dataset
@@ -244,9 +252,15 @@ def prep_glacier_dataset(
         ds = add_extra_rasters(ds, extra_rasters, no_data)
 
     # Add DEM features computed with xDEM
-    if 'dem' in ds.data_vars:
-        log.debug(f"Adding DEM features for glacier {entry_id}")
-        ds = add_dem_features(ds, no_data)
+    if xdem_features is not None:
+        if 'dem' in ds.data_vars:
+            log.debug(f"Adding DEM features ({xdem_features}) for glacier {entry_id}")
+            ds = add_dem_features(ds, xdem_features, no_data)
+        else:
+            raise ValueError(
+                f"The dataset for glacier {entry_id} does not contain a 'dem' variable, "
+                f"so we cannot compute DEM features. "
+            )
 
     # Not sure why but needed for QGIS
     for v in ds.data_vars:
@@ -341,12 +355,14 @@ def add_extra_rasters(ds: xr.Dataset, extra_rasters: dict[str, str | Path], no_d
     return ds
 
 
-def add_dem_features(ds, no_data):
+def add_dem_features(ds: xr.Dataset, xdem_features: list[str], no_data: int = -9999):
     """
     Add DEM features to the glacier dataset using the XDEM library.
     The features are: slope, aspect, planform curvature, profile curvature, terrain ruggedness index.
 
     :param ds: the Xarray glacier dataset to which the DEM features will be added.
+    :param xdem_features: a list of DEM features to be added to the dataset computed with xDEM.
+        See https://xdem.readthedocs.io/en/stable/gen_modules/xdem.DEM.get_terrain_attribute.html
     :param no_data: the value to be used as NODATA
 
     :return: None
@@ -380,19 +396,10 @@ def add_dem_features(ds, no_data):
             dem = xdem.DEM.from_array(dataset.read(1), transform=ds.rio.transform(), crs=ds.rio.crs)
 
             # Compute the DEM features
-            attrs_names = [
-                'slope',
-                'aspect',
-                'planform_curvature',
-                'profile_curvature',
-                'terrain_ruggedness_index'
-            ]
-            attributes = xdem.terrain.get_terrain_attribute(
-                dem.data, resolution=dem.res, attribute=attrs_names
-            )
+            attributes = xdem.terrain.get_terrain_attribute(dem.data, resolution=dem.res, attribute=xdem_features)
 
             # Add the features to the glacier dataset (remove the NANs from the margins)
-            for k, data in zip(attrs_names, attributes):
+            for k, data in zip(xdem_features, attributes):
                 data_padded = np.pad(data[1:-1, 1:-1].astype(np.float32), pad_width=1, mode='edge')
                 ds[k] = (('y', 'x'), data_padded)
                 ds[k].attrs['_FillValue'] = np.float32(no_data)
