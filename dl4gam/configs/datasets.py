@@ -308,24 +308,29 @@ class S2AlpsConfig(BaseDatasetConfig):
         )
     )
 
+    # Always add the COPDEM30 no matter the year
+    # TODO: take it from OGGM dirs
+    extra_rasters: Dict[str, str] = field(default_factory=lambda: {
+        'dem': '../data/external/copdem_30m',
+    })
+    # whether to include the dhdt raster from Hugonnet et al. (2021) (see also `__post_init__`)
+    include_dhdt_raster: bool = True
+
     def __post_init__(self):
         super().__post_init__()
 
-        # Auto set extra_rasters based on the dataset label (year)
-        raster_map = {
-            'inv': {
-                'dem': '../data/external/copdem_30m',
-                'dhdt': '../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt',
-                'v': '../data/external/velocity/its_live/2015',
-            },
-            '2023': {
-                'dem': '../data/external/copdem_30m',
-                'dhdt': '../data/external/dhdt_hugonnet/11_rgi60_2015-01-01_2020-01-01/dhdt',
-                'v': '../data/external/velocity/its_live/2022',
-            }
-        }
-        if not self.extra_rasters and self.year in raster_map:
-            self.extra_rasters = raster_map[self.year].copy()
+        # Automatically add the 'dhdt' raster from Hugonnet et al. (2021)
+        if self.include_dhdt_raster:
+            if self.year == 'inv':
+                self.extra_rasters['dhdt'] = '../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'
+            else:
+                # For the year, we will use the closest pentad to the given year (e.g. 2023)
+                # Note that the data is available for four 5-year periods: 2000-2005, 2005-2010, 2010-2015, 2015-2020
+                pentad_start = (int(self.year) // 5) * 5
+                pentad_start = max(min(pentad_start, 2015), 2000)  # limit to the available pentads
+                pentad_end = pentad_start + 5
+                dirname = f"11_rgi60_{pentad_start}-01-01_{pentad_end}-01-01"
+                self.extra_rasters['dhdt'] = f"../data/external/dhdt_hugonnet/{dirname}/dhdt"
 
         # Set the dates to the inventory ones (exported in the notebook)
         if self.year == 'inv':
