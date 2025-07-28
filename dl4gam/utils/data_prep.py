@@ -141,10 +141,10 @@ def prep_glacier_dataset(
         buffer: int = 0,
         check_data_coverage=True,
         bands_name_map: Optional[dict[str, str]] = None,
-        bands_nok_mask: Optional[list[str]] = None,
+        bands_nok_mask: Optional[tuple[str]] = None,
         extra_geodataframes: Optional[dict[str, gpd.GeoDataFrame]] = None,
         extra_rasters: Optional[dict[str, str | Path]] = None,
-        xdem_features: Optional[list[str]] = None,
+        xdem_features: Optional[tuple[str]] = None,
         no_data: int = -9999,
         fp_out: Optional[str | Path] = None,
         overwrite: bool = False

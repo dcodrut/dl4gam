@@ -73,7 +73,7 @@ class DL4GAMConfig:
             'gsd': self.dataset.oggm_data.gsd,
             'border_m': self.dataset.buffers.cube,
             'dem_source': self.dataset.oggm_data.dem_source,
-            'num_procs': self.num_procs,
+            'num_procs_download': self.num_procs,
         }
 
     @property

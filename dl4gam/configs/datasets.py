@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, Tuple, Union, Any, Optional
+from typing import Dict, Tuple, Union, Any, Optional
 
 from omegaconf import MISSING
 
@@ -176,8 +176,8 @@ class BaseDatasetConfig:
     # dropped. We also need this information to compute the NDSI and albedo.
     bands_rename: Dict[str, str] = MISSING
 
-    # A list of bands to be merged into a QC mask (e.g. ['~CLOUDLESS_MASK', 'SOME_OTHER_MASK']), where ~ means negation
-    bands_nok_mask: List[str] = field(default_factory=list)
+    # A list of bands to be merged into a QC mask (e.g. ('~CLOUDLESS_MASK', 'SOME_OTHER_MASK')), where ~ means negation
+    bands_nok_mask: Tuple[str] = field(default_factory=list)
 
     # A dictionary {name -> path} with the paths to various directories that contain additional raster data to be
     # added to the glacier cubes. The data is expected to be in a raster format (e.g. tif) and it will be
@@ -191,7 +191,7 @@ class BaseDatasetConfig:
 
     # A list of features to compute using xDEM (e.g. slope, aspect, etc.)
     # See https://xdem.readthedocs.io/en/stable/gen_modules/xdem.DEM.get_terrain_attribute.html
-    xdem_features: Optional[List[str]] = None
+    xdem_features: Optional[Tuple[str]] = None
 
     # ==================================================================================================================
     # Local paths; # TODO: see later if these should be set in __post_init__ such that they are frozen
@@ -344,7 +344,7 @@ class S2AlpsConfig(BaseDatasetConfig):
         'B12': 'B12'
     })
 
-    bands_nok_mask: List[str] = field(default_factory=lambda: ['cloud_mask'])
+    bands_nok_mask: Tuple[str] = field(default_factory=lambda: ('cloud_mask',))
 
     # Use the (mixed) debris product processed in the notebook
     extra_vectors: Dict[str, str] = field(default_factory=lambda: {
@@ -352,14 +352,14 @@ class S2AlpsConfig(BaseDatasetConfig):
     })
 
     # Which features to compute using xDEM
-    xdem_features: List[str] = field(
-        default_factory=lambda: [
+    xdem_features: Tuple[str] = field(
+        default_factory=lambda: (
             'slope',
             'aspect',
             'planform_curvature',
             'profile_curvature',
             'terrain_ruggedness_index'
-        ]
+        )
     )
 
     def __post_init__(self):
