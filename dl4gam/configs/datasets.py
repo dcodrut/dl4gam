@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Tuple, Union, Any, Optional
 
 from omegaconf import MISSING
@@ -43,6 +43,8 @@ class BaseDatasetConfig:
         # automatically select the best image based on cloud coverage, NDSI and albedo.
         # If False, we expect the dates_csv to be provided (see below) with the dates to be used for each glacier
         # or to have the images already selected and stored in the root_dir.
+        # Note that it can also be set to True if a single image per glacier is available (e.g. already pre-processed);
+        # in this case no dates_csv is expected and no QC metrics will be computed (we will just use the image as is).
         automated_selection: bool = False
 
         # Alternatively, we can use a csv file with the dates (e.g. from an inventory or manually chosen)
@@ -57,7 +59,7 @@ class BaseDatasetConfig:
         # Note that currently this was tested for Sentinel-2 data only.  # TODO: add Landsat-8
 
         # (rectangular) buffer around the glaciers (in meters) used for downloading
-        buffer_roi: Union[int, float] = None
+        buffer_roi: Optional[Union[int, float]] = None
 
         # GEE project to use for downloading
         # (see https://developers.google.com/earth-engine/guides/transition_to_cloud_projects)
@@ -66,8 +68,9 @@ class BaseDatasetConfig:
         # GEE image collections e.g. COPERNICUS/S2_HARMONIZED
         img_collection_name: Optional[str] = None
 
-        # default interval DD:MM (within the given year) for downloading if strict dates are not imposed (see dates_csv)
-        download_window: Tuple[str, str] = ('08-01', '10-15')
+        # date interval (within the given year) for downloading if strict dates are not imposed (see dates_csv)
+        # format: DD:MM e.g. ('08-01', '10-15')
+        download_window: Optional[Tuple[str, str]] = None
 
         # Parameters for the cloud masks
         cloud_collection_name: Optional[str] = None  # e.g. 'COPERNICUS/S2_CLOUD_PROBABILITY'
@@ -259,21 +262,30 @@ class BaseDatasetConfig:
             if self.raw_data.gee_project_name is None or self.raw_data.img_collection_name is None:
                 raise ValueError("raw_data.gee_project and raw_data.gee_collection must be set for GEE download.")
 
+        # If automatic selection is not enabled, we disable the coverage and cloud filtering
+        if not self.raw_data.automated_selection:
+            self.raw_data.min_coverage = 0.0
+            self.raw_data.max_cloud_p = 1.0
+            self.raw_data.num_days_to_keep = 1
+
 
 # ======================================================================================================================
 # Sentinel-2 Alps dataset config
 # ======================================================================================================================
 @dataclass
 class S2AlpsConfig(BaseDatasetConfig):
-    """
-    Configuration for the Sentinel-2 Alps dataset based on the inventory from Paul et al. (2020), with exactly the same
-    dates as used in the paper.
+    """ Configuration for the Sentinel-2 Alps dataset based on the inventory from Paul et al. (2020).
+
+    The images are either downloaded for the same dates as the inventory outlines (year='inv') or for a specific year
+    (e.g. '2023'). For the latter, the dates will be automatically selected based on e.g. the cloud coverage and NDSI
+    (depending on the `raw_data` settings).
     """
 
     name: str = 's2_alps'
     gsd: int = 10
     outlines_fp: str = "../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp"
     year: str = 'inv'  # or a certain year (e.g. '2023')
+    gee_download: bool = True  # whether to download the raw data automatically from GEE
 
     export_patches: bool = False
     sample_patches_each_epoch: bool = False
@@ -301,10 +313,6 @@ class S2AlpsConfig(BaseDatasetConfig):
             cloud_collection_name='GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED',
             cloud_band='cs',  # band name for the cloud probability mask
             cloud_mask_thresh_p=0.6,  # threshold for binarizing the cloud probability mask
-            max_cloud_p=0.3,  # filter out scenes with more than 30% cloud coverage
-            num_days_to_keep=1,  # we will select the best image automatically using the next metrics
-            sort_by=('cloud_p', 'ndsi'),  # sort by cloud coverage and NDSI (see also `download_best_images`)
-            download_window=('08-01', '10-15')  # default interval for downloading if strict dates are not imposed
         )
     )
 
@@ -315,6 +323,29 @@ class S2AlpsConfig(BaseDatasetConfig):
     })
     # whether to include the dhdt raster from Hugonnet et al. (2021) (see also `__post_init__`)
     include_dhdt_raster: bool = True
+
+    bands_rename: Dict[str, str] = field(default_factory=lambda: {
+        'B1': 'B1',
+        'B2': 'B',
+        'B3': 'G',
+        'B4': 'R',
+        'B5': 'B5',
+        'B6': 'B6',
+        'B7': 'B7',
+        'B8': 'NIR',
+        'B8A': 'B8A',
+        'B9': 'B9',
+        'B10': 'B10',
+        'B11': 'SWIR',
+        'B12': 'B12'
+    })
+
+    bands_nok_mask: List[str] = field(default_factory=lambda: ['cloud_mask'])
+
+    # Use the (mixed) debris product processed in the notebook
+    extra_vectors: Dict[str, str] = field(default_factory=lambda: {
+        'debris': '../data/outlines/debris_multisource/debris_multisource.shp'
+    })
 
     def __post_init__(self):
         super().__post_init__()
@@ -335,29 +366,14 @@ class S2AlpsConfig(BaseDatasetConfig):
         # Set the dates to the inventory ones (exported in the notebook)
         if self.year == 'inv':
             self.csv_dates = "../data/outlines/paul_et_al_2020/dates.csv"
+        else:
+            # Automatically select the images in the given year and the following window
+            self.raw_data.automated_selection = True
+            self.raw_data.download_window = ('08-01', '10-15')
 
-    bands_rename: Dict[str, str] = field(default_factory=lambda: {
-        'B1': 'B1',
-        'B2': 'B',
-        'B3': 'G',
-        'B4': 'R',
-        'B5': 'B5',
-        'B6': 'B6',
-        'B7': 'B7',
-        'B8': 'NIR',
-        'B8A': 'B8A',
-        'B9': 'B9',
-        'B10': 'B10',
-        'B11': 'SWIR',
-        'B12': 'B12'
-    })
-
-    bands_nok_mask: List[str] = field(default_factory=lambda: ['~CLOUDLESS_MASK'])
-
-    # Use the (mixed) debris product processed in the notebook
-    extra_geometries: Dict[str, str] = field(default_factory=lambda: {
-        'debris': '../data/outlines/debris_multisource/debris_multisource.shp'
-    })
+            # Thresholds applied to the images before ranking them
+            self.raw_data.min_coverage = 0.9
+            self.raw_data.max_cloud_p = 0.3
 
 
 # ======================================================================================================================
@@ -371,10 +387,9 @@ class S2AlpsPlusConfig(S2AlpsConfig):
     """
 
     name: str = 's2_alps_plus'
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        if self.year == 'inv':
-            # Manually curated dates
-            self.dates_csv = "../data/inv_images_qc/final_dates.csv"
+    raw_data: BaseDatasetConfig.RawDataConfig = field(
+        default_factory=lambda: replace(
+            S2AlpsConfig().raw_data,
+            dates_csv='../data/inv_images_qc/final_dates.csv',  # manually curated dates
+        )
+    )
