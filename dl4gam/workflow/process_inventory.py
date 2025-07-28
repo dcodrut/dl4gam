@@ -152,6 +152,9 @@ def main(
     log.info(f"Reading from {fp_in}")
     gdf = gpd.read_file(fp_in)
 
+    # Add a zero buffer to the geometries to fix potential issues with the geometries
+    gdf['geometry'] = gdf.geometry.buffer(0)
+
     # Get rid of the z-coordinates if present
     gdf['geometry'] = gdf.geometry.force_2d()
 
