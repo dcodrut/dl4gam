@@ -147,6 +147,7 @@ def prep_glacier_dataset(
         xdem_features: Optional[list[str]] = None,
         no_data: int = -9999,
         fp_out: Optional[str | Path] = None,
+        overwrite: bool = False
 ):
     """
     Prepare a glacier dataset by cropping the raw data within a buffer around the glacier outline, and then
@@ -171,6 +172,7 @@ def prep_glacier_dataset(
         If None, no DEM features are added.
     :param no_data: the value to be used as NODATA for the raster data; for the binary masks, it will be -1
     :param fp_out: the path to the output glacier dataset (if None, the raster is returned)
+    :param overwrite: whether to overwrite the output file if it already exists
     :return: None or the xarray dataset
     """
     row_crt_g = gl_df[gl_df.entry_id == entry_id]
@@ -271,6 +273,17 @@ def prep_glacier_dataset(
         fp_out.parent.mkdir(exist_ok=True, parents=True)
         ds.attrs['fn'] = fp_img.name
         ds.attrs['glacier_area'] = row_crt_g.area_km2.iloc[0]
+
+        # Delete the existing file if needed
+        if fp_out.exists():
+            if overwrite:
+                log.warning(f"Deleting the existing file {fp_out}")
+                fp_out.unlink()
+            else:
+                raise FileExistsError(
+                    f"The file {fp_out} already exists. Delete it or use overwrite=True to overwrite it."
+                )
+
         ds.to_netcdf(fp_out)
         ds.close()
         return None

@@ -92,6 +92,7 @@ class DL4GAMConfig:
             'extra_vectors': self.dataset.extra_vectors,
             'extra_rasters': self.dataset.extra_rasters,
             'xdem_features': self.dataset.xdem_features,
+            'overwrite': True,  # whether to overwrite existing netCDF files
         }
 
     # Which step to execute
