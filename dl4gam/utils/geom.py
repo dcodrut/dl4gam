@@ -4,6 +4,7 @@ from typing import Optional
 import geopandas as gpd
 import libpysal
 import numpy as np
+import oggm.utils
 import pandas as pd
 import scipy
 import shapely.geometry
@@ -65,7 +66,8 @@ def add_country(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
     # Get the country boundaries from Natural Earth
     url = "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip"
-    gdf_world = gpd.read_file(url)
+    fp = oggm.utils.file_downloader(url)
+    gdf_world = gpd.read_file(fp)
 
     # Assign the country name/code to each polygon based on a representative point
     # (we don't treat cases where a glacier spans multiple countries)
