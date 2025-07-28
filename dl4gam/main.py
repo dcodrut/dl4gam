@@ -45,9 +45,7 @@ def main(cfg_dict: DictConfig):
 
     try:
         # Get the settings for the current step to execute
-        settings_crt_step = getattr(cfg, cfg.current_step, None)
-        if settings_crt_step is None:
-            raise ValueError(f"Step '{cfg.current_step}' not found in the provided config.")
+        settings_crt_step = getattr(cfg, cfg.current_step)
         log.info(f"Executing step: {cfg.current_step} with settings: {settings_crt_step}")
         hydra.utils.instantiate(settings_crt_step)
     except KeyboardInterrupt:
