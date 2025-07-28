@@ -70,6 +70,7 @@ def main(
 
     # Project each geometry to the local CRS (EPSG code) provided in the GeoDataFrame
     # And build a list of GeoDataFrames for each glacier to run in parallel
+    gdf = gdf.set_index('entry_id')  # we will use the index in the logs
     geoms_glacier = [gdf.iloc[i:i + 1].to_crs(gdf.iloc[i].crs_epsg).geometry for i in range(len(gdf))]
     geoms_roi = [r.buffer(buffer_roi).envelope for r in geoms_glacier]
 
@@ -79,13 +80,13 @@ def main(
     gdf_ndsi = gpd.read_file(geoms_fp, layer='buffer_ndsi')
 
     # Align them with the glacier geometries and turn them into lists
-    gdf_clouds = gdf_clouds.set_index('entry_id').reindex(gdf.entry_id).reset_index()
-    gdf_ndsi = gdf_ndsi.set_index('entry_id').reindex(gdf.entry_id).reset_index()
+    gdf_clouds = gdf_clouds.set_index('entry_id').reindex(gdf.index)
+    gdf_ndsi = gdf_ndsi.set_index('entry_id').reindex(gdf.index)
     geoms_clouds = [gdf_clouds.iloc[i:i + 1].geometry for i in range(len(gdf_clouds))]
     geoms_ndsi = [gdf_ndsi.iloc[i:i + 1].geometry for i in range(len(gdf_ndsi))]
 
     # Prepare the output directory structure
-    out_dirs = [Path(base_dir) / str(y) / entry_id for entry_id, y in zip(list(gdf.entry_id), years)]
+    out_dirs = [Path(base_dir) / str(y) / entry_id for entry_id, y in zip(list(gdf.index), years)]
 
     run_in_parallel(
         download_best_images,
@@ -93,7 +94,7 @@ def main(
         geom=geoms_roi,
         geom_clouds=geoms_clouds,
         geom_ndsi=geoms_ndsi,
-        geom_albedo=geoms_clouds, # we use the same buffered geometries for albedo as for clouds
+        geom_albedo=geoms_clouds,  # we use the same buffered geometries for albedo as for clouds
         start_date=start_dates,
         end_date=end_dates,
         **kwargs,

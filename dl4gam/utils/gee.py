@@ -13,6 +13,13 @@ from .parallel_utils import run_in_parallel
 log = logging.getLogger(__name__)
 
 
+class EntryAdapter(logging.LoggerAdapter):
+    """Logger adapter that adds entry_id context to all messages"""
+
+    def process(self, msg, kwargs):
+        return f"(entry_id = {self.extra['entry_id']}) {msg}", kwargs
+
+
 def query_images(
         img_collection_name: str,
         geom: gpd.GeoSeries,
@@ -539,29 +546,41 @@ def download_best_images(
 
     # Validate the geometries and other parameters
     _roi = prepare_geom(geom, return_as_gee_geom=False).iloc[0]
+
+    # We will add the entry_id in the log messages
+    _log = EntryAdapter(log, {'entry_id': geom.index[0]})
+
     if geom_clouds is not None:
         geom_clouds = prepare_geom(geom_clouds, return_as_gee_geom=False)
         if not geom_clouds.iloc[0].within(_roi):
-            raise ValueError("The geometry for computing cloud percentage must be within the main geometry.")
+            msg = f"The geometry for computing cloud percentage must be within the main geometry."
+            _log.error(msg)
+            raise ValueError(msg)
 
         # We also expect a cloud collection to be provided if we want to compute cloud percentage
         if cloud_collection_name is None:
-            raise ValueError(
+            msg = (
                 "A cloud collection must be provided if you want to compute cloud percentage. "
                 "Please provide a valid cloud_collection_name."
             )
+            _log.error(msg)
+            raise ValueError(msg)
 
     if geom_ndsi is not None:
         geom_ndsi = prepare_geom(geom_ndsi, return_as_gee_geom=False)
         if not geom_ndsi.iloc[0].within(_roi):
-            raise ValueError("The geometry for computing NDSI must be within the main geometry.")
+            msg = "The geometry for computing NDSI must be within the main geometry."
+            _log.error(msg)
+            raise ValueError(msg)
 
     if geom_albedo is not None:
         geom_albedo = prepare_geom(geom_albedo, return_as_gee_geom=False)
         if not geom_albedo.iloc[0].within(_roi):
-            raise ValueError("The geometry for computing albedo must be within the main geometry.")
+            msg = "The geometry for computing albedo must be within the main geometry."
+            _log.error(msg)
+            raise ValueError(msg)
 
-    log.info(f"Querying images from {img_collection_name} for {start_date} to {end_date}")
+    _log.info(f"Querying images from {img_collection_name} for {start_date} to {end_date}")
     imgs_all = query_images(
         img_collection_name=img_collection_name,
         geom=geom,
@@ -578,10 +597,12 @@ def download_best_images(
     metrics = ['coverage']  # always computed
     if sort_by is not None:
         if not set(sort_by).issubset({'cloud_p', 'ndsi', 'albedo'}):
-            raise ValueError(
+            msg = (
                 f"sort_by must be a subset of {{'cloud_p', 'ndsi', 'albedo'}}. "
                 f"Provided: {sort_by}. Please check the input parameters."
             )
+            _log.error(msg)
+            raise ValueError(msg)
         metrics += list(sort_by)
 
     # If we want to filter by cloud percentage, we need to compute it even if it is not in sort_by
@@ -600,7 +621,7 @@ def download_best_images(
     feats = info['features']
     df_meta = pd.DataFrame([f['properties'] for f in feats])
     df_meta = df_meta.sort_values(by='date')
-    log.info(f"Found {len(df_meta)} images in the collection {img_collection_name} with the specified criteria.")
+    _log.info(f"Found {len(df_meta)} images in the collection {img_collection_name} with the specified criteria.")
 
     # Print and export the statistics to a CSV file
     cols2keep = ['id', 'date'] + metrics
@@ -609,19 +630,19 @@ def download_best_images(
         fp_out_meta = Path(out_dir) / 'metadata_all.csv'
         fp_out_meta.parent.mkdir(parents=True, exist_ok=True)
         df_meta_export.to_csv(fp_out_meta, index=False)
-        log.info(f"Stats (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
+        _log.info(f"Stats (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
 
     # Impose the minimum coverage and maximum cloud percentage
     if min_coverage > 0:
         df_meta = df_meta[df_meta['coverage'] >= min_coverage]
-        log.info(f"After filtering by coverage >= {min_coverage}, we have {len(df_meta)} images left.")
+        _log.info(f"After filtering by coverage >= {min_coverage}, we have {len(df_meta)} images left.")
 
     if geom_clouds is not None and max_cloud_p < 1:
         df_meta = df_meta[df_meta['cloud_p'] <= max_cloud_p]
-        log.info(f"After filtering by cloud_p <= {max_cloud_p}, we have {len(df_meta)} images left.")
+        _log.info(f"After filtering by cloud_p <= {max_cloud_p}, we have {len(df_meta)} images left.")
 
     if len(df_meta) == 0:
-        log.warning("No images left after filtering. Please check the input parameters.")
+        _log.warning("No images left after filtering. Please check the input parameters.")
         return
 
     # Compute the QC scores, sort images and export the filtered metadata
@@ -634,11 +655,11 @@ def download_best_images(
     with pd.option_context('display.max_columns', None, 'display.width', 240):
         fp_out_meta = Path(out_dir) / 'metadata_filtered.csv'
         df_meta_export.to_csv(fp_out_meta, index=False)
-        log.info(f"Filtered stats + scores (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
+        _log.info(f"Filtered stats + scores (n = {len(df_meta_export)}) exported to {fp_out_meta}: \n{df_meta_export}")
 
     # Keep the best images based on the number requested
     if len(df_meta) < num_days_to_keep:
-        log.warning(
+        _log.warning(
             f"Requested {num_days_to_keep} images, but only {len(df_meta)} images left after filtering. "
             f"Downloading all available images."
         )
