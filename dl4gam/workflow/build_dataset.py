@@ -87,7 +87,6 @@ def filter_and_assign_images(
     :return: Tuple containing: the list of glacier IDs, the list of dates, and the list of file paths to the images.
     """
 
-    allowed_date_set = None
     if dates_csv is not None:
         allowed_dates = pd.read_csv(dates_csv)
         log.info(
@@ -96,12 +95,13 @@ def filter_and_assign_images(
         )
         allowed_date_set = dict(zip(allowed_dates.entry_id, allowed_dates.date))
         gdf = gdf[gdf.entry_id.isin(allowed_date_set.keys())]
+    else:  # get the inventory dates
+        allowed_date_set = dict(zip(gdf.entry_id, gdf.date_inv))
 
-    glacier_ids = gdf.entry_id.unique().tolist()
-
-    dates_inv = gdf.date_inv.apply(lambda x: pd.to_datetime(x))
-    years = [str(year) if year != 'inv' else str(dates_inv.iloc[i].year) for i in range(len(gdf))]
-    raw_images_dirs = [Path(raw_data_base_dir) / y / str(gid) for gid, y in zip(glacier_ids, years)]
+    # Get the inventory years if needed, otherwise use the provided year (needed for the raw images directory structure)
+    glacier_ids = list(gdf.entry_id)
+    years = [pd.to_datetime(allowed_date_set[x]).year for x in glacier_ids] if year == 'inv' else [str(year)] * len(gdf)
+    raw_images_dirs = [Path(raw_data_base_dir) / str(y) / str(gid) for gid, y in zip(glacier_ids, years)]
 
     # Assign the raw images to the glaciers
     res = run_in_parallel(
