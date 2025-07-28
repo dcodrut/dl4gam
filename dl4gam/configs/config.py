@@ -51,6 +51,7 @@ class DL4GAMConfig:
             'buffers': self.dataset.buffers,
             'crs': self.dataset.crs,
             'gsd': self.dataset.gsd,
+            'dates_csv': self.dataset.dates_csv,
         }
 
     @property
@@ -86,7 +87,6 @@ class DL4GAMConfig:
             'base_dir': self.dataset.base_dir,
             'raw_data_base_dir': self.dataset.raw_data.base_dir,
             'year': self.dataset.year,
-            'dates_csv': self.dataset.raw_data.dates_csv,
             'bands_name_map': self.dataset.bands_rename,
             'bands_nok_mask': self.dataset.bands_nok_mask,
             'extra_vectors': self.dataset.extra_vectors,

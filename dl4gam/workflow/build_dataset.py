@@ -74,40 +74,37 @@ def filter_and_assign_images(
         gdf: gpd.GeoDataFrame,
         raw_data_base_dir: str | Path,
         year: str | int,
-        dates_csv: Optional[str | Path] = None,
 ) -> tuple[list[str], list[str], list[Path]]:
     """
     Assign the raw images to the glaciers.
     Calls `assign_image` for each glacier ID in the GeoDataFrame.
 
-    :param gdf: GeoDataFrame with the glacier outlines (we need at least the columns 'entry_id' and 'date_inv')
-    :param dates_csv: Path to CSV with allowed dates (can be None)
+    :param gdf: GeoDataFrame with the glacier outlines (we need at least the columns 'entry_id' and 'date_acq')
     :param raw_data_base_dir: Base directory for raw images
     :param year: Year or 'inv' for inventory year
     :return: Tuple containing: the list of glacier IDs, the list of dates, and the list of file paths to the images.
     """
 
-    if dates_csv is not None:
-        allowed_dates = pd.read_csv(dates_csv)
-        log.info(
-            f"Loaded date restrictions from {dates_csv}; "
-            f"we will use only the glaciers present in this file (n = {len(allowed_dates.entry_id.unique())})"
-        )
-        allowed_date_set = dict(zip(allowed_dates.entry_id, allowed_dates.date))
-        gdf = gdf[gdf.entry_id.isin(allowed_date_set.keys())]
-    else:  # get the inventory dates
-        allowed_date_set = dict(zip(gdf.entry_id, gdf.date_inv))
+    # For the inventory year, we will use the 'date_acq' column
+    # (as we expect we've already downloaded the images for these dates)
+    if year == 'inv':
+        allowed_dates = gdf.date_acq.tolist()
+        years = [pd.to_datetime(d).year for d in allowed_dates]
+    else:
+        # we will pick the best images according to the metadata from the given year
+        # (if not metadata is available, we will expect a single image per glacier directory)
+        allowed_dates = None
+        years = [year] * len(gdf)
 
-    # Get the inventory years if needed, otherwise use the provided year (needed for the raw images directory structure)
+    # Build the raw images directories for each glacier
     glacier_ids = list(gdf.entry_id)
-    years = [pd.to_datetime(allowed_date_set[x]).year for x in glacier_ids] if year == 'inv' else [str(year)] * len(gdf)
     raw_images_dirs = [Path(raw_data_base_dir) / str(y) / str(gid) for gid, y in zip(glacier_ids, years)]
 
     # Assign the raw images to the glaciers
     res = run_in_parallel(
         fun=assign_image,
         glacier_id=glacier_ids,
-        date=[allowed_date_set.get(gid) for gid in glacier_ids] if dates_csv else None,
+        date=allowed_dates,
         raw_images_dir=raw_images_dirs,
     )
 
@@ -133,7 +130,6 @@ def main(
         base_dir: str | Path,
         raw_data_base_dir: str | Path,
         year: str | int,
-        dates_csv: Optional[str | Path] = None,
         extra_vectors: Optional[dict[str, str | Path]] = None,
         **kwargs
 ):
@@ -142,15 +138,29 @@ def main(
     gdf_sel = gpd.read_file(geoms_fp, layer='glacier_sel')
     gdf_all = gpd.read_file(geoms_fp, layer='glacier_all')
 
+    # Assign the images to the glaciers
+    glacier_ids, dates, fp_images = filter_and_assign_images(
+        gdf=gdf_sel,
+        raw_data_base_dir=raw_data_base_dir,
+        year=year,
+    )
+
+    # Check if we have any missing images
+    missing_glacier_ids = set(gdf_sel.entry_id) - set(glacier_ids)
+    if missing_glacier_ids:
+        log.warning(
+            f"The following glaciers do not have any images assigned: {missing_glacier_ids}. "
+            f"Please check the raw data base directory: {raw_data_base_dir}."
+        )
+
     # Read the FP, infer and patch sampling buffers and save them as extra vectors to be converted into binary masks
-    # We will save them as list of subsets of GeoDataFrames, one for each glacier in gdf_sel (for run_in_parallel)
-    extra_gdf_per_glacier = [{} for _ in range(len(gdf_sel))]  # one dict per glacier
+    # We will save them as list of subsets of GeoDataFrames, one for each selected glacier (for run_in_parallel)
+    extra_gdf_per_glacier = [{} for _ in range(len(glacier_ids))]  # one dict per glacier
     for buffer_name in ['infer', 'fp', 'patch_sampling']:
         log.info(f"Reading the buffer geometries for {buffer_name} from {geoms_fp}")
         _gdf = gpd.read_file(geoms_fp, layer=f"buffer_{buffer_name}")
 
-        # Covert into a list of GeoDataFrames, one for each glacier in gdf_sel with a single geometry
-        for i, gid in enumerate(gdf_sel.entry_id):
+        for i, gid in enumerate(glacier_ids):
             extra_gdf_per_glacier[i][buffer_name] = _gdf[_gdf.entry_id == gid]
 
     # Include the extra vectors if provided
@@ -159,18 +169,10 @@ def main(
             log.info(f"Reading the extra vectors {k} from {fp}")
             _gdf = gpd.read_file(fp)
 
-            # We will duplicate all the geometries for each glacier in the gdf_sel (for run_in_parallel)
-            # Here we don't filter by entry_id as we don't know how they are structured
-            for i, gid in enumerate(gdf_sel.entry_id):
+            # Here we don't filter by entry_id as we don't know how they are structured / what's inside
+            # We will just build a binary mask using all the geometries intersecting the glacier scene
+            for i, gid in enumerate(glacier_ids):
                 extra_gdf_per_glacier[i][k] = _gdf
-
-    # Assign the images to the glaciers
-    glacier_ids, dates, fp_images = filter_and_assign_images(
-        gdf=gdf_sel,
-        raw_data_base_dir=raw_data_base_dir,
-        year=year,
-        dates_csv=dates_csv,
-    )
 
     # Build the output paths for the glacier cubes which will be created
     fp_output_cubes = [

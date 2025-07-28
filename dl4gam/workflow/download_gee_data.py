@@ -18,7 +18,6 @@ def main(
         year: str | int,
         download_window: tuple[str, str] = None,
         automated_selection: bool = False,
-        dates_csv: str | Path = None,
         **kwargs,
 ):
     """
@@ -33,7 +32,6 @@ def main(
     :param year: year for which to download the images
     :param download_window: MM:DD tuple with the start and end dates for the download window (e.g. '08-01', '10-15')
     :param automated_selection: whether to use the automated selection of the best images (if not, dates_csv must be provided)
-    :param dates_csv: optional CSV file with the start and end dates for each glacier
     :param kwargs: all the parameters for the `download_best_images` function
     :return: None
     """
@@ -44,23 +42,24 @@ def main(
     log.info(f"Reading the glacier outlines from {geoms_fp} (layer 'glacier_sel')")
     gdf = gpd.read_file(geoms_fp, layer='glacier_sel')
 
-    # Set the start-end dates (use the csv if provided, otherwise the year + download_window)
+    # Set the start-end dates (use the date_acq column if needed, otherwise the year + download_window)
     if not automated_selection:
-        assert dates_csv is not None, "If automated_selection is False, dates_csv must be provided."
-        log.info(f"Reading the start and end dates from {dates_csv}")
-        dates_df = pd.read_csv(dates_csv, index_col='entry_id')
-
-        # Check if all the selected glaciers are present in the dates dataframe
-        missing_entries = set(gdf.entry_id) - set(dates_df.index)
-        if missing_entries:
-            log.warning(
-                f"No dates provided for {len(missing_entries)} glaciers: {missing_entries}. "
-                f"We will skip these glaciers in the download process."
+        # We expect a column `date_acq` in the GeoDataFrame with the acquisition dates
+        if 'date_acq' not in gdf.columns:
+            raise ValueError(
+                "The GeoDataFrame must contain a 'date_acq' column with the acquisition dates "
+                "if automated_selection is set to False."
             )
 
-        gdf = gdf[gdf.entry_id.isin(dates_df.index)]
-        start_dates = list(dates_df.loc[gdf.entry_id, 'date'])
-        end_dates = [(pd.to_datetime(s) + pd.Timedelta(days=1)).strftime('%Y-%m-%d') for s in start_dates]
+        # Make sure the dates are not missing for any glacier
+        if gdf.date_acq.isnull().any():
+            raise ValueError(
+                "The GeoDataFrame contains missing values in the 'date_acq' column. "
+                "Please ensure all glaciers have valid acquisition dates."
+            )
+
+        start_dates = gdf.date_acq.apply(lambda x: pd.to_datetime(x)).tolist()
+        end_dates = [(s + pd.Timedelta(days=1)).strftime('%Y-%m-%d') for s in start_dates]
         years = [pd.to_datetime(s).year for s in start_dates]
     else:
         # Get the inventory year for each glacier if year is 'inv', otherwise use the provided year

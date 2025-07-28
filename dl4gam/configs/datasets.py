@@ -20,6 +20,12 @@ class BaseDatasetConfig:
     # Path to the glacier outlines (vector-file format)
     outlines_fp: str = MISSING
 
+    # The glacier dataframe is expected to contain a column 'entry_id' and 'date_inv' to mark the time of the inventory.
+    # We will also use these dates to download the raw data if the year is 'inv'.
+    # Alternatively, we can use a csv file with the dates (e.g. manually chosen), also containing the 'entry_id' column.
+    # Note that the dates should be under a column 'date' with the format 'YYYY-MM-DD'.
+    dates_csv: Optional[str] = None
+
     # CRS and GSD which will be used for the rasterization of the glacier outlines and the raw data
     crs: str = "UTM"  # we use local UTM projection by default; use "EPSG:XXXXX" for a specific projection
     gsd: Union[int, float] = MISSING
@@ -41,18 +47,11 @@ class BaseDatasetConfig:
         # This is useful if we have multiple images per glacier and want to select the best one.
         # If True, for each glacier, we will read all the images from the corresponding subdirectory of root_dir and
         # automatically select the best image based on cloud coverage, NDSI and albedo.
-        # If False, we expect the dates_csv to be provided (see below) with the dates to be used for each glacier
+        # If False, we expect the dates_csv to be provided (see above) with the dates to be used for each glacier
         # or to have the images already selected and stored in the root_dir.
         # Note that it can also be set to True if a single image per glacier is available (e.g. already pre-processed);
         # in this case no dates_csv is expected and no QC metrics will be computed (we will just use the image as is).
         automated_selection: bool = False
-
-        # Alternatively, we can use a csv file with the dates (e.g. from an inventory or manually chosen)
-        # Note that the dates should be in the format 'YYYY-MM-DD' and the csv file should have a column 'date_acq'.
-        # If automatic image selection is enabled, all the images from the raw image directory will be loaded
-        # and the best will be automatically selected based on cloud coverage, NDSI and albedo.
-        # The selected dates will be saved to this csv file (the default will be set in __post_init__).
-        dates_csv: Optional[str] = None
 
         ################################################################################################################
         # The following settings can be set for automatic data downloading using Google Earth Engine
@@ -249,16 +248,6 @@ class BaseDatasetConfig:
         if self.buffers.cube is None:
             self.buffers.cube = self.patch_radius * self.gsd + self.buffers.patch_sampling
 
-        # Generate the path to the dates csv file if needed.
-        if self.raw_data.dates_csv is None:
-            if self.raw_data.automated_selection:
-                self.raw_data.dates_csv = f"{self.base_dir}/dates.csv"
-            else:
-                raise ValueError(
-                    "raw_data.dates_csv must be set when automatic_selection is False. "
-                    "Please provide the path to the csv file with the dates."
-                )
-
         # Check if the required raw data settings are set
         if self.gee_download:
             if self.raw_data.buffer_roi is None:
@@ -308,7 +297,6 @@ class S2AlpsConfig(BaseDatasetConfig):
         default_factory=lambda: BaseDatasetConfig.RawDataConfig(
             base_dir="../data/external/dl4gam/raw_data/images/s2_alps/yearly",
             automated_selection=False,
-            dates_csv="../data/inv_images_qc/final_dates.csv",
             # we need a buffer >= patch radius,
             # but we use a larger buffer in case we later want to increase the patch size and avoid redownloading
             buffer_roi=(S2AlpsConfig.patch_radius * 2 + 5) * S2AlpsConfig.gsd,
@@ -402,9 +390,4 @@ class S2AlpsPlusConfig(S2AlpsConfig):
     """
 
     name: str = 's2_alps_plus'
-    raw_data: BaseDatasetConfig.RawDataConfig = field(
-        default_factory=lambda: replace(
-            S2AlpsConfig().raw_data,
-            dates_csv='../data/inv_images_qc/final_dates.csv',  # manually curated dates
-        )
-    )
+    dates_csv: Optional[str] = '../data/inv_images_qc/final_dates.csv'  # manually curated dates for the inventory years

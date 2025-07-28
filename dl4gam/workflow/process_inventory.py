@@ -139,13 +139,13 @@ def main(
         buffers: BaseDatasetConfig.Buffers,
         crs: str,
         gsd: float,
+        dates_csv: Optional[str | Path] = None,
 ):
     """
     Adds the required columns to the GeoDataFrame and initializes the glacier-directories.
 
-      prepares the following outlines (for each glacier):
-
-    Prepare the outlines within which the inference will be performed.
+    It also prepares a series of buffers for each glacier, which will be used later in the patch sampling, inference,
+    and evaluation.
 
     See :class:`dl4gam.configs.datasets.BaseDatasetConfig.Buffers`
     """
@@ -183,18 +183,6 @@ def main(
     # Set the final CRS for the processing of the outlines
     gdf['crs_epsg'] = crs if crs != 'UTM' else gdf['utm_epsg']
 
-    # Compute the upper bound FP buffer if needed (using all the glaciers)
-    if buffers.fp[1] == 'auto':
-        log.info(f"Computing the upper bound for the FP buffer (this might take a while)")
-        lim_max = utils.calculate_equal_area_buffer(
-            gdf,
-            min_area_thr=min_glacier_area,
-            start_distance=buffers.fp[0],
-            step=gsd,
-        )
-        log.info(f"Upper bound for the FP buffer: {lim_max} m")
-        buffers.fp = (buffers.fp[0], lim_max)
-
     # Select the glaciers with the area larger than the minimum required
     glaciers_to_process = list(gdf[gdf['area_km2'] >= min_glacier_area].entry_id)
     log.info(
@@ -202,14 +190,48 @@ def main(
         f"{(n_crt := len(glaciers_to_process))} / {(n := len(gdf))} glaciers ({n_crt / n:.2%})"
     )
 
-    # Store the selected glacier outlines separately
-    gdfs_out = {
-        'glacier_sel': gdf[gdf['entry_id'].isin(glaciers_to_process)],
-        'glacier_all': gdf
-    }
+    # Load the csv with the externally provided acquisition dates if available
+    if dates_csv is not None:
+        log.info(f"Reading the acquisition dates from {dates_csv}")
+        dates_df = pd.read_csv(dates_csv, index_col='entry_id')
+
+        # Check if all the selected glaciers are present in the dates dataframe
+        missing_entries = set(glaciers_to_process) - set(dates_df.index)
+        if missing_entries:
+            log.warning(
+                f"No dates provided for {len(missing_entries)} glaciers: {missing_entries}. "
+                f"We will skip these glaciers in the processing."
+            )
+
+        # Filter the GeoDataFrame to keep only the selected glaciers with provided dates
+        glaciers_to_process = sorted(set(glaciers_to_process) & set(dates_df.index))
+
+        # Save the dates as a new column in the GeoDataFrame
+        gdf['date_acq'] = gdf['entry_id'].map(dates_df['date'])
+    else:
+        # Assume we will use exactly the same dates as the inventory date
+        log.info("No acquisition dates provided, using the inventory date as the acquisition date.")
+        gdf['date_acq'] = gdf['date_inv']
+
+    # Filter the GeoDataFrame to keep only the selected glaciers
+    gdf_sel = gdf[gdf['entry_id'].isin(glaciers_to_process)]
+
+    # Compute the upper bound FP buffer if needed (provide both all glaciers and selected glaciers)
+    if buffers.fp[1] == 'auto':
+        log.info(f"Computing the upper bound for the FP buffer (this might take a while)")
+        gdf_rest = gdf[~gdf['entry_id'].isin(glaciers_to_process)]
+        lim_max = utils.calculate_equal_area_buffer(gdf_sel, gdf_rest, start_distance=buffers.fp[0], step=gsd)
+        log.info(f"Upper bound for the FP buffer: {lim_max} m")
+        buffers.fp = (buffers.fp[0], lim_max)
 
     log.info("Preparing the buffered outlines (using all the glaciers)")
     gdfs_buffers = compute_buffers(gdf=gdf, buffers=buffers, tol=gsd / 2)
+
+    # Store the selected glacier outlines separately
+    gdfs_out = {
+        'glacier_sel': gdf_sel,
+        'glacier_all': gdf
+    }
     gdfs_out.update(gdfs_buffers)
 
     # Subset also the buffered outlines to the selected glaciers; reproject all to WGS84
