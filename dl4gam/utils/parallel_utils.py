@@ -72,36 +72,32 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_s
     kwargs_flatten = [{k: x for k, x in zip(kwargs_for_zip.keys(), y)} for y in zip(*kwargs_for_zip.values())]
 
     # run and collect the results
-    all_res = []
+    n_tasks = len(kwargs_flatten)
     if pbar_desc is None:
         fun_name = fun.func.__name__ if hasattr(fun, 'func') else fun.__name__
         pbar_desc = f'Running {fun_name} with {num_procs} process(es)'
 
     if num_procs > 1:
+        all_res = [None] * n_tasks
         with ProcessPoolExecutor(max_workers=num_procs) as executor:
-            futures = []
-            future_to_input = {}  # track submitted inputs
-            iterator = iter(kwargs_flatten)
+            futures = {}  # features -> index, parameters
+            iterator = list(enumerate(kwargs_flatten))  # task index, parameters
 
             # Submit initial batch
-            for _ in range(num_procs):
-                try:
-                    kw = next(iterator)
-                    future = executor.submit(_fn_star, kw)
-                    futures.append(future)
-                    future_to_input[future] = kw
-                except StopIteration:
-                    break
+            tasks_submitted = 0
+            for _ in range(min(num_procs, n_tasks)):
+                i_task, kw = iterator[tasks_submitted]
+                future = executor.submit(_fn_star, kw)
+                futures[future] = (i_task, kw)
+                tasks_submitted += 1
 
             with tqdm(total=len(kwargs_flatten), desc=pbar_desc, disable=not pbar) as pbar:
                 while futures:
                     for future in as_completed(futures):
-                        futures.remove(future)
-                        kw = future_to_input.pop(future)
+                        i_task, kw = futures.pop(future)
 
                         try:
-                            result = future.result()
-                            all_res.append(result)
+                            all_res[i_task] = future.result()  # place the result in the correct index
                         except Exception as e:
                             log.error(f"Error occurred while processing the input: {kw}")
                             raise e
@@ -113,16 +109,15 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_s
                             gc.collect()
 
                         # Submit next task
-                        try:
-                            kw = next(iterator)
+                        if tasks_submitted < n_tasks:
+                            idx, kw = iterator[tasks_submitted]
                             future = executor.submit(_fn_star, kw)
-                            futures.append(future)
-                            future_to_input[future] = kw
-                        except StopIteration:
-                            pass
+                            futures[future] = (idx, kw)
+                            tasks_submitted += 1
 
-                        break  # back to waiting with updated futures
+                        break  # back to waiting to next completed future
     else:
+        all_res = []
         with tqdm(total=arg_lens[0], desc=pbar_desc, disable=not pbar) as pbar:
             for crt_args in kwargs_flatten:
                 res = _fn_star(crt_args)
