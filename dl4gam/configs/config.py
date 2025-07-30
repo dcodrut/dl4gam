@@ -84,7 +84,7 @@ class DL4GAMConfig:
             'geoms_fp': self.dataset.geoms_fp,
             'buffer': self.dataset.buffers.cube,
             'check_data_coverage': self.dataset.check_data_coverage,
-            'base_dir': self.dataset.base_dir,
+            'base_dir': self.dataset.cubes_dir,
             'raw_data_base_dir': self.dataset.raw_data.base_dir,
             'year': self.dataset.year,
             'bands_name_map': self.dataset.bands_rename,
@@ -93,6 +93,36 @@ class DL4GAMConfig:
             'extra_rasters': self.dataset.extra_rasters,
             'xdem_features': self.dataset.xdem_features,
             'overwrite': True,  # whether to overwrite existing netCDF files
+        }
+
+    @property
+    def step_patchify_dataset(self) -> dict:
+        return {
+            '_target_': 'dl4gam.utils.patchify_data',
+            'cubes_dir': self.dataset.cubes_dir,
+            'patch_radius': self.dataset.patch_radius,
+            'patches_dir': self.dataset.patches_dir,
+        }
+
+    @property
+    def step_data_split(self) -> dict:
+        return {
+            '_target_': 'dl4gam.utils.data_cv_split',
+            'geoms_fp': self.dataset.geoms_fp,
+            'num_folds': self.pl.num_cv_folds,
+            'cv_iter': self.pl.cv_iter,
+            'val_fraction': self.pl.val_fraction,
+            'fp_out': self.dataset.split_csv,
+        }
+
+    @property
+    def step_compute_norm_stats(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.compute_norm_stats.main',
+            # Use the patches directory if exporting patches, otherwise use the cubes directory
+            'data_dir': self.dataset.patches_dir if self.dataset.export_patches else self.dataset.cubes_dir,
+            'split_csv': self.dataset.split_csv,
+            'fp_out': self.dataset.norm_stats_csv,
         }
 
     # Which step to execute

@@ -1,19 +1,23 @@
+import logging
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import xarray as xr
 from tqdm import tqdm
 
+log = logging.getLogger(__name__)
+
 
 def get_patches_df(
         nc: xr.Dataset,
         patch_radius: int,
-        sampling_step: int = None,
+        stride: int = None,
         add_center: bool = False,
         add_centroid: bool = False,
         add_extremes: bool = False,
-        keep_only_patches_50m_buffer: bool = True
+        only_patches_centers_within_buffer: bool = True
 ):
     """
     Given a xarray dataset for one glacier, it returns a pandas dataframe with the pixel coordinates for square patches
@@ -21,45 +25,59 @@ def get_patches_df(
 
     :param nc: xarray dataset containing the image data and the glacier masks
     :param patch_radius: patch radius (in px)
-    :param sampling_step: sampling step applied both on x and y (in px);
-                          if smaller than 2 * patch_radius, then patches will overlap
+    :param stride: sampling step applied both on x and y (in px);
+        if smaller than 2 * patch_radius, then patches will overlap
     :param add_center: whether to add one patch centered in the middle of the glacier's box
     :param add_centroid: whether to add one patch centered in the centroid of the glacier
     :param add_extremes: whether to add four patches centered on the margin (in each direction) of the glacier
-    :param keep_only_patches_50m_buffer: whether to keep only the patches with the center pixel on glacier or within 50m
+    :param only_patches_centers_within_buffer: whether to keep only the patches centered within the sampling mask
     :return: a pandas dataframe with the pixel coordinates of the patches
     """
 
-    if sampling_step is None:
-        assert add_extremes or add_center or add_centroid, \
-            'Enable at least one of add_extremes, add_center or add_centroid to generate at least one patch'
+    x_centers = []
+    y_centers = []
 
-    # get all feasible patch centers s.t. the center pixel is on glacier
-    assert 'mask_crt_g' in nc.data_vars, nc.data_vars
-    nc_full_crt_g_mask_center_sel = (nc.mask_crt_g_b50.data == 1)
-    all_y_centers, all_x_centers = np.where(nc_full_crt_g_mask_center_sel)
-    minx = all_x_centers.min()
-    miny = all_y_centers.min()
-    maxx = all_x_centers.max()
-    maxy = all_y_centers.max()
+    if stride is not None:
+        if 'mask_patch_sampling' not in nc.data_vars:
+            raise ValueError(
+                f"Expected the netcdf file to contain a 'mask_patch_sampling' variable, but found {list(nc.data_vars)}. "
+            )
+        # Get all feasible patch centers s.t. the center pixel is on the provided sampling mask
+        sampling_mask = (nc.mask_patch_sampling.data == 1)
+        all_y_centers, all_x_centers = np.where(sampling_mask)
 
-    if sampling_step is not None:
         # sample the feasible centers uniformly from either the glacier pixels or the whole image
-        if keep_only_patches_50m_buffer:
-            idx_x = np.asarray([p % sampling_step == 0 for p in all_x_centers])
-            idx_y = np.asarray([p % sampling_step == 0 for p in all_y_centers])
+        if only_patches_centers_within_buffer:
+            idx_x = np.asarray([p % stride == 0 for p in all_x_centers])
+            idx_y = np.asarray([p % stride == 0 for p in all_y_centers])
             idx = idx_x & idx_y
             x_centers = all_x_centers[idx]
             y_centers = all_y_centers[idx]
         else:
-            x_centers = np.arange(0, nc.dims['x'], sampling_step)
-            y_centers = np.arange(0, nc.dims['y'], sampling_step)
+            x_centers = np.arange(0, nc.dims['x'], stride)
+            y_centers = np.arange(0, nc.dims['y'], stride)
     else:
-        x_centers = []
-        y_centers = []
+        if not (add_extremes or add_center or add_centroid):
+            raise ValueError(
+                'If stride is None, then at least one of add_extremes, add_center or add_centroid must be True.'
+                'Otherwise, the function will not return any patches.'
+            )
 
-    # add the four patches centered on the margin of the glacier
-    if add_extremes:
+    # Get the glacier pixels
+    if add_extremes or add_centroid or add_center:
+        if 'mask_glacier' not in nc.data_vars:
+            raise ValueError(
+                f"Expected the netcdf file to contain a 'mask_glacier' variable, but found {list(nc.data_vars)}. "
+            )
+
+        glacier_mask = (nc.mask_glacier.data == 1)
+        all_y_centers, all_x_centers = np.where(glacier_mask)
+        minx = all_x_centers.min()
+        miny = all_y_centers.min()
+        maxx = all_x_centers.max()
+        maxy = all_y_centers.max()
+
+    if add_extremes:  # add the four patches centered on the margin of the glacier
         left = (minx, int(np.mean(all_y_centers[all_x_centers == minx])))
         top = (int(np.mean(all_x_centers[all_y_centers == miny])), miny)
         right = (maxx, int(np.mean(all_y_centers[all_x_centers == maxx])))
@@ -93,83 +111,110 @@ def get_patches_df(
     return patches_df
 
 
-def data_cv_split(gl_df, num_folds, valid_fraction, outlines_split_dir):
+def data_cv_split(
+        geoms_fp: Path | str,
+        num_folds: int,
+        cv_iter: int,
+        val_fraction: float,
+        fp_out: Path | str
+):
     """
-    :param gl_df: geopandas dataframe with the glacier contours
-    :param num_folds: how many CV folds to generate
-    :param valid_fraction: the percentage of each training fold to be used as validation
-    :param outlines_split_dir: output directory where the outlines split will be exported
+    :param geoms_fp: path to the processed glacier outlines file
+    :param num_folds: how many CV folds to use
+    :param cv_iter: the current CV iteration
+    :param val_fraction: the percentage of each training fold to be used as validation
+    :param fp_out: where to save the csv with the split for the current CV iteration
     :return:
     """
 
-    # make sure there is a column with the area
-    assert 'area_km2' in gl_df.columns
+    geoms_fp = Path(geoms_fp)
+    if not geoms_fp.exists():
+        raise FileNotFoundError(f'Geometries file {geoms_fp} does not exist.')
 
-    # regional split, assuming W to E direction (train-valid-test)
+    if not 1 <= cv_iter <= num_folds:
+        raise ValueError(f'cv_iter must be in the range [1, {num_folds}], but got {cv_iter}')
+
+    # Read the outlines of the selected glaciers
+    gl_df = gpd.read_file(geoms_fp, layer='glacier_sel')
+
+    # Make sure there is a column with the area
+    if 'area_km2' not in gl_df.columns:
+        gl_df['area_km2'] = gl_df.geometry.area / 1e6
+
+    # Regional split, assuming W to E direction (train-val-test)
     gl_df['bound_lim'] = gl_df.bounds.maxx
     gl_df = gl_df.sort_values('bound_lim', ascending=False)
-
-    # covert date to string (to avoid a warning when exporting to shapefile)
-    if 'date_inv' in gl_df.columns:
-        gl_df['date_inv'] = gl_df.date_inv.dt.strftime('%Y-%m-%d')
 
     split_lims = np.linspace(0, 1, num_folds + 1)
     split_lims[-1] += 1e-4  # to include the last glacier
 
-    for i_split in range(num_folds):
-        # first extract the test fold and the combined train & valid fold
-        test_lims = (split_lims[i_split], split_lims[i_split + 1])
-        area_cumsumf = gl_df.area_km2.cumsum() / gl_df.area_km2.sum()
-        idx_test = (test_lims[0] <= area_cumsumf) & (area_cumsumf < test_lims[1])
-        sdf_test = gl_df[idx_test]
+    # First extract the test fold and the combined train & val fold
+    test_lims = (split_lims[cv_iter - 1], split_lims[cv_iter])
+    area_cumsumf = gl_df.area_km2.cumsum() / gl_df.area_km2.sum()
+    idx_test = (test_lims[0] <= area_cumsumf) & (area_cumsumf < test_lims[1])
+    df_split = gl_df[['entry_id', 'area_km2', 'bound_lim']].copy()
+    df_split.loc[idx_test, 'fold'] = 'test'
 
-        # choose the valid set s.t. it acts as a clear boundary between test and train
-        if i_split == 0:
-            test_valid_lims = (test_lims[0], test_lims[1] + valid_fraction)
-        elif i_split == (num_folds - 1):
-            test_valid_lims = (test_lims[0] - valid_fraction, test_lims[1])
-        else:
-            test_valid_lims = (test_lims[0] - valid_fraction / 2, test_lims[1] + valid_fraction / 2)
-        idx_test_valid = (test_valid_lims[0] <= area_cumsumf) & (area_cumsumf < test_valid_lims[1])
-        idx_valid = idx_test_valid & (~idx_test)
-        idx_train = ~idx_test_valid
-        sdf_train = gl_df[idx_train]
-        sdf_valid = gl_df[idx_valid]
+    # Choose the val set s.t. it acts as a clear boundary between test and train
+    if cv_iter == 1:
+        test_val_lims = (test_lims[0], test_lims[1] + val_fraction)
+    elif cv_iter == num_folds:
+        test_val_lims = (test_lims[0] - val_fraction, test_lims[1])
+    else:
+        test_val_lims = (test_lims[0] - val_fraction / 2, test_lims[1] + val_fraction / 2)
+    idx_test_val = (test_val_lims[0] <= area_cumsumf) & (area_cumsumf < test_val_lims[1])
+    idx_val = idx_test_val & (~idx_test)
+    idx_train = ~idx_test_val
+    df_split.loc[idx_val, 'fold'] = 'val'
+    df_split.loc[idx_train, 'fold'] = 'train'
 
-        df_per_fold = {
-            'train': sdf_train,
-            'valid': sdf_valid,
-            'test': sdf_test,
-        }
+    # Make sure all glaciers are assigned to a fold
+    if df_split.fold.isnull().any():
+        raise ValueError(f'Some glaciers are not assigned to any fold.')
 
-        for crt_fold, df_crt_fold in df_per_fold.items():
-            print(f'Extracting outlines for split = {i_split + 1} / {num_folds}, fold = {crt_fold}')
-            outlines_split_fp = Path(outlines_split_dir) / f'split_{i_split + 1}' / f'fold_{crt_fold}.shp'
-            outlines_split_fp.parent.mkdir(parents=True, exist_ok=True)
-            df_crt_fold.to_file(outlines_split_fp)
-            print(
-                f'Exported {len(df_crt_fold)} glaciers '
-                f'out of {len(gl_df)} ({len(df_crt_fold) / len(gl_df) * 100:.2f}%);'
-                f' actual area percentage = {df_crt_fold.area_km2.sum() / gl_df.area_km2.sum() * 100:.2f}%'
-                f' ({df_crt_fold.area_km2.sum():.2f} km^2 from a total of {gl_df.area_km2.sum():.2f} km^2)')
+    # Log some statistics for the current split
+    for fold in ['train', 'val', 'test']:
+        df_fold = df_split[df_split.fold == fold]
+        log.info(
+            f'Fold {fold}: {(n := len(df_fold))} glaciers ({n / len(gl_df):.2%}); '
+            f'area = {(s := df_fold.area_km2.sum()):.2f} km^2 ({s / gl_df.area_km2.sum():.2%})'
+        )
+
+    fp_out = Path(fp_out)
+    fp_out.parent.mkdir(parents=True, exist_ok=True)
+    df_split.to_csv(fp_out, index=False)
+    log.info(f'Split for CV iteration {cv_iter} / {num_folds} saved to {fp_out}')
 
 
-def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
+def patchify_data(
+        cubes_dir: str | Path,
+        patch_radius: int,
+        patches_dir: str | Path,
+        stride: int = None,
+):
     """
-    Using the get_patches_gdf function, it exports patches to disk for all glaciers.
-    The patches will be later split into training, validation and test sets.
-    When generating the patches, add_centroid and add_extremes will be set to True (see get_patches_gdf), which means
-    at least five patches will be generated per glacier.
+    Runs the patchification process for all glaciers in the provided rasters directory.
 
-    :param rasters_dir: directory containing the raster netcdf files
-    :param patches_dir: output directory where the extracted patches will be saved
+    The patches will be later split into training, validation and test sets.
+    When generating the patches, add_centroid will be set to True (see `get_patches_gdf`), which means at least one
+    patche will be generated per glacier no matter the stride and patch radius.
+
+    We sample patches uniformly from the `sampling_mask` variable in the netcdf files, which is expected to be
+    a binary mask with 1s for the pixels where patches can be sampled and 0s otherwise. Additionally, we keep only the
+    patches whose centers are falling within this mask (`only_patches_centers_within_buffer = True`).
+
+    :param cubes_dir: directory containing the glacier-wide netcdf files
     :param patch_radius: patch radius (in px)
-    :param sampling_step: sampling step applied both on x and y (in px);
-                          if smaller than 2 * patch_radius, then patches will overlap
+    :param stride: sampling step applied both on x and y (in px);
+        if smaller than 2 * patch_radius, then patches will overlap.
+    :param patches_dir: output directory where the extracted patches will be saved
     :return:
     """
 
-    fp_list_all_g = sorted(list((Path(rasters_dir).rglob('*.nc'))))
+    fp_list_all_g = sorted(list((Path(cubes_dir).rglob('*.nc'))))
+    if len(fp_list_all_g) == 0:
+        raise FileNotFoundError(f"No netcdf files found in {cubes_dir}. ")
+
     entry_id_list = sorted(set([fp.parent.name for fp in fp_list_all_g]))
     entry_id_to_fp = {x: [fp for fp in fp_list_all_g if fp.parent.name == x] for x in entry_id_list}
 
@@ -179,7 +224,7 @@ def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
         for entry_id, fp_list in entry_id_to_fp.items():
             if len(fp_list) > 1:
                 print(f'{entry_id}: {len(fp_list)} files')
-        raise ValueError(f"Expected one netcdf file per glacier in {rasters_dir}")
+        raise ValueError(f"Expected one netcdf file per glacier in {cubes_dir}")
 
     for entry_id in tqdm(entry_id_list, desc='Patchifying'):
         g_fp = entry_id_to_fp[entry_id][0]
@@ -188,11 +233,12 @@ def patchify_data(rasters_dir, patches_dir, patch_radius, sampling_step):
         # get the locations of the sampled patches
         patches_df = get_patches_df(
             nc=nc,
-            sampling_step=sampling_step,
+            stride=stride,
             patch_radius=patch_radius,
             add_center=False,
             add_centroid=True,
-            add_extremes=True
+            add_extremes=False,
+            only_patches_centers_within_buffer=True
         )
         # build the patches
         for i in range(len(patches_df)):

@@ -122,7 +122,7 @@ class BaseDatasetConfig:
     @dataclass
     class Strides:
         train: int = MISSING
-        valid: Optional[int] = None  # we will set it automatically in __post_init__
+        val: Optional[int] = None  # we will set it automatically in __post_init__
         infer: Optional[int] = None  # we will set it automatically in __post_init__
 
     strides: Strides = field(default_factory=Strides)
@@ -203,7 +203,7 @@ class BaseDatasetConfig:
     geoms_fp: str = "${dataset.base_dir}/geoms.gpkg"
 
     # A csv file with the glacier IDs and their corresponding folds under each cross-validation iteration.
-    split_csv: str = "${dataset.base_dir}/cv_split_outlines/map_cv_iter_${pl.cv_iter}.csv"
+    split_csv: str = "${dataset.base_dir}/cv_splits/map_cv_iter_${pl.cv_iter}.csv"
 
     # Path to the processed glacier cubes (netcdf) after processing
     cubes_dir: str = "${dataset.base_dir}/glacier_cubes"
@@ -220,16 +220,16 @@ class BaseDatasetConfig:
         """
 
         # If we don't export patches, we will probably use a small stride for training;
-        # => set the default valid & infer depending on the training stride
+        # => set the default val & infer depending on the training stride
         if self.export_patches:
-            if self.strides.valid is None:
-                self.strides.valid = self.strides.train
+            if self.strides.val is None:
+                self.strides.val = self.strides.train  # we sample all the patches with the same stride and then split
             if self.strides.infer is None:
-                self.strides.infer = self.strides.train // 2
+                self.strides.infer = self.strides.train // 2  # smaller because we sample them on the fly
             self.sample_patches_each_epoch = False
         else:
-            if self.strides.valid is None:
-                self.strides.valid = self.strides.train * 2
+            if self.strides.val is None:
+                self.strides.val = self.strides.train * 2  # if we sample on the fly, we have too many train patches
             if self.strides.infer is None:
                 self.strides.infer = self.strides.train
 

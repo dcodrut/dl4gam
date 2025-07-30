@@ -17,7 +17,7 @@ class PLConfig:
 
     num_cv_folds: int = 5  # number of cross-validation folds
     cv_iter: int = 1  # current cross-validation iteration
-    valid_fraction: float = 0.1  # fraction of the training set to use for validation
+    val_fraction: float = 0.1  # fraction of the training set to use for validation
 
     @dataclass
     class Data:
