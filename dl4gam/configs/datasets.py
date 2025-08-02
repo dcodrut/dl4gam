@@ -233,9 +233,6 @@ class BaseDatasetConfig:
             if self.strides.infer is None:
                 self.strides.infer = self.strides.train
 
-            # set the patch directory to None
-            self.patches_dir = None
-
         # Check if the infer stride is small enough to have some overlap
         # (we discard some border pixels, i.e. 5%, to avoid edge effects)
         if self.strides.infer >= int(self.patch_radius * 0.9):

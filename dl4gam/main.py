@@ -47,7 +47,7 @@ def main(cfg_dict: DictConfig):
         # Get the settings for the current step to execute
         settings_crt_step = getattr(cfg, cfg.current_step)
         log.info(f"Executing step: {cfg.current_step} with settings: {settings_crt_step}")
-        hydra.utils.instantiate(settings_crt_step)
+        hydra.utils.instantiate(settings_crt_step, _recursive_=False)
     except KeyboardInterrupt:
         log.exception("Keyboard interrupt received, stopping the process.")
     except Exception:

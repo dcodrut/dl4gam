@@ -6,19 +6,29 @@ import pytorch_lightning as pl
 import torch
 import torchmetrics as tm
 import xarray as xr
+from hydra.utils import instantiate
 
 # local imports
-from pl_modules.data import extract_inputs
-from pl_modules.loss import MaskedLoss
-from utils.postprocessing import nn_interp, hypso_interp
+from dl4gam.pl_modules.data import extract_inputs
+from dl4gam.utils import nn_interp, hypso_interp
+
+log = logging.getLogger(__name__)
 
 
 class GlSegTask(pl.LightningModule):
-    def __init__(self, model, task_params, outdir=None, interp='nn'):
+    def __init__(self, model, loss, optimizer, lr_scheduler, outdir=None, interp: str = None):
         super().__init__()
 
+        if interp is not None and interp not in ['nn', 'hypso']:
+            raise ValueError(f'Invalid interpolation method: {interp}. Choose either "nn" or "hypso".')
+
         self.model = model
-        self.loss = MaskedLoss(metric=task_params['loss'])
+        self.optimizer_params = optimizer
+        self.lr_scheduler_params = lr_scheduler
+
+        log.info(f"Instantiating the loss function: {loss}")
+        self.loss = instantiate(loss)
+
         self.thr = 0.5
         self.val_metrics = tm.MetricCollection([
             tm.Accuracy(threshold=self.thr, task='binary'),
@@ -27,14 +37,9 @@ class GlSegTask(pl.LightningModule):
             tm.Recall(threshold=self.thr, task='binary'),
             tm.F1Score(threshold=self.thr, task='binary')
         ])
-        self.optimizer_settings = task_params['optimization']['optimizer']
-        self.lr_scheduler_settings = task_params['optimization']['lr_schedule']
-
-        # get the main logger
-        self._logger = logging.getLogger('pytorch_lightning.core')
+        log.info(f'Using the following validation metrics: {list(self.val_metrics._modules.keys())}')
 
         self.outdir = outdir
-        assert interp in (None, 'nn', 'hypso')
         self.interp = interp
 
         # initialize the train/val metrics accumulators
@@ -46,17 +51,19 @@ class GlSegTask(pl.LightningModule):
         return self.model(batch)
 
     def configure_optimizers(self):
-        optimizers = [
-            getattr(torch.optim, o['name'])(self.parameters(), **o['args'])
-            for o in self.optimizer_settings
-        ]
-        if self.lr_scheduler_settings is None:
-            return optimizers
-        schedulers = [
-            getattr(torch.optim.lr_scheduler, s['name'])(optimizers[i], **s['args'])
-            for i, s in enumerate(self.lr_scheduler_settings)
-        ]
-        return optimizers, schedulers
+        optimizer = instantiate(self.optimizer_params, params=self.parameters())
+
+        if self.lr_scheduler_params is not None:
+            lr_scheduler = instantiate(self.lr_scheduler_params, optimizer=optimizer)
+            return {
+                'optimizer_params': optimizer,
+                'lr_scheduler_params': {
+                    'scheduler': lr_scheduler,
+                    'interval': 'step',  # or 'epoch'
+                    'frequency': 1,  # how often to call the scheduler
+                }
+            }
+        return optimizer
 
     def compute_masked_val_metrics(self, y_pred, y_true, mask):
         # apply the mask for each element in the batch and compute the metrics
@@ -183,9 +190,9 @@ class GlSegTask(pl.LightningModule):
 
         # show the stats
         with pd.option_context('display.max_rows', 10, 'display.max_columns', None, 'display.width', None):
-            self._logger.info(f'validation scores stats:\n{df.describe().round(3)}')
-            self._logger.info(f'validation scores stats (per glacier):\n'
-                              f'{df.groupby("gid").mean(numeric_only=True).describe().round(3)}')
+            log.info(f'validation scores stats:\n{df.describe().round(3)}')
+            log.info(f'validation scores stats (per glacier):\n'
+                     f'{df.groupby("gid").mean(numeric_only=True).describe().round(3)}')
 
         # export the stats if needed
         if self.outdir is not None:
@@ -193,10 +200,10 @@ class GlSegTask(pl.LightningModule):
             self.outdir.mkdir(parents=True, exist_ok=True)
             fp = self.outdir / 'stats.csv'
             df.to_csv(fp)
-            self._logger.info(f'Stats exported to {str(fp)}')
+            log.info(f'Stats exported to {str(fp)}')
             fp = self.outdir / 'stats_avg_per_glacier.csv'
             df.groupby('gid').mean(numeric_only=True).to_csv(fp)
-            self._logger.info(f'Stats per glacier exported to {str(fp)}')
+            log.info(f'Stats per glacier exported to {str(fp)}')
 
         # show the epoch as the x-coordinate
         avg_tb_logs['step'] = float(self.current_epoch)
@@ -307,7 +314,7 @@ class GlSegTask(pl.LightningModule):
         cube_pred_fp.parent.mkdir(parents=True, exist_ok=True)
         cube_pred_fp.unlink(missing_ok=True)
         nc_pred.to_netcdf(cube_pred_fp)
-        self._logger.info(f'Cube with predictions exported to {cube_pred_fp}')
+        log.info(f'Cube with predictions exported to {cube_pred_fp}')
 
         # clear the accumulator
         self.test_step_outputs.clear()

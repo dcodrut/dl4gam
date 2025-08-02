@@ -9,10 +9,10 @@ log = logging.getLogger(__name__)
 
 
 class SegModel(torch.nn.Module, ABC):
-    def __init__(self, input_settings, other_settings, model_name, model_args):
+    def __init__(self, input_settings, name, params, encoder_weights_fp=None):
         super().__init__()
-        self.model_args = model_args
-        self.model_name = model_name
+        self.params = dict(params)  # copy it so can modify it by adding the input channels
+        self.name = name
 
         # extract the inputs
         self.input_settings = input_settings
@@ -23,9 +23,6 @@ class SegModel(torch.nn.Module, ABC):
         self.use_dhdt = input_settings['dhdt']
         self.use_velocities = input_settings['velocity']
 
-        # prepare the logger
-        self.logger = logging.getLogger('pytorch_lightning.core')
-
         # compute the number of input channels based on what variables are used
         num_ch = len(self.bands)
         num_ch += 1 * self.use_dem
@@ -35,28 +32,27 @@ class SegModel(torch.nn.Module, ABC):
             num_ch += len(self.optical_indices)
         if self.dem_features:
             num_ch += len(self.dem_features)
-        self.model_args['in_channels'] = num_ch
+        self.params['in_channels'] = num_ch
 
         # set the number of output channels
-        self.model_args['classes'] = 1
+        self.params['classes'] = 1
 
-        log.info(f'Building SegModel ({self.model_name}) with {self.model_args}')
-        self.seg_model = self.build_model(self.model_name, self.model_args)
+        log.info(f'Building SegModel ({self.name}) with {self.params}')
+        self.seg_model = self.build_model(self.name, self.params)
 
         # load the external pretrained weights if needed
-        use_external_weights = other_settings is not None and other_settings['external_encoder_weights'] is not None
-        if use_external_weights:
+        if encoder_weights_fp is not None:
             # ensure only one set of pretrained weights are used
-            assert self.model_args['encoder_weights'] is None or not use_external_weights, \
+            assert self.params['encoder_weights'] is None, \
                 'Choose whether to use smp provided weights or external ones, not both'
 
-            self.load_external_weights(
-                fp=other_settings['external_encoder_weights'],
+            self.load_extself.seg_modelernal_weights(
+                fp=encoder_weights_fp,
                 bands_input=self.bands,
             )
 
     @abstractmethod
-    def build_model(self, model_name, model_args):
+    def build_model(self, name, params):
         raise NotImplementedError("build_model method not implemented")
 
     def load_external_weights(self, fp, bands_input):
@@ -64,7 +60,8 @@ class SegModel(torch.nn.Module, ABC):
         checkpoint = torch.load(fp, map_location='cpu')
         state_dict = checkpoint['state_dict']
         if Path(fp).stem == 'B13_rn50_moco_0099':
-            # name corrections: https://github.com/zhu-xlab/SSL4EO-S12/blob/main/src/benchmark/transfer_classification/linear_BE_moco.py#L251
+            # name corrections:
+            # https://github.com/zhu-xlab/SSL4EO-S12/blob/main/src/benchmark/transfer_classification/linear_BE_moco.py#L251
             for k in list(state_dict.keys()):
                 if k.startswith('module.encoder_q') and not k.startswith('module.encoder_q.fc'):
                     state_dict[k[len("module.encoder_q."):]] = state_dict[k]
@@ -123,16 +120,16 @@ class SegModelSMP(SegModel):
     Segmentation model using the segmentation_models_pytorch library.
     """
 
-    def build_model(self, model_name, model_args):
+    def build_model(self, name, params):
         import segmentation_models_pytorch as smp
 
         # build the model
-        model = getattr(smp, self.model_name)(**self.model_args)
+        model = getattr(smp, self.name)(**self.params)
         return model
 
 
 class MySegModel(SegModel):
-    def build_model(self, model_name, model_args):
+    def build_model(self, name, params):
         # Custom model building logic
         # For example, you can use a different library or your own implementation
         pass

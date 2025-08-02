@@ -38,7 +38,17 @@ class DL4GAMConfig:
     min_glacier_area: float = 0.1  # km^2
     num_procs: int = 24  # for the steps that run in parallel
     pbar: bool = True  # whether to show progress bars when processing time-consuming steps
-    preload_data: bool = False  # whether to load the netcdf files in memory before patchifying them
+
+    def __post_init__(self):
+        # In case we sample patches on the fly & different sample every epoch, we implement this by altering the
+        # `limit_train_batches` parameter.
+        # With shuffle=True and a large enough number of patches (which will be checked), the epochs will be different.
+        if self.dataset.sample_patches_each_epoch:
+            self.pl.trainer.limit_train_batches = self.pl.data.num_patches_train // self.pl.data.train_batch_size
+
+        # Set the strides for validation and test sets in the data config
+        self.pl.data.stride_val = self.dataset.strides.val
+        self.pl.data.stride_test = self.dataset.strides.infer
 
     # Workflow step configs: all the parameters are derived from the existing settings
     @property
@@ -123,6 +133,19 @@ class DL4GAMConfig:
             'data_dir': self.dataset.patches_dir if self.dataset.export_patches else self.dataset.cubes_dir,
             'split_csv': self.dataset.split_csv,
             'fp_out': self.dataset.norm_stats_csv,
+        }
+
+    @property
+    def step_train_model(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.train_model.main',
+            'seed': self.pl.seed,
+            'logger': self.pl.logger,
+            'data': self.pl.data,
+            'model': self.model,
+            'task': self.pl.task,
+            'checkpoint_callback': self.pl.checkpoint_callback,
+            'trainer': self.pl.trainer,
         }
 
     # Which step to execute

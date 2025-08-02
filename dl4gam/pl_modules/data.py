@@ -1,6 +1,6 @@
 import functools
+import logging
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -8,8 +8,9 @@ import pytorch_lightning as pl
 import xarray as xr
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 
-from utils.parallel_utils import run_in_parallel
-from utils.sampling_utils import get_patches_df
+from dl4gam.utils import run_in_parallel, get_patches_df
+
+log = logging.getLogger(__name__)
 
 
 def extract_inputs(ds, fp, input_settings):
@@ -44,8 +45,8 @@ def extract_inputs(ds, fp, input_settings):
     data = {
         'band_data': band_data,
         'mask_no_data': mask_no_data,
-        'mask_crt_g': ds.mask_crt_g.values == 1,
-        'mask_all_g': ~np.isnan(ds.mask_all_g_id.values),
+        'mask_crt_g': ds.mask_glacier.values == 1,
+        'mask_all_g': ~np.isnan(ds.mask_all_glaciers_id.values),
         'fp': str(fp),
         'glacier_area': ds.attrs['glacier_area']
     }
@@ -191,11 +192,11 @@ class GlSegPatchDataset(Dataset):
 
         if folder is not None:
             folder = Path(folder)
-            self.fp_list = sorted(list(folder.glob('**/*.nc')))
+            self.fp_list = sorted(list(folder.rglob('*.nc')))
 
-            assert len(self.fp_list) > 0, f'No files found at: {str(folder)}'
+            if len(self.fp_list) == 0:
+                raise FileNotFoundError(f'No .nc files found in the folder: {str(folder)}')
         else:
-            assert all([Path(fp).exists() for fp in fp_list])
             self.fp_list = fp_list
 
         self.input_settings = input_settings
@@ -240,8 +241,12 @@ class GlSegPatchDataset(Dataset):
         data = extract_inputs(ds=ds, fp=fp, input_settings=self.input_settings)
 
         # standardize/scale the inputs if needed
-        if self.standardize_data or self.minmax_scale_data:
-            assert self.standardize_data != self.minmax_scale_data
+        if self.standardize_data and self.minmax_scale_data:
+            raise ValueError(
+                'Cannot standardize and min-max scale the data at the same time. '
+                'Please choose one of the two options.'
+            )
+
         if self.standardize_data:
             standardize_inputs(
                 data,
@@ -273,7 +278,7 @@ class GlSegPatchDataset(Dataset):
 
 
 class GlSegDataset(GlSegPatchDataset):
-    def __init__(self, fp, patch_radius, sampling_step=None, preload_data=False, add_extremes=False, **kwargs):
+    def __init__(self, fp, patch_radius, stride=None, preload_data=False, add_extremes=False, **kwargs):
         self.fp = fp
         super().__init__(folder=None, fp_list=[fp], **kwargs)
         self.patch_radius = patch_radius
@@ -286,15 +291,18 @@ class GlSegDataset(GlSegPatchDataset):
         self.patches_df = get_patches_df(
             self.nc,
             patch_radius=patch_radius,
-            sampling_step=sampling_step,
+            stride=stride,
             add_center=False,
             add_centroid=True,
             add_extremes=add_extremes
         )
 
     def subsample(self, n, seed, with_replacement=False):
-        # subsample the patches
-        assert n <= len(self.patches_df), f'Not enough patches: {n} > {len(self.patches_df)}; fp = {self.fp}'
+        # Subsample the patches
+        if n > len(self.patches_df):
+            log.warning(f'Not enough patches to sample {n} from {len(self.patches_df)}; keeping all patches')
+            return
+
         self.patches_df = self.patches_df.sample(n, replace=with_replacement, random_state=seed)
 
     def __getitem__(self, idx):
@@ -320,34 +328,50 @@ class GlSegDataset(GlSegPatchDataset):
 
 class GlSegDataModule(pl.LightningDataModule):
     def __init__(self,
-                 all_splits_fp: Union[Path, str],
-                 split: str,
-                 rasters_dir: str,
                  input_settings: dict,
-                 patches_dir: Union[Path, str] = None,
+                 split_csv: Path | str,
+                 patches_on_disk: bool,
+                 patches_dir: Path | str = None,
+                 num_patches_train: int = None,
+                 seed: int = 42,
+                 cubes_dir: Path | str = None,
                  patch_radius: int = None,
-                 sampling_step_train: int = None,
-                 sampling_step_valid: int = None,
-                 sampling_step_test: int = None,
-                 preload_data: bool = False,
+                 stride_train: int = None,
+                 stride_val: int = None,
+                 stride_test: int = None,
                  standardize_data: bool = False,
                  minmax_scale_data: bool = False,
                  scale_each_band: bool = True,
-                 data_stats_fp: str = None,
+                 norm_stats_csv: Path | str = None,
                  train_batch_size: int = 16,
                  val_batch_size: int = 32,
                  test_batch_size: int = 32,
                  train_shuffle: bool = True,
                  use_augmentation: bool = False,
                  num_workers: int = 16,
+                 preload_data: bool = False,
                  pin_memory: bool = False):
         super().__init__()
-        self.rasters_dir = rasters_dir
+
+        if not patches_on_disk:
+            if patch_radius is None:
+                raise ValueError('Patch radius must be provided when patches are not on disk')
+            if stride_train is None:
+                raise ValueError('Sampling step for training must be provided when patches are not on disk')
+            if stride_val is None:
+                raise ValueError('Sampling step for validation must be provided when patches are not on disk')
+        else:
+            if patches_dir is None:
+                raise ValueError('Patches directory must be provided when patches are on disk')
+
         self.input_settings = input_settings
+        self.patches_on_disk = patches_on_disk
+        self.num_patches_train = num_patches_train
+        self.seed = seed
         self.patch_radius = patch_radius
-        self.sampling_step_train = sampling_step_train
-        self.sampling_step_valid = sampling_step_valid
-        self.sampling_step_test = sampling_step_test
+        self.stride_train = stride_train
+        self.stride_val = stride_val
+        self.stride_test = stride_test
         self.preload_data = preload_data
         self.standardize_data = standardize_data
         self.minmax_scale_data = minmax_scale_data
@@ -359,58 +383,67 @@ class GlSegDataModule(pl.LightningDataModule):
         self.use_augmentation = use_augmentation
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.setups_initialized = []  # will be used to check if the setup method was called to avoid calling it twice
 
         # read the filepaths for all the patches, if provided, otherwise we will build them on the fly using the rasters
-        self.patches_are_on_disk = patches_dir is not None
-        if not self.patches_are_on_disk:
-            assert patch_radius is not None, 'Patch radius must be provided when patches are not on disk'
-        data_dir = Path(patches_dir) if self.patches_are_on_disk else Path(rasters_dir)
-        fp_list = sorted(list(Path(data_dir).rglob('*.nc')))
+        data_dir = patches_dir if self.patches_on_disk else cubes_dir
+        _label = 'Patches' if self.patches_on_disk else 'Rasters'
+        if data_dir is None:
+            raise ValueError(f'{_label} directory must be provided')
+        data_dir = Path(data_dir)
+        if not data_dir.exists():
+            raise FileNotFoundError(f'{_label} directory {data_dir} does not exist')
 
-        # read the split and the corresponding train/valid/test files
-        split_df = pd.read_csv(all_splits_fp)
+        fp_list = sorted(list(Path(data_dir).rglob('*.nc')))
+        log.info(f'Found {len(fp_list)} netcdf files in {data_dir}')
+
+        # read the split and the corresponding train/val/test files
+        log.info(f'Reading the split csv from {split_csv}')
+        split_df = pd.read_csv(split_csv)
 
         # get the list of glaciers for each fold of the current split
         fp_list_per_fold = {}
-        for fold_name in ['fold_train', 'fold_valid', 'fold_test']:
-            glacier_ids = sorted(list(split_df[split_df[split] == fold_name].entry_id))
+        for fold_name in ['train', 'val', 'test']:
+            glacier_ids = sorted(list(split_df[split_df['fold'] == fold_name].entry_id))
             fp_list_per_fold[fold_name] = sorted([fp for fp in fp_list if fp.parent.name in glacier_ids])
-        self.fp_list_train = fp_list_per_fold['fold_train']
-        self.fp_list_valid = fp_list_per_fold['fold_valid']
-        self.fp_list_test = fp_list_per_fold['fold_test']
+
+            # Make sure we have at least one file per glacier in the fold
+            if len(fp_list_per_fold[fold_name]) == 0:
+                raise FileNotFoundError(f"No files found for fold '{fold_name}' in {data_dir}")
+
+        self.fp_list_train = fp_list_per_fold['train']
+        self.fp_list_val = fp_list_per_fold['val']
+        self.fp_list_test = fp_list_per_fold['test']
 
         # sanity checks
-        assert len(set(self.fp_list_train) & set(self.fp_list_valid)) == 0, 'Train and valid overlap'
+        assert len(set(self.fp_list_train) & set(self.fp_list_val)) == 0, 'Train and val overlap'
         assert len(set(self.fp_list_train) & set(self.fp_list_test)) == 0, 'Train and test overlap'
-        assert len(set(self.fp_list_valid) & set(self.fp_list_test)) == 0, 'Valid and test overlap'
+        assert len(set(self.fp_list_val) & set(self.fp_list_test)) == 0, 'val and test overlap'
 
         # check if some files were not assigned to any fold
-        fp_list_assigned = set(self.fp_list_train) | set(self.fp_list_valid) | set(self.fp_list_test)
+        fp_list_assigned = set(self.fp_list_train) | set(self.fp_list_val) | set(self.fp_list_test)
         if len(fp_list_assigned) != len(fp_list):
             glacier_ids_missing = sorted([fp.parent.name for fp in set(fp_list) - fp_list_assigned])
-            print(f'Warning: {len(glacier_ids_missing)} glaciers ({glacier_ids_missing}) were not assigned to any fold')
+            log.warning(f'{len(glacier_ids_missing)} glaciers ({glacier_ids_missing}) were not assigned to any fold')
 
         # the following will be set when calling setup
         self.train_ds = None
-        self.valid_ds = None
+        self.val_ds = None
         self.test_ds = None
         self.test_ds_list = None
 
         # prepare the standardization constants if needed
         self.data_stats_df = None
         if self.standardize_data or self.minmax_scale_data:
-            data_stats_fp = Path(data_stats_fp)
-            assert data_stats_fp.exists(), f'{data_stats_fp} not found'
-
-            self.data_stats_df = pd.read_csv(data_stats_fp)
+            if norm_stats_csv is None:
+                raise ValueError('Normalization stats CSV file must be provided when standardizing or scaling data')
+            norm_stats_csv = Path(norm_stats_csv)
+            if not norm_stats_csv.exists():
+                raise FileNotFoundError(f'Normalization stats CSV file {norm_stats_csv} does not exist')
+            log.info(f'Reading the normalization stats from {norm_stats_csv}')
+            self.data_stats_df = pd.read_csv(norm_stats_csv)
 
     def setup(self, stage: str = None):
-        if stage in self.setups_initialized:
-            print(f'Setup for {stage} already initialized. Skipping...')
-            return
-
-        if self.patches_are_on_disk:
+        if self.patches_on_disk:
             common_kwargs = dict(
                 input_settings=self.input_settings,
                 standardize_data=self.standardize_data,
@@ -424,7 +457,7 @@ class GlSegDataModule(pl.LightningDataModule):
                     use_augmentation=self.use_augmentation,
                     **common_kwargs,
                 )
-                self.valid_ds = GlSegPatchDataset(fp_list=self.fp_list_valid, **common_kwargs)
+                self.val_ds = GlSegPatchDataset(fp_list=self.fp_list_val, **common_kwargs)
             elif stage == 'test':
                 self.test_ds = GlSegPatchDataset(fp_list=self.fp_list_test, **common_kwargs)
         else:
@@ -433,49 +466,75 @@ class GlSegDataModule(pl.LightningDataModule):
                 self.train_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
                     fp_rasters=self.fp_list_train,
                     use_augmentation=self.use_augmentation,
-                    sampling_step=self.sampling_step_train
+                    stride=self.stride_train
                 ))
 
                 # for validation, we don't apply any subsampling, adjust the sampling step if needed
-                self.valid_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
-                    fp_rasters=self.fp_list_valid, sampling_step=self.sampling_step_valid
+                self.val_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
+                    fp_rasters=self.fp_list_val, stride=self.stride_val
                 ))
             elif stage == 'test':
                 # we enable add_extremes for the test set to make sure we have a good coverage of the glacier
                 self.test_ds = ConcatDataset(self.build_patch_dataset_per_glacier(
-                    fp_rasters=self.fp_list_test, sampling_step=self.sampling_step_test, add_extremes=True
+                    fp_rasters=self.fp_list_test, stride=self.stride_test, add_extremes=True
                 ))
 
-        self.setups_initialized.append(stage)
+        # Log the dataset sizes & subsample the training set if needed
+        for ds_name, ds in zip(['train', 'val', 'test'], [self.train_ds, self.val_ds, self.test_ds]):
+            if ds is None:
+                continue
+            if self.patches_on_disk:
+                log.info(f"{ds_name} dataset: {len(ds)} patches from {ds.n_glaciers} glaciers")
+            else:
+                ds_sizes = [len(x) for x in ds.datasets]
+                log.info(
+                    f"{ds_name} dataset: "
+                    f"{len(ds)} patches from {len(ds_sizes)} glaciers; "
+                    f"#samples per glacier: min = {min(ds_sizes)} max = {max(ds_sizes)} avg = {np.mean(ds_sizes):.1f}"
+                )
 
-    def subsample_train_ds(self, n_patches, seed):
-        assert self.train_ds is not None, 'Train dataset not initialized'
-        assert not self.patches_are_on_disk, 'Subsampling only supported when patches are built on the fly'
+                if ds_name == "train" and self.num_patches_train is not None:
+                    log.info(f"Subsampling the training set to {self.num_patches_train} patches")
+                    self.subsample_train_ds(self.num_patches_train)
+                    ds_sizes = [len(x) for x in self.train_ds.datasets]
+                    log.info(
+                        f"{ds_name} dataset: "
+                        f"{len(self.train_ds)} patches from {len(ds_sizes)} glaciers; "
+                        f"#samples per glacier: min = {min(ds_sizes)} max = {max(ds_sizes)} avg = {np.mean(ds_sizes):.1f}"
+                    )
 
+    def subsample_train_ds(self, n_patches):
         ds_list_train = self.train_ds.datasets
         ds_sizes_init = np.asarray([len(ds) for ds in ds_list_train])
-        # make sure we generated enough training patches (keep at least on patch per glacier)
+
+        # Make sure we generated enough training patches (keep at least on patch per glacier)
         n_patches_init = sum(ds_sizes_init)
-        assert n_patches_init >= n_patches, \
-            f'Not enough patches for training: {n_patches_init} < {n_patches}'
+        if n_patches_init < n_patches:
+            log.warning(
+                f'Not enough patches for training: {n_patches_init} < {n_patches}. '
+                f'Subsampling will not be performed.'
+            )
+            return
+
         n_glaciers = len(ds_list_train)
-        # keep at least one patch per glacier
+
+        # Keep at least one patch per glacier
         fraction = (n_patches - n_glaciers) / (n_patches_init - n_glaciers)
         ds_sizes_to_keep = np.asarray([1 + int(round((x - 1) * fraction)) for x in ds_sizes_init])
 
-        # make sure the sum is exactly the target number of patches
+        # Make sure the sum is exactly the target number of patches
         idx = np.argsort(ds_sizes_to_keep)  # use the largest glaciers to make sure we have enough patches
         diff = n_patches - sum(ds_sizes_to_keep)
         ds_sizes_to_keep[idx[-abs(diff):]] += np.sign(diff)
 
-        # subsample the patches
+        # Subsample
         for n, ds in zip(ds_sizes_to_keep, ds_list_train):
-            ds.subsample(n=n, with_replacement=False, seed=seed)
+            ds.subsample(n=n, with_replacement=False, seed=self.seed)
 
         self.train_ds = ConcatDataset(ds_list_train)
 
     def build_patch_dataset_per_glacier(
-            self, fp_rasters, use_augmentation=False, sampling_step=None, add_extremes=False
+            self, fp_rasters, use_augmentation=False, stride=None, add_extremes=False
     ):
         ds_list = run_in_parallel(
             fun=functools.partial(
@@ -486,13 +545,12 @@ class GlSegDataModule(pl.LightningDataModule):
                 scale_each_band=self.scale_each_band,
                 data_stats_df=self.data_stats_df,
                 patch_radius=self.patch_radius,
-                sampling_step=sampling_step,
+                stride=stride,
                 add_extremes=add_extremes,
                 preload_data=self.preload_data,
                 use_augmentation=use_augmentation
             ),
             fp=fp_rasters,
-            num_procs=self.num_workers,
             pbar=True,
             pbar_desc='Preparing patch-level datasets for each glacier'
         )
@@ -515,7 +573,7 @@ class GlSegDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
-            dataset=self.valid_ds,
+            dataset=self.val_ds,
             batch_size=self.val_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -545,7 +603,7 @@ class GlSegDataModule(pl.LightningDataModule):
         """
         test_ds_list = self.build_patch_dataset_per_glacier(
             fp_rasters=fp_rasters,
-            sampling_step=self.sampling_step_test,
+            stride=self.stride_test,
             add_extremes=True,
             use_augmentation=self.use_augmentation
         )
