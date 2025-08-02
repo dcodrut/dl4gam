@@ -45,6 +45,9 @@ def main(cfg_dict: DictConfig):
 
     try:
         # Get the settings for the current step to execute
+        valid_steps = {attr for attr in dir(cfg) if attr.startswith("step_")}
+        if cfg.current_step not in valid_steps:
+            raise RuntimeError(f"Invalid current_step {cfg.current_step!r}; expected one of {sorted(valid_steps)}")
         settings_crt_step = getattr(cfg, cfg.current_step)
         log.info(f"Executing step: {cfg.current_step} with settings: {settings_crt_step}")
         hydra.utils.instantiate(settings_crt_step, _recursive_=False)
