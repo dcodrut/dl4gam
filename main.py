@@ -11,7 +11,7 @@ from dl4gam.utils import parallel_utils
 register_configs()
 
 
-@hydra.main(config_path=None, config_name='config', version_base=None)
+@hydra.main(config_path='conf', config_name='config', version_base=None)
 def main(cfg_dict: DictConfig):
     # Covert the DictConfig to our internal dataclass structure
     cfg = OmegaConf.to_container(

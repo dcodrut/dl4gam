@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Any
+from typing import Any
 
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
@@ -12,27 +12,28 @@ from dl4gam.configs.training import PLConfig
 
 @dataclass
 class DL4GAMConfig:
-    """
-    Full application config for the workflow.
-    We set here the dataset, the model, and the settings for the workflow steps.
+    """ Full application config for the DL4GAM workflow.
+
+    First, we define here the composition scheme (i.e. the dataset, the model & training settings)
+    and some global settings.
+
+    Second, we do some post-processing in the `__post_init__` method to set some parameters that depend on the dataset
+    and model configs.
+
+    Last, we use @property to define the parameters for each workflow step to avoid passing the whole config and thus
+    make clear which parameters are used for each step. This also allows us to easily refactor and also to make sure
+    we use the parameters set in the post_init methods.
     """
 
-    # Set defaults for: hydra, model, dataset and training setup
-    defaults: List[Any] = field(default_factory=lambda: [
-        '_self_',
-        {'dataset': 's2_alps_plus'},
-        {'model': 'unet'},
-    ])
-
-    # the following are pointers to the dataset and model configs
+    # The following are pointers to the dataset and model configs that will be populated by Hydra using the yaml files.
     dataset: Any = MISSING
     model: Any = MISSING
 
-    # for the training setup we have a single config that is used for all models
+    # For the training setup we have a single config that is used for all models
     pl: PLConfig = field(default_factory=PLConfig)
 
     # Root working directory (everything is relative to this)
-    working_dir: str = '../data/external/dl4gam'
+    working_dir: str = './data/external/dl4gam'
 
     # Global settings
     min_glacier_area: float = 0.1  # km^2
@@ -158,7 +159,7 @@ def register_configs():
     cs.store(group='dataset', name='s2_alps', node=S2AlpsConfig)
     cs.store(group='dataset', name='s2_alps_plus', node=S2AlpsPlusConfig)
     cs.store(group='model', name='unet', node=UnetModelConfig)
-    cs.store(name='config', node=DL4GAMConfig)
+    cs.store(name='dl4gam_config', node=DL4GAMConfig)
 
     # Register the Hydra config separately in the hydra group
     cs.store(group="hydra", name="config", node=DL4GAMHydraConfig)

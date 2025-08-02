@@ -1,0 +1,4 @@
+defaults:
+  - dl4gam_config      # our main configuration file
+  - dataset: s2_alps_plus
+  - model: unet

@@ -273,7 +273,7 @@ class S2AlpsConfig(BaseDatasetConfig):
 
     name: str = 's2_alps'
     gsd: int = 10
-    outlines_fp: str = "../data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp"
+    outlines_fp: str = "./data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp"
     year: str = 'inv'  # or a certain year (e.g. '2023')
     gee_download: bool = True  # whether to download the raw data automatically from GEE
 
@@ -292,7 +292,7 @@ class S2AlpsConfig(BaseDatasetConfig):
 
     raw_data: BaseDatasetConfig.RawDataConfig = field(
         default_factory=lambda: BaseDatasetConfig.RawDataConfig(
-            base_dir="../data/external/dl4gam/raw_data/images/s2_alps/yearly",
+            base_dir="./data/external/dl4gam/raw_data/images/s2_alps/yearly",
             automated_selection=False,
             # we need a buffer >= patch radius,
             # but we use a larger buffer in case we later want to increase the patch size and avoid redownloading
@@ -308,7 +308,7 @@ class S2AlpsConfig(BaseDatasetConfig):
     # Always add the COPDEM30 no matter the year
     # TODO: take it from OGGM dirs
     extra_rasters: Dict[str, str] = field(default_factory=lambda: {
-        'dem': '../data/external/copdem_30m',
+        'dem': './data/external/copdem_30m',
     })
     # whether to include the dhdt raster from Hugonnet et al. (2021) (see also `__post_init__`)
     include_dhdt_raster: bool = True
@@ -333,7 +333,7 @@ class S2AlpsConfig(BaseDatasetConfig):
 
     # Use the (mixed) debris product processed in the notebook
     extra_vectors: Dict[str, str] = field(default_factory=lambda: {
-        'debris': '../data/outlines/debris_multisource/debris_multisource.shp'
+        'debris': './data/outlines/debris_multisource/debris_multisource.shp'
     })
 
     # Which features to compute using xDEM
@@ -350,10 +350,10 @@ class S2AlpsConfig(BaseDatasetConfig):
     def __post_init__(self):
         super().__post_init__()
 
-        # Automatically add the 'dhdt' raster from Hugonnet et al. (2021)
-        if self.include_dhdt_raster:
+        # Automatically add the 'dhdt' raster from Hugonnet et al. (2021) if not set already
+        if self.include_dhdt_raster and 'dhdt' not in self.extra_rasters:
             if self.year == 'inv':
-                self.extra_rasters['dhdt'] = '../data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'
+                self.extra_rasters['dhdt'] = './data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'
             else:
                 # For the year, we will use the closest pentad to the given year (e.g. 2023)
                 # Note that the data is available for four 5-year periods: 2000-2005, 2005-2010, 2010-2015, 2015-2020
@@ -361,11 +361,11 @@ class S2AlpsConfig(BaseDatasetConfig):
                 pentad_start = max(min(pentad_start, 2015), 2000)  # limit to the available pentads
                 pentad_end = pentad_start + 5
                 dirname = f"11_rgi60_{pentad_start}-01-01_{pentad_end}-01-01"
-                self.extra_rasters['dhdt'] = f"../data/external/dhdt_hugonnet/{dirname}/dhdt"
+                self.extra_rasters['dhdt'] = f"./data/external/dhdt_hugonnet/{dirname}/dhdt"
 
         # Set the dates to the inventory ones (exported in the notebook)
         if self.year == 'inv':
-            self.csv_dates = "../data/outlines/paul_et_al_2020/dates.csv"
+            self.csv_dates = "./data/outlines/paul_et_al_2020/dates.csv"
         else:
             # Automatically select the images in the given year and the following window
             self.raw_data.automated_selection = True
@@ -387,4 +387,4 @@ class S2AlpsPlusConfig(S2AlpsConfig):
     """
 
     name: str = 's2_alps_plus'
-    dates_csv: Optional[str] = '../data/inv_images_qc/final_dates.csv'  # manually curated dates for the inventory years
+    dates_csv: Optional[str] = './data/inv_images_qc/final_dates.csv'  # manually curated dates for the inventory years
