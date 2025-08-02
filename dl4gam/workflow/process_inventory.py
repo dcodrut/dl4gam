@@ -90,8 +90,8 @@ def compute_buffers(
 
     # 1. The geometry for computing the cloud coverage (and albedo), i.e. glacier + simple buffer
     # We will also set the resolution to 2 (to avoid too many vertices in the buffer)
-    log.info(f"Computing the glacier buffers for cloud coverage (and albedo) with size {buffers.buffer_qc_metrics} m")
-    geoms_buffered = _gdf.buffer(buffers.buffer_qc_metrics, resolution=2)
+    log.info(f"Computing the glacier buffers for cloud coverage (and albedo) with size {buffers.qc_metrics} m")
+    geoms_buffered = _gdf.buffer(buffers.qc_metrics, resolution=2)
     gdfs_out['buffer_clouds'] = geoms_buffered
 
     # 2. The geometry for computing the NDSI, i.e. non-glacier pixels within the glacier buffer

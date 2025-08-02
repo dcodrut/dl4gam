@@ -61,7 +61,7 @@ class DL4GAMConfig:
             'buffers': self.dataset.buffers,
             'crs': self.dataset.crs,
             'gsd': self.dataset.gsd,
-            'dates_csv': self.dataset.dates_csv,
+            'dates_csv': self.dataset.raw_data.dates_csv,
         }
 
     @property
@@ -69,11 +69,29 @@ class DL4GAMConfig:
         # We take a few parameters from the dataset config plus (most of) the raw data settings
         return {
             '_target_': 'dl4gam.workflow.download_gee_data.main',
+            'base_dir': self.dataset.raw_data.base_dir,
             'geoms_fp': self.dataset.geoms_fp,
+            'buffer_roi': self.dataset.buffers.roi,
             'year': self.dataset.year,
             'gsd': self.dataset.gsd,
-            'bands_name_map': self.dataset.bands_rename,
-        } | self.dataset.raw_data.__dict__
+            'automated_selection': self.dataset.raw_data.automated_selection,
+            'download_time_window': self.dataset.raw_data.download_time_window,
+            'gee_project_name': self.dataset.raw_data.gee_project_name,
+            'img_collection_name': self.dataset.raw_data.img_collection_name,
+            'cloud_collection_name': self.dataset.raw_data.cloud_collection_name,
+            'cloud_band': self.dataset.raw_data.cloud_band,
+            'cloud_mask_thresh_p': self.dataset.raw_data.cloud_mask_thresh_p,
+            'max_cloud_p': self.dataset.raw_data.max_cloud_p,
+            'min_coverage': self.dataset.raw_data.min_coverage,
+            'sort_by': self.dataset.raw_data.sort_by,
+            'score_weights': self.dataset.raw_data.score_weights,
+            'num_days_to_keep': self.dataset.raw_data.num_days_to_keep,
+            'bands_to_keep': self.dataset.raw_data.bands,
+            'bands_name_map': self.dataset.raw_data.bands_rename,
+            'latest_tile_only': self.dataset.raw_data.latest_tile_only,
+            'skip_existing': self.dataset.raw_data.skip_existing,
+            'try_reading': self.dataset.raw_data.try_reading,
+        }
 
     @property
     def step_oggm_data_download(self) -> dict:
@@ -97,7 +115,7 @@ class DL4GAMConfig:
             'base_dir': self.dataset.cubes_dir,
             'raw_data_base_dir': self.dataset.raw_data.base_dir,
             'year': self.dataset.year,
-            'bands_name_map': self.dataset.bands_rename,
+            'bands_name_map': self.dataset.raw_data.bands_rename,
             'bands_nok_mask': self.dataset.bands_nok_mask,
             'extra_vectors': self.dataset.extra_vectors,
             'extra_rasters': self.dataset.extra_rasters,
@@ -112,6 +130,7 @@ class DL4GAMConfig:
             'cubes_dir': self.dataset.cubes_dir,
             'patch_radius': self.dataset.patch_radius,
             'patches_dir': self.dataset.patches_dir,
+            'stride': self.dataset.strides.train,
         }
 
     @property
@@ -159,4 +178,3 @@ def register_configs():
     cs.store(group='dataset', name='s2_alps_plus', node=S2AlpsPlusConfig)
     cs.store(group='model', name='unet', node=UnetModelConfig)
     cs.store(name='dl4gam_config', node=DL4GAMConfig)
-

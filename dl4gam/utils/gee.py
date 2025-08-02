@@ -83,7 +83,7 @@ def query_images(
                 f"The following required bands are missing from the collection: {', '.join(missing_bands)}. "
                 f"Available bands: {', '.join(all_bands)}."
             )
-        imgs = imgs.select(bands)
+        imgs = imgs.select(list(bands))
 
     ####################################################################################################################
     # Step 3: Reproject the images to the target CRS

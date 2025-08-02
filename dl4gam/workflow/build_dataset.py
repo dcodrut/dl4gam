@@ -122,7 +122,7 @@ def filter_and_assign_images(
             f"Please check the directory structure and the glacier IDs."
         )
 
-    return glacier_ids, dates, fp_images
+    return glacier_ids_with_images, dates, fp_images
 
 
 def main(

@@ -16,7 +16,7 @@ def main(
         geoms_fp: str | Path,
         buffer_roi: int,
         year: str | int,
-        download_window: tuple[str, str] = None,
+        download_time_window: tuple[str, str] = None,
         automated_selection: bool = False,
         **kwargs,
 ):
@@ -30,7 +30,7 @@ def main(
     :param geoms_fp: file path to the processed glacier outlines
     :param buffer_roi: buffer size in meters for the region of interest around each glacier
     :param year: year for which to download the images
-    :param download_window: MM:DD tuple with the start and end dates for the download window (e.g. '08-01', '10-15')
+    :param download_time_window: MM:DD tuple with the start and end dates for the download window (e.g. '08-01', '10-15')
     :param automated_selection: whether to use the automated selection of the best images (if not, dates_csv must be provided)
     :param kwargs: all the parameters for the `download_best_images` function
     :return: None
@@ -42,7 +42,7 @@ def main(
     log.info(f"Reading the glacier outlines from {geoms_fp} (layer 'glacier_sel')")
     gdf = gpd.read_file(geoms_fp, layer='glacier_sel')
 
-    # Set the start-end dates (use the date_acq column if needed, otherwise the year + download_window)
+    # Set the start-end dates (use the date_acq column if needed, otherwise the year + download_time_window)
     if not automated_selection:
         # We expect a column `date_acq` in the GeoDataFrame with the acquisition dates
         if 'date_acq' not in gdf.columns:
@@ -64,8 +64,8 @@ def main(
     else:
         # Get the inventory year for each glacier if year is 'inv', otherwise use the provided year
         years = list(gdf.date_inv.apply(lambda x: pd.to_datetime(x).year)) if year == 'inv' else [year] * len(gdf)
-        start_dates = [f"{y}-{download_window[0]}" for y in years]
-        end_dates = [f"{y}-{download_window[1]}" for y in years]
+        start_dates = [f"{y}-{download_time_window[0]}" for y in years]
+        end_dates = [f"{y}-{download_time_window[1]}" for y in years]
 
     # Project each geometry to the local CRS (EPSG code) provided in the GeoDataFrame
     # And build a list of GeoDataFrames for each glacier to run in parallel
