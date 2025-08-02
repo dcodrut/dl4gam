@@ -2,3 +2,17 @@ defaults:
   - dl4gam_config      # our main configuration file
   - dataset: s2_alps_plus
   - model: unet
+
+
+hydra:
+  job_logging:
+    formatters:
+      simple:
+        format: "[%(levelname)s] - %(asctime)s - %(name)s: %(message)s (%(filename)s:%(funcName)s:%(lineno)d)"
+    root:
+      handlers: [ console, file ]
+      level: INFO
+      propagate: false
+    disable_existing_loggers: false
+    external_modules: [ pyogrio ]
+    external_modules_log_level: WARN

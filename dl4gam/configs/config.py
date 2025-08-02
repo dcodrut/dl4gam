@@ -5,7 +5,6 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from dl4gam.configs.datasets import S2AlpsConfig, S2AlpsPlusConfig
-from dl4gam.configs.hydra import DL4GAMHydraConfig
 from dl4gam.configs.models import UnetModelConfig
 from dl4gam.configs.training import PLConfig
 
@@ -161,5 +160,3 @@ def register_configs():
     cs.store(group='model', name='unet', node=UnetModelConfig)
     cs.store(name='dl4gam_config', node=DL4GAMConfig)
 
-    # Register the Hydra config separately in the hydra group
-    cs.store(group="hydra", name="config", node=DL4GAMHydraConfig)
