@@ -209,9 +209,12 @@ def main(
         # Save the dates as a new column in the GeoDataFrame
         gdf['date_acq'] = gdf['entry_id'].map(dates_df['date'])
     else:
-        # Assume we will use exactly the same dates as the inventory date
-        log.info("No acquisition dates provided, using the inventory date as the acquisition date.")
-        gdf['date_acq'] = gdf['date_inv']
+        if 'date_acq' in gdf.columns:
+            log.info("Acquisition dates already present in the GeoDataFrame, using them.")
+        else:
+            # Assume we will use exactly the same dates as the inventory date
+            log.info("No acquisition dates provided, using the inventory date as the acquisition date.")
+            gdf['date_acq'] = gdf['date_inv']
 
     # Filter the GeoDataFrame to keep only the selected glaciers
     gdf_sel = gdf[gdf['entry_id'].isin(glaciers_to_process)]
