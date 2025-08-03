@@ -254,7 +254,7 @@ def prep_glacier_dataset(
         ds = add_extra_rasters(ds, extra_rasters, no_data)
 
     # Add DEM features computed with xDEM
-    if xdem_features is not None:
+    if xdem_features:
         if 'dem' in ds.data_vars:
             log.debug(f"Adding DEM features ({xdem_features}) for glacier {entry_id}")
             ds = add_dem_features(ds, xdem_features, no_data)
