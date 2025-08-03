@@ -74,6 +74,7 @@ def filter_and_assign_images(
         gdf: gpd.GeoDataFrame,
         raw_data_base_dir: str | Path,
         year: str | int,
+        automated_selection: bool = False
 ) -> tuple[list[str], list[str], list[Path]]:
     """
     Assign the raw images to the glaciers.
@@ -82,12 +83,16 @@ def filter_and_assign_images(
     :param gdf: GeoDataFrame with the glacier outlines (we need at least the columns 'entry_id' and 'date_acq')
     :param raw_data_base_dir: Base directory for raw images
     :param year: Year or 'inv' for inventory year
+    :param automated_selection: If True, use the automated selection of images based on metadata
+        (or we expect a single image per glacier directory). If False, we will use the 'date_acq' column to filter
+        the images (which contains either the exact inventory dates or the dates provided in the dates_csv file).
+        See `process_inventory.py` for more details on the inventory dates.
     :return: Tuple containing: the list of glacier IDs, the list of dates, and the list of file paths to the images.
     """
 
     # For the inventory year, we will use the 'date_acq' column
     # (as we expect we've already downloaded the images for these dates)
-    if year == 'inv':
+    if not automated_selection:
         allowed_dates = gdf.date_acq.tolist()
         years = [pd.to_datetime(d).year for d in allowed_dates]
     else:
@@ -131,6 +136,7 @@ def main(
         raw_data_base_dir: str | Path,
         year: str | int,
         extra_vectors: Optional[dict[str, str | Path]] = None,
+        automated_selection: bool = False,
         **kwargs
 ):
     # Read the outlines of the selected glaciers + all of them (needed for building the segmentation masks)
@@ -143,6 +149,7 @@ def main(
         gdf=gdf_sel,
         raw_data_base_dir=raw_data_base_dir,
         year=year,
+        automated_selection=automated_selection,
     )
 
     # Check if we have any missing images
