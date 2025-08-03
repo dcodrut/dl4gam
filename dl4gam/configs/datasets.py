@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Dict, Tuple, Any, Optional
 
 from omegaconf import MISSING
@@ -16,7 +16,7 @@ class LocalRawImagesConfig:
     root_dir/year/glacier_id/date*.tif
     where:
     - root_dir is the base directory where the raw images are stored (see `base_dir` below)
-    - year is the year of the images (e.g. '2023' or 'inv' for a multi-year inventory)
+    - year is the year of the images (e.g. '2023' or 'inv' for a multi-year inventory; see `year` in BaseDatasetConfig)
     - glacier_id is the ID of the glacier (e.g. 'RGI60-11.00100')
     - date* is the filename containing the date of the image, e.g. '2023-08-15_ABC.tif'
     """
@@ -45,13 +45,14 @@ class LocalRawImagesConfig:
     # - for using NDSI ('ndsi'), we expect the bands 'G' and 'NIR' to be present
     # - for using albedo ('albedo'), we expect the bands 'R', 'G', 'B' to be present
     # In case the required optical bands exist but with different names, we can set the following map:
-    bands_rename: Dict[str, str] = field(default_factory=dict)
+    bands_rename: Optional[Dict[str, str]] = None
 
     # Buffer for computing the Quality Control (QC) metrics
     # For NDSI, only non-ice & non-cloud pixels will be used. See `gee_download.py` or 'rank_images.py` for details.
     buffer_qc_metrics: int | float = 100  # in meters; if None, the entire ROI will be used for the metrics
 
     # Assuming we have a cloud mask, we can set a maximum cloud coverage to accept for the images
+    # (Only used if `automated_selection` is True)
     min_coverage: float = 0.9  # minimum coverage percentage to accept the scene
     max_cloud_p: float = 0.3  # max cloud coverage (glacier + buffer)
 
@@ -83,6 +84,7 @@ class GEERawImagesConfig(LocalRawImagesConfig):
     img_collection_name: str = MISSING
 
     # Date interval (within the given year) for downloading if strict dates are not imposed (see `dates_csv` above).
+    # If both `download_time_window` and `dates_csv` are set, we expect a column `date_inv` in the inventory outlines
     # format: DD:MM e.g. ('08-01', '10-15')
     download_time_window: Optional[Tuple[str, str]] = None
 
@@ -105,11 +107,6 @@ class GEERawImagesConfig(LocalRawImagesConfig):
 
     def __post_init__(self):
         """ Validate the configuration and check if the required settings are set. """
-        if self.download_time_window is None and self.dates_csv is None:
-            raise ValueError(
-                "If automatic raw data download is enabled, either `download_time_window` or `dates_csv` must be set."
-            )
-
         # Check if we need the cloud mask
         if (self.max_cloud_p < 1.0 or 'cloud_p' in self.sort_by) and (
                 self.cloud_collection_name is None or
@@ -127,7 +124,7 @@ class GEERawImagesConfig(LocalRawImagesConfig):
 # ======================================================================================================================
 @dataclass
 class BaseDatasetConfig:
-    # Dataset identifier
+    # Dataset identifier (will be used to create a subdir for the dataset)
     name: str = MISSING
 
     # A label used to create a subdir where the data is stored
@@ -144,7 +141,7 @@ class BaseDatasetConfig:
 
     # Settings for the raw data, which can be either downloaded automatically from GEE or assumed to be already
     # downloaded and stored locally; see LocalRawImagesConfig and GEERawImagesConfig for details.
-    raw_data: LocalRawImagesConfig | GEERawImagesConfig = MISSING
+    raw_data: Any = MISSING
 
     @dataclass
     class OGGMDataConfig:
@@ -196,7 +193,6 @@ class BaseDatasetConfig:
     @dataclass
     class Buffers:
         # Pointer to the raw data settings
-        roi: int | float = "${dataset.raw_data.buffer_roi}"
         qc_metrics: int | float = "${dataset.raw_data.buffer_qc_metrics}"
 
         # Buffer for the final processed glacier cube (should be large enough to allow patch sampling)
@@ -218,25 +214,25 @@ class BaseDatasetConfig:
 
     # Whether to check if the raw data covers 100% of the glacier outlines (incl. the buffer) when building the glacier
     # cubes. If False, we will keep the desired buffer but fill the missing pixels with NaNs.
-    check_data_coverage = True
+    check_data_coverage: bool = True
 
     # A list of bands to be merged into a QC mask (e.g. ('~CLOUDLESS_MASK', 'SOME_OTHER_MASK')), where ~ means negation
     # (we will use the union of the specified bands).
-    bands_nok_mask: Tuple[str] = field(default_factory=list)
+    bands_nok_mask: Optional[Tuple[str, ...]] = None
 
     # A dictionary {name -> path} with the paths to various directories that contain additional raster data to be
     # added to the glacier cubes. The data is expected to be in a raster format (e.g. tif) and it will be
     # automatically matched (i.e. all the scenes intersecting the glacier cube will be merged and reprojected).
-    extra_rasters: Dict[str, str] = field(default_factory=dict)
+    extra_rasters: Optional[Dict[str, str]] = None
 
     # A dictionary {name -> path} with the paths to various vector files to be rasterized as binary masks and added
     # to the glacier cubes. The data is expected to be in a vector format (e.g. shp).
     # We will automatically reproject and clip the data to the glacier cube.
-    extra_vectors: Dict[str, str] = field(default_factory=dict)
+    extra_vectors: Optional[Dict[str, str]] = None
 
     # A list of features to compute using xDEM (e.g. slope, aspect, etc.)
     # See https://xdem.readthedocs.io/en/stable/gen_modules/xdem.DEM.get_terrain_attribute.html
-    xdem_features: Optional[Tuple[str]] = None
+    xdem_features: Optional[Tuple[str, ...]] = None
 
     # ==================================================================================================================
     # Local paths; # TODO: see later if these should be set in __post_init__ such that they are frozen
@@ -298,28 +294,51 @@ class BaseDatasetConfig:
             self.raw_data.num_days_to_keep = 1
 
 
+@dataclass
+class S2GEERawImagesConfig(GEERawImagesConfig):
+    """Default configuration for Sentinel-2 raw images downloaded from GEE."""
+    automated_selection: bool = False
+    dates_csv: Optional[str] = None
+
+    bands: Tuple[str, ...] = ('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12')
+    bands_rename: Dict[str, str] = field(default_factory=lambda: {
+        'B2': 'B',
+        'B3': 'G',
+        'B4': 'R',
+        'B8': 'NIR',
+        'B11': 'SWIR',
+    })
+
+    # GEE collections (the project name will have to be set by the user in the YAML config or CLI)
+    img_collection_name: str = 'COPERNICUS/S2_HARMONIZED'
+    cloud_collection_name: str = 'GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED'
+    cloud_band: str = 'cs'
+    cloud_mask_thresh_p: float = 0.6
+
+
 # ======================================================================================================================
-# Sentinel-2 Alps dataset config
+# Sentinel-2 dataset config
 # ======================================================================================================================
 @dataclass
-class S2AlpsConfig(BaseDatasetConfig):
-    """ Configuration for the Sentinel-2 Alps dataset based on the inventory from Paul et al. (2020).
+class S2DatasetConfig(BaseDatasetConfig):
+    """Base configuration for any Sentinel-2 dataset.
 
-    The images are either downloaded for the same dates as the inventory outlines (year='inv') or for a specific year
-    (e.g. '2023'). For the latter, the dates will be automatically selected based on e.g. the cloud coverage and NDSI
-    (depending on the `raw_data` settings).
+    The regional specifics will be set via YAML or CLI arguments, e.g. the outlines_fp, year, etc.
+
+    By default, the images are automatically downloaded using GEE, either for the same dates as the inventory outlines
+    (year='inv') or for a specific year (e.g. '2023'). For the latter, the dates will be automatically selected based
+    on e.g. the cloud coverage and NDSI (depending on the `raw_data` settings).
     """
 
-    name: str = 's2_alps'
+    # Sentinel-2 typical GSD
     gsd: int = 10
-    outlines_fp: str = "./data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp"
-    year: str = 'inv'  # or a certain year (e.g. '2023')
-    gee_download: bool = True  # whether to download the raw data automatically from GEE
 
+    # Patch / sampling defaults
     export_patches: bool = False
     sample_patches_each_epoch: bool = False
-    patch_radius: int = 128  # in pixels
-    num_patches_train: int = 7500 // 16 * 16  # multiple of 16 (batch size)
+    patch_radius: int = 128
+
+    # Strides and buffers can be overridden in YAML
     strides: BaseDatasetConfig.Strides = field(default_factory=lambda: BaseDatasetConfig.Strides(train=32))
     buffers: BaseDatasetConfig.Buffers = field(
         default_factory=lambda: BaseDatasetConfig.Buffers(
@@ -329,94 +348,8 @@ class S2AlpsConfig(BaseDatasetConfig):
         )
     )
 
-    raw_data: GEERawImagesConfig = field(
-        default_factory=lambda: GEERawImagesConfig(
-            base_dir="./data/external/dl4gam/raw_data/images/s2_alps/yearly",
-            automated_selection=False,
-            dates_csv="./data/outlines/paul_et_al_2020/dates.csv",
-            bands=('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12'),
-            bands_rename={
-                'B2': 'B',
-                'B3': 'G',
-                'B4': 'R',
-                'B8': 'NIR',
-                'B11': 'SWIR',
-            },
-            # we need a buffer >= patch radius,
-            # but we use a larger buffer in case we later want to increase the patch size and avoid redownloading
-            buffer_roi=(S2AlpsConfig.patch_radius * 2 + 5) * S2AlpsConfig.gsd,
-            gee_project_name=MISSING,  # will be required if gee_download remains True; set it via CLI or YAML config
-            img_collection_name='COPERNICUS/S2_HARMONIZED',  # L2 doesn't include 2015 data
-            cloud_collection_name='GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED',
-            cloud_band='cs',  # band name for the cloud probability mask
-            cloud_mask_thresh_p=0.6,  # threshold for binarizing the cloud probability mask
-        )
-    )
+    # Will be set in the YAML config or CLI arguments to LocalRawImagesConfig or S2GEERawImagesConfig
+    raw_data: Any = MISSING
 
-    # Always add the COPDEM30 no matter the year
-    # TODO: take it from OGGM dirs
-    extra_rasters: Dict[str, str] = field(default_factory=lambda: {
-        'dem': './data/external/copdem_30m',
-    })
-    # whether to include the dhdt raster from Hugonnet et al. (2021) (see also `__post_init__`)
-    include_dhdt_raster: bool = True
-
-    bands_nok_mask: Tuple[str] = field(default_factory=lambda: ('cloud_mask',))
-
-    # Use the (mixed) debris product processed in the notebook
-    extra_vectors: Dict[str, str] = field(default_factory=lambda: {
-        'debris': './data/outlines/debris_multisource/debris_multisource.shp'
-    })
-
-    # Which features to compute using xDEM
-    xdem_features: Tuple[str] = field(
-        default_factory=lambda: (
-            'slope',
-            'aspect',
-            'planform_curvature',
-            'profile_curvature',
-            'terrain_ruggedness_index'
-        )
-    )
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Automatically add the 'dhdt' raster from Hugonnet et al. (2021) if not set already
-        if self.include_dhdt_raster and 'dhdt' not in self.extra_rasters:
-            if self.year == 'inv':
-                self.extra_rasters['dhdt'] = './data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt'
-            else:
-                # For the year, we will use the closest pentad to the given year (e.g. 2023)
-                # Note that the data is available for four 5-year periods: 2000-2005, 2005-2010, 2010-2015, 2015-2020
-                pentad_start = (int(self.year) // 5) * 5
-                pentad_start = max(min(pentad_start, 2015), 2000)  # limit to the available pentads
-                pentad_end = pentad_start + 5
-                dirname = f"11_rgi60_{pentad_start}-01-01_{pentad_end}-01-01"
-                self.extra_rasters['dhdt'] = f"./data/external/dhdt_hugonnet/{dirname}/dhdt"
-
-        # Set the dates to the inventory ones (exported in the notebook)
-        if self.year == 'inv':
-            self.csv_dates = "./data/outlines/paul_et_al_2020/dates.csv"
-        else:
-            # Automatically select the images in the given year and the following window
-            self.raw_data.automated_selection = True
-            self.raw_data.download_time_window = ('08-01', '10-15')
-
-            # Thresholds applied to the images before ranking them
-            self.raw_data.min_coverage = 0.9
-            self.raw_data.max_cloud_p = 0.3
-
-
-# ======================================================================================================================
-# Sentinel-2 Alps+ dataset config
-# ======================================================================================================================
-@dataclass
-class S2AlpsPlusConfig(S2AlpsConfig):
-    """
-    Configuration for the Sentinel-2 Alps dataset with manually curated imagery dates (for the inventory year).
-    Everything else is the same as in S2AlpsConfig.
-    """
-
-    name: str = 's2_alps_plus'
-    dates_csv: Optional[str] = './data/inv_images_qc/final_dates.csv'  # manually curated dates for the inventory years
+    # The cloud mask will be downloaded automatically so we include it by default in the final QC mask.
+    bands_nok_mask: Tuple[str, ...] = field(default_factory=lambda: ('cloud_mask',))

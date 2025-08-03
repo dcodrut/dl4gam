@@ -1,0 +1,20 @@
+# Sentinel-2 dataset based on the inventory from Paul et al. (2020) but using images from 2023
+# (see Diaconu et al. 2025 - DL4GAM)
+# We provide a time window for downloading the images and the best is chosen automatically.
+
+defaults:
+  - s2_alps_inv_plus  # start with S2 Alps+ dataset to use the same set of glaciers
+
+year: 2023
+
+raw_data:
+  dates_csv: null  # we will automatically select the best images
+  automated_selection: true
+  download_time_window: [ '08-01', '10-15' ]
+  min_coverage: 0.9
+  max_cloud_p: 0.3
+  sort_by: [ 'cloud_p', 'ndsi' ]
+
+extra_rasters:
+  # We take the following pentad from Hugonnet et al. 2021; DEM stays constant
+  dhdt: "./data/external/dhdt_hugonnet/11_rgi60_2015-01-01_2020-01-01/dhdt"

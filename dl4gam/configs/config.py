@@ -4,7 +4,13 @@ from typing import Any
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from dl4gam.configs.datasets import S2AlpsConfig, S2AlpsPlusConfig
+from dl4gam.configs.datasets import (
+    LocalRawImagesConfig,
+    GEERawImagesConfig,
+    S2GEERawImagesConfig,
+    BaseDatasetConfig,
+    S2DatasetConfig,
+)
 from dl4gam.configs.models import UnetModelConfig
 from dl4gam.configs.training import PLConfig
 
@@ -71,7 +77,7 @@ class DL4GAMConfig:
             '_target_': 'dl4gam.workflow.download_gee_data.main',
             'base_dir': self.dataset.raw_data.base_dir,
             'geoms_fp': self.dataset.geoms_fp,
-            'buffer_roi': self.dataset.buffers.roi,
+            'buffer_roi': self.dataset.raw_data.buffer_roi,
             'year': self.dataset.year,
             'gsd': self.dataset.gsd,
             'automated_selection': self.dataset.raw_data.automated_selection,
@@ -174,7 +180,10 @@ class DL4GAMConfig:
 # Register configs with Hydra's ConfigStore
 def register_configs():
     cs = ConfigStore.instance()
-    cs.store(group='dataset', name='s2_alps', node=S2AlpsConfig)
-    cs.store(group='dataset', name='s2_alps_plus', node=S2AlpsPlusConfig)
+    cs.store(group='dataset', name='base', node=BaseDatasetConfig)
+    cs.store(group='dataset', name='s2_base', node=S2DatasetConfig)
+    cs.store(group='dataset/raw_data', name='local', node=LocalRawImagesConfig)
+    cs.store(group="dataset/raw_data", name='gee_base', node=GEERawImagesConfig)
+    cs.store(group="dataset/raw_data", name='gee_s2', node=S2GEERawImagesConfig)
     cs.store(group='model', name='unet', node=UnetModelConfig)
     cs.store(name='dl4gam_config', node=DL4GAMConfig)

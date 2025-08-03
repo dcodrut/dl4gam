@@ -1,0 +1,35 @@
+# Sentinel-2 dataset based on the inventory from Paul et al. (2020)
+# The image dates are exactly the same as in the outlines shapefile.
+
+defaults:
+  - s2_base
+  - raw_data: gee_s2  # can be changed to 'local' or 'gee_base' & provide the missing parameters in `raw_data`
+  - _self_
+
+name: s2_alps
+outlines_fp: "./data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp"
+year: inv
+num_patches_train: 7488  # multiple of 16 (batch size)
+
+raw_data:
+  base_dir: "./data/external/dl4gam/raw_data/images/s2_alps/yearly"
+  dates_csv: null  # we will use the `date_inv` column from the outlines shapefile
+  automated_selection: false
+
+  #  we need a ROI >= patch radius + the sampling buffer
+  #   we use an even larger value in case we later want to increase the patch size and avoid redownloading
+  buffer_roi: 2610 # (2 * 128 * 10 + 50)
+
+extra_rasters:
+  dem: "./data/external/copdem_30m"
+  dhdt: "./data/external/dhdt_hugonnet/11_rgi60_2010-01-01_2015-01-01/dhdt"  # from Hugonnet et al. 2021
+
+extra_vectors:
+  debris: "./data/outlines/debris_multisource/debris_multisource.shp"
+
+xdem_features:
+  - slope
+  - aspect
+  - planform_curvature
+  - profile_curvature
+  - terrain_ruggedness_index

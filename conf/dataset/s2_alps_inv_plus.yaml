@@ -1,0 +1,13 @@
+# Sentinel-2 dataset based on the inventory from Paul et al. (2020)
+# The image dates are externally provided (`dates_csv`) after manual quality control (see Diaconu et al. 2025 - DL4GAM)
+# (some glaciers were removed and for some we changed the dates but keeping the same years)
+
+defaults:
+  - s2_alps_inv  # all the settings stay the same expect `dates_csv`
+
+name: s2_alps_plus  # we change the name because we have less glaciers => we want to regenerate the inventory geoms
+
+raw_data:
+  dates_csv: "./data/inv_images_qc/final_dates.csv"
+  # Note that we keep the same `base_dir` as most of the images are the same, and we want to avoid redownloading
+
