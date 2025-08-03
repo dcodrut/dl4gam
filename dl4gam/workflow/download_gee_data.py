@@ -18,20 +18,25 @@ def main(
         year: str | int,
         download_time_window: tuple[str, str] = None,
         automated_selection: bool = False,
+        dates_csv: str | Path = None,
         **kwargs,
 ):
     """
     Main function to download the best images from Google Earth Engine for all the entries in an inventory.
-    The downloading will be done in parallel, per entry in the inventory (see the main config for the number of processes).
+    The downloading will be done in parallel, per entry in the inventory (see the main config for the no. of processes).
     If multiple images per entry are requested, then these will be downloaded sequentially for each entry.
 
-    :param base_dir: output directory (root) where the images will be downloaded; a subdirectory will be then created as `out_dir/year/entry_id`
+    :param base_dir: output directory (root) where the images will be downloaded;
+        a subdirectory will be then created as `out_dir/year/entry_id`
     :param gee_project_name: name of the Google Earth Engine project to use for the download
     :param geoms_fp: file path to the processed glacier outlines
     :param buffer_roi: buffer size in meters for the region of interest around each glacier
     :param year: year for which to download the images
-    :param download_time_window: MM:DD tuple with the start and end dates for the download window (e.g. '08-01', '10-15')
-    :param automated_selection: whether to use the automated selection of the best images (if not, dates_csv must be provided)
+    :param download_time_window: MM:DD tuple with the start & end dates for the download window (e.g. '08-01', '10-15')
+    :param automated_selection: whether to automatically select the best images;
+        if False, dates must be provided either as a column in the GeoDataFrame (`date_acq`) or as a csv file
+        with two columns: `entry_id` and `date` (in 'YYYY-MM-DD' format).
+    :param dates_csv: optional csv file with the acquisition dates for each glacier (has priority over `date_acq`)
     :param kwargs: all the parameters for the `download_best_images` function
     :return: None
     """
@@ -44,12 +49,22 @@ def main(
 
     # Set the start-end dates (use the date_acq column if needed, otherwise the year + download_time_window)
     if not automated_selection:
-        # We expect a column `date_acq` in the GeoDataFrame with the acquisition dates
-        if 'date_acq' not in gdf.columns:
-            raise ValueError(
-                "The GeoDataFrame must contain a 'date_acq' column with the acquisition dates "
-                "if automated_selection is set to False."
-            )
+        # Read the csv file with the acquisition dates if provided
+        if dates_csv is not None:
+            log.info(f"Reading the acquisition dates from {dates_csv}")
+            dates_df = pd.read_csv(dates_csv)
+            if 'entry_id' not in dates_df.columns or 'date' not in dates_df.columns:
+                raise ValueError("The dates CSV file must contain 'entry_id' and 'date' columns.")
+
+            # Save the dates as a new column in the GeoDataFrame
+            gdf['date_acq'] = gdf['entry_id'].map(dates_df.set_index('entry_id')['date'])
+        else:
+            if 'date_acq' not in gdf.columns:
+                raise ValueError(
+                    "The GeoDataFrame must contain a 'date_acq' column with the acquisition dates "
+                    "if automated_selection is set to False."
+                )
+            log.info("Using the 'date_acq' column from the GeoDataFrame for acquisition dates.")
 
         # Make sure the dates are not missing for any glacier
         if gdf.date_acq.isnull().any():
@@ -62,6 +77,7 @@ def main(
         end_dates = [(s + pd.Timedelta(days=1)).strftime('%Y-%m-%d') for s in start_dates]
         years = [pd.to_datetime(s).year for s in start_dates]
     else:
+        log.info(f"Automated selection of the best images with year: {year} & time window: {download_time_window}")
         # Get the inventory year for each glacier if year is 'inv', otherwise use the provided year
         years = list(gdf.date_inv.apply(lambda x: pd.to_datetime(x).year)) if year == 'inv' else [year] * len(gdf)
         start_dates = [f"{y}-{download_time_window[0]}" for y in years]

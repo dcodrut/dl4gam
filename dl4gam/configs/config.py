@@ -78,6 +78,7 @@ class DL4GAMConfig:
             'base_dir': self.dataset.raw_data.base_dir,
             'geoms_fp': self.dataset.geoms_fp,
             'buffer_roi': self.dataset.raw_data.buffer_roi,
+            'dates_csv': self.dataset.raw_data.dates_csv,
             'year': self.dataset.year,
             'gsd': self.dataset.gsd,
             'automated_selection': self.dataset.raw_data.automated_selection,

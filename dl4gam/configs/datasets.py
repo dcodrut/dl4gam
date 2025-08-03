@@ -239,7 +239,7 @@ class BaseDatasetConfig:
     # ==================================================================================================================
 
     # Root directory for all the data which will be processed
-    base_dir: str = "${working_dir}/datasets/${dataset.name}/${dataset.year}"
+    base_dir: str = "${working_dir}/datasets/${dataset.name}"
 
     # Processed inventory outlines with all the additional derived geometries
     geoms_fp: str = "${dataset.base_dir}/geoms.gpkg"
@@ -247,14 +247,17 @@ class BaseDatasetConfig:
     # A csv file with the glacier IDs and their corresponding folds under each cross-validation iteration.
     split_csv: str = "${dataset.base_dir}/cv_splits/map_cv_iter_${pl.cv_iter}.csv"
 
-    # Path to the processed glacier cubes (netcdf) after processing
-    cubes_dir: str = "${dataset.base_dir}/glacier_cubes"
+    # Root directory for the raw data of the current year
+    base_dir_year: str = "${dataset.base_dir}/${dataset.year}"
+
+    # Path to the processed glacier cubes (netcdf) after processing; note that this is separated by year
+    cubes_dir: str = "${dataset.base_dir_year}/glacier_cubes"
 
     # Path to a csv with the normalization stats of the current cross-validation iteration
-    norm_stats_csv: str = "${dataset.base_dir}/norm_stats/stats_cv_iter_${pl.cv_iter}.csv"
+    norm_stats_csv: str = "${dataset.base_dir_year}/norm_stats/stats_cv_iter_${pl.cv_iter}.csv"
 
     # Directory for the patches (if they are exported, otherwise will be later set to None)
-    patches_dir: Optional[str] = "${dataset.base_dir}/patches/r_${dataset.patch_radius}_s_${dataset.strides.train}"
+    patches_dir: Optional[str] = "${dataset.base_dir_year}/patches/r_${dataset.patch_radius}_s_${dataset.strides.train}"
 
     def __post_init__(self):
         """
