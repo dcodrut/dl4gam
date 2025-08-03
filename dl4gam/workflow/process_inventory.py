@@ -149,6 +149,12 @@ def main(
 
     See :class:`dl4gam.configs.datasets.BaseDatasetConfig.Buffers`
     """
+
+    fp_out = Path(fp_out)
+    if fp_out.exists():
+        log.warning(f"Output file {fp_out} already exists. Delete it if you want to reprocess the outlines.")
+        return
+
     log.info(f"Reading from {fp_in}")
     gdf = gpd.read_file(fp_in)
 
