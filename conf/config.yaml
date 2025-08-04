@@ -3,13 +3,22 @@ defaults:
   - dl4gam_config      # our main configuration file
   - dataset: s2_alps_plus
   - model: unet
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
 
 
 hydra:
   job_logging:
     formatters:
-      simple:
-        format: "[%(levelname)s] - %(asctime)s - %(name)s: %(message)s (%(filename)s:%(funcName)s:%(lineno)d)"
+      colored:
+        (): colorlog.ColoredFormatter
+        format: "%(log_color)s[%(levelname)s] %(asctime)s - %(name)s: %(message)s (%(filename)s:%(funcName)s:%(lineno)d)"
+        log_colors:
+          DEBUG: cyan
+          INFO: green
+          WARNING: yellow
+          ERROR: red
+          CRITICAL: bold_red
     root:
       handlers: [ console, file ]
       level: INFO
