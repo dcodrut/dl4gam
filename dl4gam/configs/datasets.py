@@ -40,6 +40,10 @@ class LocalRawImagesConfig:
     #  - the dates_csv to be provided (see above)
     automated_selection: bool = False
 
+    # Whether to expect that in the end all glaciers have at least one image available.
+    # If True, we will raise an error if any glacier does not have an image after assigning the images.
+    ensure_all_glaciers_have_images: bool = True
+
     # We assume that the images have the required bands to compute these metrics:
     # - for using average cloud coverage (`cloud_p`), we expect the band 'cloud_mask' to be present
     # - for using NDSI ('ndsi'), we expect the bands 'G' and 'NIR' to be present

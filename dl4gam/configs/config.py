@@ -123,6 +123,7 @@ class DL4GAMConfig:
             'raw_data_base_dir': self.dataset.raw_data.base_dir,
             'year': self.dataset.year,
             'automated_selection': self.dataset.raw_data.automated_selection,
+            'ensure_all_glaciers_have_images': self.dataset.raw_data.ensure_all_glaciers_have_images,
             'bands_name_map': self.dataset.raw_data.bands_rename,
             'bands_nok_mask': self.dataset.bands_nok_mask,
             'extra_vectors': self.dataset.extra_vectors,

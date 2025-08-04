@@ -74,7 +74,8 @@ def filter_and_assign_images(
         gdf: gpd.GeoDataFrame,
         raw_data_base_dir: str | Path,
         year: str | int,
-        automated_selection: bool = False
+        automated_selection: bool = False,
+        ensure_all_glaciers_have_images: bool = True
 ) -> tuple[list[str], list[str], list[Path]]:
     """
     Assign the raw images to the glaciers.
@@ -87,15 +88,19 @@ def filter_and_assign_images(
         (or we expect a single image per glacier directory). If False, we will use the 'date_acq' column to filter
         the images (which contains either the exact inventory dates or the dates provided in the dates_csv file).
         See `process_inventory.py` for more details on the inventory dates.
+    :param ensure_all_glaciers_have_images: If True, raise an error if any glacier does not have images assigned.
+        If False, just log a warning and continue.
     :return: Tuple containing: the list of glacier IDs, the list of dates, and the list of file paths to the images.
     """
 
     # For the inventory year, we will use the 'date_acq' column
     # (as we expect we've already downloaded the images for these dates)
     if not automated_selection:
+        log.info("Using the 'date_acq' column from the GeoDataFrame for acquisition dates.")
         allowed_dates = gdf.date_acq.tolist()
         years = [pd.to_datetime(d).year for d in allowed_dates]
     else:
+        log.info(f"Automated selection of the best images for year: {year}")
         # we will pick the best images according to the metadata from the given year
         # (if not metadata is available, we will expect a single image per glacier directory)
         allowed_dates = None
@@ -104,6 +109,21 @@ def filter_and_assign_images(
     # Build the raw images directories for each glacier
     glacier_ids = list(gdf.entry_id)
     raw_images_dirs = [Path(raw_data_base_dir) / str(y) / str(gid) for gid, y in zip(glacier_ids, years)]
+
+    # Before proceeding, check that we have at least image in all these directories
+    num_imgs_per_dir = [len(list(d.glob('*.tif'))) for d in raw_images_dirs]
+    if sum(num_imgs_per_dir) == 0:
+        raise FileNotFoundError(
+            f"No images found in the raw data base directory: {raw_data_base_dir}. "
+            f"Please check the directory structure and the glacier IDs."
+        )
+
+    if ensure_all_glaciers_have_images and any(n == 0 for n in num_imgs_per_dir):
+        missing_glaciers = [gid for gid, n in zip(glacier_ids, num_imgs_per_dir) if n == 0]
+        raise FileNotFoundError(
+            f"ensure_all_glaciers_have_images is True and the following glaciers do not have any images assigned: "
+            f"{missing_glaciers}. Please check the raw data base directory: {raw_data_base_dir}."
+        )
 
     # Assign the raw images to the glaciers
     res = run_in_parallel(
@@ -123,7 +143,7 @@ def filter_and_assign_images(
             fp_images.append(fp_image)
     if len(glacier_ids_with_images) == 0:
         raise FileNotFoundError(
-            f"No images found for any glacier in the provided raw data base directory: {raw_data_base_dir}. "
+            f"No images assigned to any glacier in the provided raw data base directory: {raw_data_base_dir}. "
             f"Please check the directory structure and the glacier IDs."
         )
 
@@ -137,6 +157,7 @@ def main(
         year: str | int,
         extra_vectors: Optional[dict[str, str | Path]] = None,
         automated_selection: bool = False,
+        ensure_all_glaciers_have_images: bool = True,
         **kwargs
 ):
     # Read the outlines of the selected glaciers + all of them (needed for building the segmentation masks)
@@ -150,6 +171,7 @@ def main(
         raw_data_base_dir=raw_data_base_dir,
         year=year,
         automated_selection=automated_selection,
+        ensure_all_glaciers_have_images=ensure_all_glaciers_have_images
     )
 
     # Check if we have any missing images
