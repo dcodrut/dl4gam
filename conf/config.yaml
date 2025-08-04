@@ -6,6 +6,9 @@ defaults:
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
+# Set the working directory and the number of processes (for the steps running in parallel)
+working_dir: ./data/external/dl4gam
+num_procs: 24
 
 hydra:
   job_logging:

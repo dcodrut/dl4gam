@@ -37,12 +37,12 @@ class DL4GAMConfig:
     # For the training setup we have a single config that is used for all models
     pl: PLConfig = field(default_factory=PLConfig)
 
-    # Root working directory (everything is relative to this)
-    working_dir: str = './data/external/dl4gam'
+    # Root working directory (everything is relative to this); will also be the root of the Hydra config
+    working_dir: str = MISSING
 
     # Global settings
     min_glacier_area: float = 0.1  # km^2
-    num_procs: int = 24  # for the steps that run in parallel
+    num_procs: int = MISSING  # for the steps that run in parallel
     pbar: bool = True  # whether to show progress bars when processing time-consuming steps
 
     def __post_init__(self):
