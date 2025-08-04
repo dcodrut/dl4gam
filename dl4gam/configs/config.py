@@ -11,7 +11,7 @@ from dl4gam.configs.datasets import (
     BaseDatasetConfig,
     S2DatasetConfig,
 )
-from dl4gam.configs.models import UnetModelConfig
+from dl4gam.configs.models import SMPModelConfig, InputConfig
 from dl4gam.configs.training import PLConfig
 
 
@@ -33,6 +33,7 @@ class DL4GAMConfig:
     # The following are pointers to the dataset and model configs that will be populated by Hydra using the yaml files.
     dataset: Any = MISSING
     model: Any = MISSING
+    input: InputConfig = MISSING
 
     # For the training setup we have a single config that is used for all models
     pl: PLConfig = field(default_factory=PLConfig)
@@ -188,5 +189,6 @@ def register_configs():
     cs.store(group='dataset/raw_data', name='local', node=LocalRawImagesConfig)
     cs.store(group="dataset/raw_data", name='gee_base', node=GEERawImagesConfig)
     cs.store(group="dataset/raw_data", name='gee_s2', node=S2GEERawImagesConfig)
-    cs.store(group='model', name='unet', node=UnetModelConfig)
+    cs.store(group='model', name='smp_base', node=SMPModelConfig)
+    cs.store(group='input', name='input_base', node=InputConfig)
     cs.store(name='dl4gam_config', node=DL4GAMConfig)

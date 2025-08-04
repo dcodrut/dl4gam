@@ -1,0 +1,14 @@
+# U-Net model only with
+
+defaults:
+  - smp_base
+  - _self_
+
+name: "Unet"
+
+input_settings: "${input}"
+
+params: # See `dl4gam.configs.models.SMPModelConfig` for other parameters
+  encoder_name: resnet34
+  encoder_weights: imagenet
+  encoder_depth: 5

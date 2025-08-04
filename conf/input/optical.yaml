@@ -1,0 +1,19 @@
+# Optical bands as input, no additional features
+# Note that we use a subset of five bands because some prior ablation studies showed no significant difference
+
+defaults:
+  - input_base
+  - _self_
+
+bands_input:
+  - R
+  - G
+  - B
+  - NIR
+  - SWIR
+band_mask: mask_nok
+dem: false
+dhdt: false
+velocity: false
+optical_indices: null
+dem_features: null

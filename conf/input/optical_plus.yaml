@@ -1,0 +1,27 @@
+# Full set of features used in Diaconu et al. 2025 - DL4GAM
+
+defaults:
+  - input_base
+  - _self_
+
+bands_input:
+  - R
+  - G
+  - B
+  - NIR
+  - SWIR
+band_mask: mask_nok
+dem: true
+dhdt: true
+velocity: false
+optical_indices:
+  - NDVI
+  - NDWI
+  - NDSI
+dem_features:
+  - slope
+  - aspect_sin
+  - aspect_cos
+  - planform_curvature
+  - profile_curvature
+  - terrain_ruggedness_index
