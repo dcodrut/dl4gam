@@ -81,7 +81,9 @@ class PLConfig:
     class Logger:
         _target_: str = 'pytorch_lightning.loggers.TensorBoardLogger'
         save_dir: str = "${pl.base_dir}"
-        name: str = ''  # keep empty so it doesn't create a subfolder  # TODO: check this later
+        name: str = ''  # keep empty so it doesn't create a subfolder
+        default_hp_metric: bool = False  # disable the default hyperparameter metric logging
+        version: str = "${now:%Y-%m-%d_%H-%M-%S}"
 
     @dataclass
     class CheckpointCallback:

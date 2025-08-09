@@ -12,6 +12,8 @@ working_dir: ./data/external/dl4gam
 num_procs: 24
 
 hydra:
+  run:
+    dir: ${working_dir}/logs/${dataset.name}/${current_step}/${now:%Y-%m-%d_%H-%M-%S}
   job_logging:
     formatters:
       colored:
@@ -27,6 +29,11 @@ hydra:
       handlers: [ console, file ]
       level: INFO
       propagate: false
+
+    handlers:
+      file:
+        filename: ${hydra:run.dir}/${hydra.job.name}.log
+
     disable_existing_loggers: false
     external_modules: [ pyogrio ]
     external_modules_log_level: WARN
