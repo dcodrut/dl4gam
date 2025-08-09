@@ -102,6 +102,22 @@ class DL4GAMConfig:
         }
 
     @property
+    def step_rank_images(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.rank_images.main',
+            'raw_data_base_dir': self.dataset.raw_data.base_dir,
+            'year': self.dataset.year,
+            'geoms_fp': self.dataset.geoms_fp,
+            'min_coverage': self.dataset.raw_data.min_coverage,
+            'max_cloud_p': self.dataset.raw_data.max_cloud_p,
+            'sort_by': self.dataset.raw_data.sort_by,
+            'score_weights': self.dataset.raw_data.score_weights,
+            'buffer': self.dataset.buffers.cube,
+            'bands_name_map': self.dataset.raw_data.bands_rename,
+            'bands_nok_mask': self.dataset.bands_nok_mask,
+        }
+
+    @property
     def step_oggm_data_download(self) -> dict:
         return {
             '_target_': 'dl4gam.workflow.download_oggm_data.main',
