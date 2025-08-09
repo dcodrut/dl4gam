@@ -134,7 +134,7 @@ def query_images(
 
         # Count the number of pixels in the mask_ok band that are not NODATA
         sum_ones = mask.reduceRegion(
-            reducer=ee.Reducer.sum(),
+            reducer=ee.Reducer.sum().unweighted(),
             geometry=geom_gee,
             scale=min_scale,
             maxPixels=1e9
@@ -310,7 +310,7 @@ def compute_image_cloud_percentage(img: ee.Image, geom: gpd.GeoSeries):
 
     cloud_mask = img.select(['cloud_mask'])
     avg_cloud_p = cloud_mask.reduceRegion(
-        reducer=ee.Reducer.mean(),
+        reducer=ee.Reducer.mean().unweighted(),
         geometry=geom_gee,
         scale=cloud_mask.projection().nominalScale(),
         maxPixels=1e9
@@ -344,7 +344,7 @@ def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict)
 
     # First let's count the number of cloud-free pixels within the provided geometry
     num_cloud_free_px = cloud_free_mask.reduceRegion(
-        reducer=ee.Reducer.sum(),
+        reducer=ee.Reducer.sum().unweighted(),
         geometry=geom_gee,
         scale=scale,
         maxPixels=1e9
@@ -354,7 +354,7 @@ def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict)
     ndsi = img.normalizedDifference([bands_name_map_inv['G'], bands_name_map_inv['SWIR']]).rename('NDSI')
     ndsi_masked = ndsi.updateMask(cloud_free_mask)
     avg_ndsi_masked = ndsi_masked.reduceRegion(
-        reducer=ee.Reducer.mean(),
+        reducer=ee.Reducer.mean().unweighted(),
         geometry=geom_gee,
         scale=scale,
         maxPixels=1e9
@@ -395,7 +395,7 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
 
     # First let's count the number of cloud-free pixels within the provided geometry
     num_cloud_free_px = cloud_free_mask.reduceRegion(
-        reducer=ee.Reducer.sum(),
+        reducer=ee.Reducer.sum().unweighted(),
         geometry=geom_gee,
         scale=scale,
         maxPixels=1e9
@@ -412,7 +412,7 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
     ).rename('albedo')
     albedo_masked = albedo.updateMask(cloud_free_mask)
     avg_albedo_masked = albedo_masked.reduceRegion(
-        reducer=ee.Reducer.mean(),
+        reducer=ee.Reducer.mean().unweighted(),
         geometry=geom_gee,
         scale=scale,
         maxPixels=1e9
