@@ -240,9 +240,12 @@ def query_images(
 
     imgs_mosaics = ee.ImageCollection.fromImages(dates_needing_mosaics.map(_create_date_mosaic))
 
-    # For the images with full coverage, save the properties as a dictionary (with a single element)
+    # For the images with full coverage, save the properties/tiles as a dictionary/list (with a single element)
     imgs_full = imgs_full.map(
-        lambda img: img.set({'metadata_tiles': ee.Dictionary.fromLists([img.get('id')], [img.toDictionary()])})
+        lambda img: img.set({
+            'tiles': ee.List([img.get('tile')]),
+            'metadata_tiles': ee.Dictionary.fromLists([img.get('id')], [img.toDictionary()])
+        })
     )
 
     # Finally, we get one single image (or mosaic) per acquisition day, with all required bands (and cloud masks).
@@ -691,6 +694,9 @@ def download_best_images(
     df_meta = pd.DataFrame(props)
     df_meta = df_meta.sort_values(by='date')
     _log.info(f"Found {len(df_meta)} images in the collection {img_collection_name} with the specified criteria.")
+
+    # Drop the original metadata columns (we already have them in `metadata_tiles`)
+    df_meta = df_meta[['date', 'processing_time', 'id', 'system:index', 'tiles'] + metrics + ['metadata_tiles']]
 
     # Print and export the statistics to a CSV file
     cols2show = ['id', 'date'] + metrics
