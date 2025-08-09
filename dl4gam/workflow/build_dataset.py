@@ -120,9 +120,11 @@ def filter_and_assign_images(
 
     if ensure_all_glaciers_have_images and any(n == 0 for n in num_imgs_per_dir):
         missing_glaciers = [gid for gid, n in zip(glacier_ids, num_imgs_per_dir) if n == 0]
+        txt_missing = ', '.join(missing_glaciers[:10]) + ('...' if len(missing_glaciers) > 10 else '')
         raise FileNotFoundError(
-            f"ensure_all_glaciers_have_images is True and the following glaciers do not have any images assigned: "
-            f"{missing_glaciers}. Please check the raw data base directory: {raw_data_base_dir}."
+            f"'ensure_all_glaciers_have_images' is True but {(nm := len(missing_glaciers))} glaciers "
+            f"({nm / len(glacier_ids):.1%}) have no images assigned {txt_missing}; "
+            f"Please check the raw data base directory: {raw_data_base_dir}."
         )
 
     # Assign the raw images to the glaciers

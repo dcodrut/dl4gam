@@ -423,7 +423,8 @@ class GlSegDataModule(pl.LightningDataModule):
         fp_list_assigned = set(self.fp_list_train) | set(self.fp_list_val) | set(self.fp_list_test)
         if len(fp_list_assigned) != len(fp_list):
             glacier_ids_missing = sorted([fp.parent.name for fp in set(fp_list) - fp_list_assigned])
-            log.warning(f'{len(glacier_ids_missing)} glaciers ({glacier_ids_missing}) were not assigned to any fold')
+            txt_missing = ', '.join(glacier_ids_missing[:10]) + ('...' if len(glacier_ids_missing) > 10 else '')
+            log.warning(f'{len(glacier_ids_missing)} glaciers ({txt_missing}) were not assigned to any fold')
 
         # the following will be set when calling setup
         self.train_ds = None
