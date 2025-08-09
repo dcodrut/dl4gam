@@ -126,7 +126,7 @@ class GEERawImagesConfig(LocalRawImagesConfig):
     try_reading: bool = True  # whether to try reading the images before skipping the existing ones
 
     # Whether to consider only the latest processed tile per acquisition day (in case of multiple reprocessed versions)
-    latest_tile_only: bool = False
+    latest_tile_only: bool = True
 
     def __post_init__(self):
         """ Validate the configuration and check if the required settings are set. """

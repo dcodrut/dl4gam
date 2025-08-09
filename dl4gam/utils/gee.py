@@ -49,8 +49,8 @@ def query_images(
         (e.g., 'COPERNICUS/S2_CLOUD_PROBABILITY').
     :param cloud_band: which band to use for cloud probability (depends on the cloud collection)
     :param cloud_mask_thresh_p: which threshold (in [0, 1]) to use for binarizing the cloud probability
-    :param latest_tile_only: if True, keeps only the last processed tile per acquisition day
-        (in case of multiple reprocessed versions).
+    :param latest_tile_only: if True (recommended), keeps only the last processed tile per acquisition day
+        (in case of multiple reprocessed versions). Otherwise, they will be mosaicked, but we don't set any preference.
     :return: ee.ImageCollection with the filtered images
     """
 
@@ -158,6 +158,7 @@ def query_images(
         imgs
         .filter(ee.Filter.gte('coverage', 0.98))
         .sort('tile_code', True)
+        .sort('processing_time', False)  # keep the latest since it's fully covering the ROI
         .distinct('date')
     )
 
