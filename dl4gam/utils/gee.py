@@ -9,7 +9,8 @@ import geopandas as gpd
 import pandas as pd
 import shapely
 
-from .parallel_utils import run_in_parallel
+from dl4gam.configs.datasets import QCMetric
+from dl4gam.utils.parallel_utils import run_in_parallel
 
 log = logging.getLogger(__name__)
 
@@ -311,7 +312,7 @@ def compute_image_cloud_percentage(img: ee.Image, geom: gpd.GeoSeries):
         maxPixels=1e9
     ).get('cloud_mask')
 
-    return img.set({'cloud_p': avg_cloud_p})
+    return img.set({QCMetric.CLOUD_P: avg_cloud_p})
 
 
 def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict):
@@ -362,7 +363,7 @@ def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict)
         ee.Number(1).erfInv()  # this will basically generate a string 'Infinity'; we will filter it out later
     )
 
-    return img.set({'ndsi': avg_ndsi})
+    return img.set({QCMetric.NDSI: avg_ndsi})
 
 
 def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict):
@@ -420,15 +421,15 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
         ee.Number(1).erfInv()  # this will basically generate a string 'Infinity'; we will filter it out later
     )
 
-    return img.set({'albedo': avg_albedo})
+    return img.set({QCMetric.ALBEDO: avg_albedo})
 
 
-def sort_images(df_meta: pd.DataFrame, sort_by: tuple, weights: tuple = None):
+def sort_images(df_meta: pd.DataFrame, sort_by: tuple[QCMetric, ...], weights: tuple = None):
     """
     Computes a weighted score for each image based on the specified metrics and weights, then sorts the DataFrame by it.
 
     :param df_meta: DataFrame containing metadata for the images, including the metrics to sort by.
-    :param sort_by: tuple of metric names to sort by; subset of ('cloud_p', 'ndsi', 'albedo').
+    :param sort_by: tuple of metric names to sort by (see QCMetric for available metrics).
     :param weights: weights for each metric in the sort_by tuple. If None, equal weights are used.
     :return: pd.DataFrame sorted by the computed score.
     """
@@ -533,7 +534,7 @@ def download_best_images(
         cloud_mask_thresh_p: float = 0.4,
         max_cloud_p: float = 1.0,
         min_coverage: float = 0.9,
-        sort_by: Optional[tuple] = None,
+        sort_by: Optional[tuple[QCMetric, ...]] = None,
         score_weights: Optional[tuple] = None,
         geom_clouds: Optional[gpd.GeoSeries] = None,
         geom_ndsi: Optional[gpd.GeoSeries] = None,
@@ -565,7 +566,7 @@ def download_best_images(
     :param max_cloud_p: maximum allowed cloud percentage for the images to be considered (in [0, 1]) computed over
         geom_clouds. Ignored if geom_clouds is None.
     :param min_coverage: minimum required coverage of the images over the ROI (in [0, 1]).
-    :param sort_by: tuple of metric names to sort by (subset of {'cloud_p', 'ndsi', 'albedo'}).
+    :param sort_by: tuple of metric names to sort by (see QCMetric for available metrics).
         The images will be sorted by a score combining these metrics. If None, date is used for sorting.
     :param score_weights: weights for each metric in the sort_by tuple. If None, equal weights are used.
     :param geom_clouds: gpd.GeoSeries with a single geometry defining the ROI for computing cloud percentage.
@@ -591,27 +592,25 @@ def download_best_images(
     # Compute the metrics for each image needed for filtering / sorting (if requested)
     metrics = ['coverage']  # always computed
     if sort_by is not None:
-        if not set(sort_by).issubset({'cloud_p', 'ndsi', 'albedo'}):
-            msg = (
-                f"sort_by must be a subset of {{'cloud_p', 'ndsi', 'albedo'}}. "
-                f"Provided: {sort_by}. Please check the input parameters."
-            )
-            _log.error(msg)
-            raise ValueError(msg)
+        for metric in sort_by:
+            if metric not in QCMetric:
+                msg = f"Invalid metric '{metric}' in sort_by. Available metrics: {', '.join(QCMetric)}."
+                _log.error(msg)
+                raise ValueError(msg)
 
         metrics += list(sort_by)
 
-        # We always need the cloud mask also for NDSI and albedo computations (only the cloud-free pixels are used)
-        if 'cloud_p' not in metrics:
-            metrics.append('cloud_p')
+        # We always need to compute the cloud mask also for NDSI/albedo (only the cloud-free pixels are used)
+        if QCMetric.CLOUD_P not in metrics:
+            metrics.append(QCMetric.CLOUD_P)
 
     # We also need the cloud coverage if we want to filter by it
-    if max_cloud_p < 1.0 and 'cloud_p' not in metrics:
-        metrics.append('cloud_p')
+    if max_cloud_p < 1.0 and QCMetric.CLOUD_P not in metrics:
+        metrics.append(QCMetric.CLOUD_P)
 
     # Now check if we need and have the cloud collection
-    if 'cloud_p' in metrics and cloud_collection_name is None:
-        msg = "We need a valid cloud_collection_name. Not provided, but 'cloud_p' is in required metrics."
+    if QCMetric.CLOUD_P in metrics and cloud_collection_name is None:
+        msg = "We need a valid cloud_collection_name. Not provided, but QCMetric.CLOUD_P is in required metrics."
         _log.error(msg)
         raise ValueError(msg)
 
@@ -664,11 +663,11 @@ def download_best_images(
         latest_tile_only=latest_tile_only
     )
 
-    if 'cloud_p' in metrics:
+    if QCMetric.CLOUD_P in metrics:
         imgs_all = imgs_all.map(lambda img: compute_image_cloud_percentage(ee.Image(img), geom_clouds))
-    if 'ndsi' in metrics:
+    if QCMetric.NDSI in metrics:
         imgs_all = imgs_all.map(lambda img: compute_image_ndsi(ee.Image(img), geom_ndsi, bands_name_map))
-    if 'albedo' in metrics:
+    if QCMetric.ALBEDO in metrics:
         imgs_all = imgs_all.map(lambda img: compute_image_albedo(ee.Image(img), geom_albedo, bands_name_map))
 
     # Save metadata to a DataFrame
@@ -707,7 +706,7 @@ def download_best_images(
         _log.info(f"After filtering by coverage >= {min_coverage}, we have {len(df_meta)} images left.")
 
     if max_cloud_p < 1:
-        df_meta = df_meta[df_meta['cloud_p'] <= max_cloud_p]
+        df_meta = df_meta[df_meta[QCMetric.CLOUD_P] <= max_cloud_p]
         _log.info(f"After filtering by cloud_p <= {max_cloud_p}, we have {len(df_meta)} images left.")
 
     if len(df_meta) == 0:
@@ -787,7 +786,7 @@ if __name__ == "__main__":
 
     # We will sort the images by cloud coverage & NDSI
     # (albedo can also be used, and you can also specify weights for each metric)
-    _sort_by = ('cloud_p', 'ndsi')
+    _sort_by = (QCMetric.CLOUD_P, QCMetric.NDSI)
 
     # Let's assume we compute the cloud coverage on a 100m buffered geometry
     _geom_clouds = _geom.buffer(100)

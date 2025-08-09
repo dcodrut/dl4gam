@@ -13,7 +13,7 @@ raw_data:
   download_time_window: [ '08-01', '10-15' ]
   min_coverage: 0.9
   max_cloud_p: 0.3
-  sort_by: [ 'cloud_p', 'ndsi' ]
+  sort_by: [ 'CLOUD_P', 'NDSI' ]
 
 extra_rasters:
   # We take the following pentad from Hugonnet et al. 2021; DEM stays constant

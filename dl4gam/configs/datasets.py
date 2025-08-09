@@ -1,7 +1,26 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, Tuple, Any, Optional
 
 from omegaconf import MISSING
+
+
+class QCMetric(str, Enum):
+    """
+    Quality Control (QC) metrics that can be used for selecting the best images.
+    If provided, each of these metrics will be computed on separate geometries.
+    Otherwise, we will use the entire ROI (i.e. glacier + rectangular buffer).
+    
+    A (weighted) score will be then computed based on the specified metrics (a tuple of QCMetric values)
+    and the images will be sorted by this score (see `dl4gam.utils.gee.sort_images` for details).
+    """
+
+    CLOUD_P = 'cloud_p'  # average cloud coverage percentage
+    NDSI = 'ndsi'  # average Normalized Difference Snow Index
+    ALBEDO = 'albedo'  # average Albedo (average reflectance in visible bands)
+
+    def __str__(self) -> str:
+        return self.value
 
 
 # ======================================================================================================================
@@ -62,7 +81,7 @@ class LocalRawImagesConfig:
 
     # Specify how to sort the images for each glacier when selecting the best one.
     # After filtering the scenes using min_coverage & max_cloud_p, we sort the rest by a (weighted) score using:
-    sort_by: Tuple[str, ...] = ('cloud_p', 'ndsi')  # 'albedo' can also be used
+    sort_by: Tuple[QCMetric, ...] = (QCMetric.CLOUD_P, QCMetric.NDSI)
     # If we want to weight the scores, we can set score_weights to a tuple of floats.
     score_weights: Optional[Tuple[float, ...]] = None  # if None, equal weights will be used
 
@@ -112,7 +131,7 @@ class GEERawImagesConfig(LocalRawImagesConfig):
     def __post_init__(self):
         """ Validate the configuration and check if the required settings are set. """
         # Check if we need the cloud mask
-        if (self.max_cloud_p < 1.0 or 'cloud_p' in self.sort_by) and (
+        if (self.max_cloud_p < 1.0 or QCMetric.CLOUD_P in self.sort_by) and (
                 self.cloud_collection_name is None or
                 self.cloud_band is None or
                 self.cloud_mask_thresh_p is None
