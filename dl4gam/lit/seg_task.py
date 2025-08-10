@@ -1,21 +1,20 @@
 import logging
 from pathlib import Path
 
+from lightning.pytorch import LightningModule
 import pandas as pd
-import pytorch_lightning as pl
 import torch
 import torchmetrics as tm
 import xarray as xr
 from hydra.utils import instantiate
 
-# local imports
-from dl4gam.pl_modules.data import extract_inputs
 from dl4gam.utils import nn_interp, hypso_interp
+from .data import extract_inputs
 
 log = logging.getLogger(__name__)
 
 
-class GlSegTask(pl.LightningModule):
+class GlSegTask(LightningModule):
     def __init__(self, model, loss, optimizer, lr_scheduler, outdir=None, interp: str = None):
         super().__init__()
 

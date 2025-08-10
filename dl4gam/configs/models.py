@@ -5,7 +5,7 @@ from omegaconf import MISSING
 
 
 @dataclass
-class InputConfig:
+class InputCfg:
     """
     Channels and auxiliary features to feed into the segmentation model.
     """
@@ -30,11 +30,11 @@ class InputConfig:
 
 
 @dataclass
-class SMPModelConfig:
+class SMPModelCfg:
     """
     Base config for any SMP-based segmentation model.
     """
-    _target_: str = 'dl4gam.pl_modules.seg_model.SegModelSMP'
+    _target_: str = 'dl4gam.lit.seg_model.SegModelSMP'
 
     # Name of the SMP model (e.g., 'Unet', 'DeepLabV3')
     # https://github.com/qubvel-org/segmentation_models.pytorch/blob/ed2089f02cd34a0cbe7c0231324be4c8c7472aca/segmentation_models_pytorch/__init__.py#L26
@@ -56,7 +56,7 @@ class SMPModelConfig:
     params: ModelArgs = field(default_factory=ModelArgs)
 
     # Input channels and auxiliary feature settings
-    input_settings: InputConfig = MISSING
+    input_settings: InputCfg = MISSING
 
     # Optional path to external encoder weights
     encoder_weights_fp: Optional[str] = None

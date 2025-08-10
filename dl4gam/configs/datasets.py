@@ -27,7 +27,7 @@ class QCMetric(str, Enum):
 # Raw data configurations: 1) local (i.e. assumed to be already downloaded) and 2) automatically downloaded from GEE
 # ======================================================================================================================
 @dataclass
-class LocalRawImagesConfig:
+class LocalRawImagesCfg:
     """
     Settings for locally stored (i.e. pre-downloaded) raw images.
 
@@ -35,7 +35,7 @@ class LocalRawImagesConfig:
     root_dir/year/glacier_id/date*.tif
     where:
     - root_dir is the base directory where the raw images are stored (see `base_dir` below)
-    - year is the year of the images (e.g. '2023' or 'inv' for a multi-year inventory; see `year` in BaseDatasetConfig)
+    - year is the year of the images (e.g. '2023' or 'inv' for a multi-year inventory; see `year` in BaseDatasetCfg)
     - glacier_id is the ID of the glacier (e.g. 'RGI60-11.00100')
     - date* is the filename containing the date of the image, e.g. '2023-08-15_ABC.tif'
     """
@@ -87,7 +87,7 @@ class LocalRawImagesConfig:
 
 
 @dataclass
-class GEERawImagesConfig(LocalRawImagesConfig):
+class GEERawImagesCfg(LocalRawImagesCfg):
     """
     On top of the local raw data settings, this class contains the additional settings for automatically downloading
     the raw data using Google Earth Engine. See the `download_best_images` function for details.
@@ -112,7 +112,7 @@ class GEERawImagesConfig(LocalRawImagesConfig):
     download_time_window: Optional[Tuple[str, str]] = None
 
     # Number of images (i.e. days) to download per glacier
-    # (we choose the best automatically if exact dates are not used; see `automated_selection` in LocalRawImagesConfig)
+    # (we choose the best automatically if exact dates are not used; see `automated_selection` in LocalRawImagesCfg)
     num_days_to_keep: int = 1
 
     # Parameters for the cloud masks
@@ -146,7 +146,7 @@ class GEERawImagesConfig(LocalRawImagesConfig):
 # Base dataset configuration
 # ======================================================================================================================
 @dataclass
-class BaseDatasetConfig:
+class BaseDatasetCfg:
     # Dataset identifier (will be used to create a subdir for the dataset)
     name: str = MISSING
 
@@ -163,11 +163,11 @@ class BaseDatasetConfig:
     gsd: int | float = MISSING
 
     # Settings for the raw data, which can be either downloaded automatically from GEE or assumed to be already
-    # downloaded and stored locally; see LocalRawImagesConfig and GEERawImagesConfig for details.
+    # downloaded and stored locally; see LocalRawImagesCfg and GEERawImagesCfg for details.
     raw_data: Any = MISSING
 
     @dataclass
-    class OGGMDataConfig:
+    class OGGMDataCfg:
         """
         Settings for the OGGM data, which will be downloaded automatically and later added to the training data after
         reprojection and clipping.
@@ -182,7 +182,7 @@ class BaseDatasetConfig:
         # GSD of the data (most of the variables in OGGM have maximum 30m so we set it to this by default)
         gsd: int = 30
 
-    oggm_data: OGGMDataConfig = field(default_factory=OGGMDataConfig)
+    oggm_data: OGGMDataCfg = field(default_factory=OGGMDataCfg)
 
     # Patch radius in pixels
     patch_radius: int = MISSING
@@ -268,10 +268,10 @@ class BaseDatasetConfig:
     geoms_fp: str = "${dataset.base_dir}/geoms.gpkg"
 
     # A csv file with the glacier IDs and their corresponding folds under each cross-validation iteration.
-    split_csv: str = "${dataset.base_dir}/cv_splits/map_cv_iter_${pl.cv_iter}.csv"
+    split_csv: str = "${dataset.base_dir}/cv_splits/map_cv_iter_${run.cv_iter}.csv"
 
     # Path to a csv with the normalization stats of the current cross-validation iteration
-    norm_stats_csv: str = "${dataset.base_dir}/norm_stats/stats_cv_iter_${pl.cv_iter}.csv"
+    norm_stats_csv: str = "${dataset.base_dir}/norm_stats/stats_cv_iter_${run.cv_iter}.csv"
 
     # Root directory for the raw data of the current year
     base_dir_year: str = "${dataset.base_dir}/${dataset.year}"
@@ -321,7 +321,7 @@ class BaseDatasetConfig:
 
 
 @dataclass
-class S2GEERawImagesConfig(GEERawImagesConfig):
+class S2GEERawImagesCfg(GEERawImagesCfg):
     """Default configuration for Sentinel-2 raw images downloaded from GEE."""
     automated_selection: bool = False
     dates_csv: Optional[str] = None
@@ -346,7 +346,7 @@ class S2GEERawImagesConfig(GEERawImagesConfig):
 # Sentinel-2 dataset config
 # ======================================================================================================================
 @dataclass
-class S2DatasetConfig(BaseDatasetConfig):
+class S2DatasetCfg(BaseDatasetCfg):
     """Base configuration for any Sentinel-2 dataset.
 
     The regional specifics will be set via YAML or CLI arguments, e.g. the outlines_fp, year, etc.
@@ -365,16 +365,16 @@ class S2DatasetConfig(BaseDatasetConfig):
     patch_radius: int = 128
 
     # Strides and buffers can be overridden in YAML
-    strides: BaseDatasetConfig.Strides = field(default_factory=lambda: BaseDatasetConfig.Strides(train=32))
-    buffers: BaseDatasetConfig.Buffers = field(
-        default_factory=lambda: BaseDatasetConfig.Buffers(
+    strides: BaseDatasetCfg.Strides = field(default_factory=lambda: BaseDatasetCfg.Strides(train=32))
+    buffers: BaseDatasetCfg.Buffers = field(
+        default_factory=lambda: BaseDatasetCfg.Buffers(
             patch_sampling=50,
             infer=20,
             fp=(20, 'auto')
         )
     )
 
-    # Will be set in the YAML config or CLI arguments to LocalRawImagesConfig or S2GEERawImagesConfig
+    # Will be set in the YAML config or CLI arguments to LocalRawImagesCfg or S2GEERawImagesCfg
     raw_data: Any = MISSING
 
     # The cloud mask will be downloaded automatically so we include it by default in the final QC mask.

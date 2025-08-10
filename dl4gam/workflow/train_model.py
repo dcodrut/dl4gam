@@ -1,8 +1,9 @@
 import logging
 import os
 
-import pytorch_lightning as pl
 from hydra.utils import instantiate
+from lightning.pytorch import seed_everything
+from lightning.pytorch.callbacks import ModelSummary
 
 # https://github.com/PyTorchLightning/pytorch-lightning/issues/5225
 if 'SLURM_NTASKS' in os.environ:
@@ -17,7 +18,7 @@ def main(**settings):
     # Fix the seed
     seed = settings['seed']
     log.info(f"Seeding everything to {seed}")
-    pl.seed_everything(seed, workers=True)
+    seed_everything(seed, workers=True)
 
     # Set up the tensorboard logger
     log.info(f"Setting up the TensorBoard logger: {settings['logger']}")
@@ -38,7 +39,7 @@ def main(**settings):
     # Callbacks
     log.info(f"Instantiating the model checkpoint callback: {settings['checkpoint_callback']}")
     checkpoint_callback = instantiate(settings['checkpoint_callback'])
-    summary = pl.callbacks.ModelSummary(max_depth=-1)
+    summary = ModelSummary(max_depth=-1)
 
     # Trainer
     log.info(f"Instantiating the trainer: {settings['trainer']}")

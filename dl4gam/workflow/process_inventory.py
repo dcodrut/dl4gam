@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from dl4gam import utils
-from dl4gam.configs.datasets import BaseDatasetConfig
+from dl4gam.configs.datasets import BaseDatasetCfg
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def add_auxiliary_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 def compute_buffers(
         gdf: gpd.GeoDataFrame,
-        buffers: BaseDatasetConfig.Buffers,
+        buffers: BaseDatasetCfg.Buffers,
         tol: Optional[float] = None
 ) -> dict[str, gpd.GeoDataFrame]:
     """
@@ -136,7 +136,7 @@ def main(
         fp_in: str | Path,
         fp_out: str | Path,
         min_glacier_area: float,
-        buffers: BaseDatasetConfig.Buffers,
+        buffers: BaseDatasetCfg.Buffers,
         crs: str,
         gsd: float,
         dates_csv: Optional[str | Path] = None,
@@ -147,7 +147,7 @@ def main(
     It also prepares a series of buffers for each glacier, which will be used later in the patch sampling, inference,
     and evaluation.
 
-    See :class:`dl4gam.configs.datasets.BaseDatasetConfig.Buffers`
+    See :class:`dl4gam.configs.datasets.BaseDatasetCfg.Buffers`
     """
 
     fp_out = Path(fp_out)

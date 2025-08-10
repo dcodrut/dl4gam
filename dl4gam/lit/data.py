@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import xarray as xr
+from lightning.pytorch import LightningDataModule
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 
 from dl4gam.utils import run_in_parallel, get_patches_df
@@ -326,7 +326,7 @@ class GlSegDataset(GlSegPatchDataset):
         return len(self.patches_df)
 
 
-class GlSegDataModule(pl.LightningDataModule):
+class GlSegDataModule(LightningDataModule):
     def __init__(self,
                  input_settings: dict,
                  split_csv: Path | str,

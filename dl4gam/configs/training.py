@@ -3,7 +3,7 @@ from typing import List, Optional, Any
 
 
 @dataclass
-class PLConfig:
+class RunCfg:
     # Directory under the main working directory for the current experiment
     # Note that we include the common sweeping parameters in the subdirectory but this could be overwritten in the cl
     base_dir: str = (
@@ -11,8 +11,8 @@ class PLConfig:
         "experiments/"
         "${dataset.name}/"
         "${model.name}/"
-        "cv_iter_${pl.cv_iter}/"
-        "seed_${pl.seed}/"
+        "cv_iter_${.cv_iter}/"
+        "seed_${.seed}/"
     )
 
     num_cv_folds: int = 5  # number of cross-validation folds
@@ -22,13 +22,13 @@ class PLConfig:
 
     @dataclass
     class Data:
-        _target_: str = 'dl4gam.pl_modules.data.GlSegDataModule'
+        _target_: str = 'dl4gam.lit.data.GlSegDataModule'
         input_settings: Any = "${model.input_settings}"
         split_csv: str = "${dataset.split_csv}"
         patches_on_disk: bool = "${dataset.export_patches}"
         patches_dir: str = "${dataset.patches_dir}"
         num_patches_train: int = "${dataset.num_patches_train}"
-        seed: int = "${pl.seed}"
+        seed: int = "${..seed}"
         cubes_dir: str = "${dataset.cubes_dir}"
         patch_radius: int = "${dataset.patch_radius}"
         stride_train: int = "${dataset.strides.train}"
@@ -52,11 +52,11 @@ class PLConfig:
 
     @dataclass
     class Task:
-        _target_: str = 'dl4gam.pl_modules.seg_task.GlSegTask'
+        _target_: str = 'dl4gam.lit.seg_task.GlSegTask'
 
         @dataclass
         class Loss:
-            _target_: str = 'dl4gam.pl_modules.loss.MaskedLoss'
+            _target_: str = 'dl4gam.lit.loss.MaskedLoss'
             metric: str = 'focal'
 
         @dataclass
@@ -66,7 +66,7 @@ class PLConfig:
 
         @dataclass
         class LRScheduler:  # Note that we're not using it by default
-            _target_: str = 'torch.optim.lr_scheduler_params.CosineAnnealingLR'
+            _target_: str = 'torch.optim.lr_scheduler.CosineAnnealingLR'
             T_max: int = 50
             eta_min: float = 0.0
 
@@ -79,15 +79,15 @@ class PLConfig:
 
     @dataclass
     class Logger:
-        _target_: str = 'pytorch_lightning.loggers.TensorBoardLogger'
-        save_dir: str = "${pl.base_dir}"
+        _target_: str = 'lightning.pytorch.loggers.TensorBoardLogger'
+        save_dir: str = "${..base_dir}"
         name: str = ''  # keep empty so it doesn't create a subfolder
         default_hp_metric: bool = False  # disable the default hyperparameter metric logging
         version: str = "${now:%Y-%m-%d_%H-%M-%S}"
 
     @dataclass
     class CheckpointCallback:
-        _target_: str = 'pytorch_lightning.callbacks.ModelCheckpoint'
+        _target_: str = 'lightning.pytorch.callbacks.ModelCheckpoint'
         monitor: str = 'w_JaccardIndex_val_epoch_avg_per_g'
         filename: str = 'ckpt-{epoch:02d}-{w_JaccardIndex_val_epoch_avg_per_g:.4f}'
         save_top_k: int = 1
@@ -97,7 +97,7 @@ class PLConfig:
 
     @dataclass
     class Trainer:
-        _target_: str = 'pytorch_lightning.Trainer'
+        _target_: str = 'lightning.pytorch.Trainer'
         devices: List[int] = field(default_factory=lambda: [0])
         accelerator: str = 'gpu'
         log_every_n_steps: int = 10

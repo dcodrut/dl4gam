@@ -5,18 +5,18 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from dl4gam.configs.datasets import (
-    LocalRawImagesConfig,
-    GEERawImagesConfig,
-    S2GEERawImagesConfig,
-    BaseDatasetConfig,
-    S2DatasetConfig,
+    LocalRawImagesCfg,
+    GEERawImagesCfg,
+    S2GEERawImagesCfg,
+    BaseDatasetCfg,
+    S2DatasetCfg,
 )
-from dl4gam.configs.models import SMPModelConfig, InputConfig
-from dl4gam.configs.training import PLConfig
+from dl4gam.configs.models import SMPModelCfg, InputCfg
+from dl4gam.configs.training import RunCfg
 
 
 @dataclass
-class DL4GAMConfig:
+class DL4GAMCfg:
     """ Full application config for the DL4GAM workflow.
 
     First, we define here the composition scheme (i.e. the dataset, the model & training settings)
@@ -33,10 +33,11 @@ class DL4GAMConfig:
     # The following are pointers to the dataset and model configs that will be populated by Hydra using the yaml files.
     dataset: Any = MISSING
     model: Any = MISSING
-    input: InputConfig = MISSING
+    input: InputCfg = MISSING
 
     # For the training setup we have a single config that is used for all models
-    pl: PLConfig = field(default_factory=PLConfig)
+    # (we will overwrite only the seed and the cross-validation iteration)
+    run: RunCfg = field(default_factory=RunCfg)
 
     # Root working directory (everything is relative to this); will also be the root of the Hydra config
     working_dir: str = MISSING
@@ -51,11 +52,11 @@ class DL4GAMConfig:
         # `limit_train_batches` parameter.
         # With shuffle=True and a large enough number of patches (which will be checked), the epochs will be different.
         if self.dataset.sample_patches_each_epoch:
-            self.pl.trainer.limit_train_batches = self.pl.data.num_patches_train // self.pl.data.train_batch_size
+            self.run.trainer.limit_train_batches = self.run.data.num_patches_train // self.run.data.train_batch_size
 
         # Set the strides for validation and test sets in the data config
-        self.pl.data.stride_val = self.dataset.strides.val
-        self.pl.data.stride_test = self.dataset.strides.infer
+        self.run.data.stride_val = self.dataset.strides.val
+        self.run.data.stride_test = self.dataset.strides.infer
 
     # Workflow step configs: all the parameters are derived from the existing settings
     @property
@@ -164,9 +165,9 @@ class DL4GAMConfig:
         return {
             '_target_': 'dl4gam.utils.data_cv_split',
             'geoms_fp': self.dataset.geoms_fp,
-            'num_folds': self.pl.num_cv_folds,
-            'cv_iter': self.pl.cv_iter,
-            'val_fraction': self.pl.val_fraction,
+            'num_folds': self.run.num_cv_folds,
+            'cv_iter': self.run.cv_iter,
+            'val_fraction': self.run.val_fraction,
             'fp_out': self.dataset.split_csv,
         }
 
@@ -184,13 +185,13 @@ class DL4GAMConfig:
     def step_train_model(self) -> dict:
         return {
             '_target_': 'dl4gam.workflow.train_model.main',
-            'seed': self.pl.seed,
-            'logger': self.pl.logger,
-            'data': self.pl.data,
+            'seed': self.run.seed,
+            'logger': self.run.logger,
+            'data': self.run.data,
             'model': self.model,
-            'task': self.pl.task,
-            'checkpoint_callback': self.pl.checkpoint_callback,
-            'trainer': self.pl.trainer,
+            'task': self.run.task,
+            'checkpoint_callback': self.run.checkpoint_callback,
+            'trainer': self.run.trainer,
         }
 
     # Which step to execute
@@ -200,11 +201,11 @@ class DL4GAMConfig:
 # Register configs with Hydra's ConfigStore
 def register_configs():
     cs = ConfigStore.instance()
-    cs.store(group='dataset', name='base', node=BaseDatasetConfig)
-    cs.store(group='dataset', name='s2_base', node=S2DatasetConfig)
-    cs.store(group='dataset/raw_data', name='local', node=LocalRawImagesConfig)
-    cs.store(group="dataset/raw_data", name='gee_base', node=GEERawImagesConfig)
-    cs.store(group="dataset/raw_data", name='gee_s2', node=S2GEERawImagesConfig)
-    cs.store(group='model', name='smp_base', node=SMPModelConfig)
-    cs.store(group='input', name='input_base', node=InputConfig)
-    cs.store(name='dl4gam_config', node=DL4GAMConfig)
+    cs.store(group='dataset', name='base', node=BaseDatasetCfg)
+    cs.store(group='dataset', name='s2_base', node=S2DatasetCfg)
+    cs.store(group='dataset/raw_data', name='local', node=LocalRawImagesCfg)
+    cs.store(group="dataset/raw_data", name='gee_base', node=GEERawImagesCfg)
+    cs.store(group="dataset/raw_data", name='gee_s2', node=S2GEERawImagesCfg)
+    cs.store(group='model', name='smp_base', node=SMPModelCfg)
+    cs.store(group='input', name='input_base', node=InputCfg)
+    cs.store(name='dl4gam_config', node=DL4GAMCfg)

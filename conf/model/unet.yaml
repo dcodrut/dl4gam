@@ -8,7 +8,7 @@ name: "Unet"
 
 input_settings: "${input}"
 
-params: # See `dl4gam.configs.models.SMPModelConfig` for other parameters
+params: # See `dl4gam.configs.models.SMPModelCfg` for other parameters
   encoder_name: resnet34
   encoder_weights: imagenet
   encoder_depth: 5
