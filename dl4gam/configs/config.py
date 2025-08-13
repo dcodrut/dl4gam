@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from hydra.core.config_store import ConfigStore
@@ -192,6 +193,22 @@ class DL4GAMCfg:
             'task': self.run.task,
             'checkpoint_callback': self.run.checkpoint_callback,
             'trainer': self.run.trainer,
+        }
+
+    @property
+    def step_inference(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.test_model.main',
+            'data': self.run.data,
+            'model': self.model,
+            'task': self.run.task,
+            'trainer': self.run.trainer,
+            'test_per_glacier': True,  # we assume glacier-wide inference with on-the-fly patching
+            'fold': 'test',  # TODO: parametrize this
+            'checkpoint_base_dir': Path(self.run.logger.save_dir).parent,  # drop the current timestamp, pick the latest
+            'metric_name': self.run.checkpoint_callback.monitor,
+            'metric_mode': self.run.checkpoint_callback.mode,
+            'dataset': self.dataset,
         }
 
     # Which step to execute

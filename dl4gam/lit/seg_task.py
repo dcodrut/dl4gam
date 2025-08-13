@@ -240,9 +240,9 @@ class GlSegTask(LightningModule):
             raise NotImplementedError
         cube_fp = filepaths[0]
 
-        # read the original glacier nc and create accumulators based on its shape
+        # Read the original glacier cube and create accumulators based on its shape
         nc = xr.load_dataset(cube_fp, decode_coords='all')
-        preds_acc = torch.zeros(nc.mask_crt_g.shape, device=self.device)
+        preds_acc = torch.zeros(nc.mask_glacier.shape, device=self.device)
         preds_cnt = torch.zeros(size=preds_acc.shape, device=self.device)
         prc_margin_to_drop = 0.05  # percentage of the patch size to drop from each side (to avoid border effects)
         for j in range(len(self.test_step_outputs)):
@@ -276,13 +276,13 @@ class GlSegTask(LightningModule):
         nc_pred['pred'] = (('y', 'x'), preds_acc_np)
         nc_pred['pred_b'] = (('y', 'x'), preds_acc_np >= self.thr)
 
-        # fill-in the masked pixels (only within 50m buffer) using two different methods
+        # fill-in the masked pixels (only within the inference + FP buffer) using two different methods
         mask_to_fill = extract_inputs(ds=nc, fp=cube_fp, input_settings=self.model.input_settings)['mask_no_data']
-        data = nc_pred.pred.values
-        mask_crt_g_b50 = (nc.mask_crt_g_b50.values == 1)
-        mask_to_fill &= mask_crt_g_b50
-        mask_ok = (~mask_to_fill) & mask_crt_g_b50
+        mask_roi = (nc.mask_infer.values == 1) | (nc.mask_fp.values == 1)  # mask for inference + FP buffer
+        mask_to_fill &= mask_roi
+        mask_ok = (~mask_to_fill) & mask_roi
 
+        data = nc_pred.pred.values
         if self.interp is not None:
             n_px = 30  # how many pixels to use as source for interpolation value
             if mask_to_fill.sum() > 0 and mask_ok.sum() >= n_px:
