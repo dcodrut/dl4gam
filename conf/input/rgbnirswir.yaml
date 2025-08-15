@@ -15,5 +15,8 @@ band_mask: mask_nok
 dem: false
 dhdt: false
 velocity: false
-optical_indices: null
+optical_indices:
+  - NDVI
+  - NDWI
+  - NDSI
 dem_features: null

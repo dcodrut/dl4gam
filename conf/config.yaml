@@ -3,7 +3,7 @@ defaults:
   - dl4gam_config      # our main configuration file
   - dataset: s2_alps_plus
   - model: unet
-  - input: optical
+  - input: rgbnirswir_dem_dhdt
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
