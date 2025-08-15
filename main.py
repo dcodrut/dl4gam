@@ -5,7 +5,7 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf, DictConfig, SCMode
 
-from dl4gam.configs.config import register_configs
+from dl4gam.configs.config import register_configs, DL4GAMCfg
 from dl4gam.utils import parallel_utils
 
 register_configs()
@@ -14,7 +14,7 @@ register_configs()
 @hydra.main(config_path='conf', config_name='config', version_base=None)
 def main(cfg_dict: DictConfig):
     # Covert the DictConfig to our internal dataclass structure
-    cfg = OmegaConf.to_container(
+    cfg: DL4GAMCfg = OmegaConf.to_container(
         cfg_dict,
         resolve=True,
         throw_on_missing=True,

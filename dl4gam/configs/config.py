@@ -1,12 +1,11 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from dl4gam.configs.datasets import (
-    LocalRawImagesCfg,
+    RawImagesCfg,
     GEERawImagesCfg,
     S2GEERawImagesCfg,
     BaseDatasetCfg,
@@ -32,8 +31,8 @@ class DL4GAMCfg:
     """
 
     # The following are pointers to the dataset and model configs that will be populated by Hydra using the yaml files.
-    dataset: Any = MISSING
-    model: Any = MISSING
+    dataset: BaseDatasetCfg = MISSING
+    model: SMPModelCfg = MISSING
     input: InputCfg = MISSING
 
     # For the training setup we have a single config that is used for all models
@@ -231,7 +230,7 @@ def register_configs():
     cs = ConfigStore.instance()
     cs.store(group='dataset', name='base', node=BaseDatasetCfg)
     cs.store(group='dataset', name='s2_base', node=S2DatasetCfg)
-    cs.store(group='dataset/raw_data', name='local', node=LocalRawImagesCfg)
+    cs.store(group='dataset/raw_data', name='local', node=RawImagesCfg)
     cs.store(group="dataset/raw_data", name='gee_base', node=GEERawImagesCfg)
     cs.store(group="dataset/raw_data", name='gee_s2', node=S2GEERawImagesCfg)
     cs.store(group='model', name='smp_base', node=SMPModelCfg)

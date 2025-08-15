@@ -27,7 +27,7 @@ class QCMetric(str, Enum):
 # Raw data configurations: 1) local (i.e. assumed to be already downloaded) and 2) automatically downloaded from GEE
 # ======================================================================================================================
 @dataclass
-class LocalRawImagesCfg:
+class RawImagesCfg:
     """
     Settings for locally stored (i.e. pre-downloaded) raw images.
 
@@ -87,7 +87,7 @@ class LocalRawImagesCfg:
 
 
 @dataclass
-class GEERawImagesCfg(LocalRawImagesCfg):
+class GEERawImagesCfg(RawImagesCfg):
     """
     On top of the local raw data settings, this class contains the additional settings for automatically downloading
     the raw data using Google Earth Engine. See the `download_best_images` function for details.
@@ -112,7 +112,7 @@ class GEERawImagesCfg(LocalRawImagesCfg):
     download_time_window: Optional[Tuple[str, str]] = None
 
     # Number of images (i.e. days) to download per glacier
-    # (we choose the best automatically if exact dates are not used; see `automated_selection` in LocalRawImagesCfg)
+    # (we choose the best automatically if exact dates are not used; see `automated_selection` in RawImagesCfg)
     num_days_to_keep: int = 1
 
     # Parameters for the cloud masks
@@ -160,11 +160,11 @@ class BaseDatasetCfg:
 
     # CRS and GSD which will be used for the rasterization of the glacier outlines and the raw data
     crs: str = "UTM"  # we use local UTM projection by default; use "EPSG:XXXXX" for a specific projection
-    gsd: int | float = MISSING
+    gsd: float = MISSING
 
     # Settings for the raw data, which can be either downloaded automatically from GEE or assumed to be already
-    # downloaded and stored locally; see LocalRawImagesCfg and GEERawImagesCfg for details.
-    raw_data: Any = MISSING
+    # downloaded and stored locally; see RawImagesCfg and GEERawImagesCfg for details.
+    raw_data: RawImagesCfg = MISSING
 
     @dataclass
     class OGGMDataCfg:
@@ -216,7 +216,7 @@ class BaseDatasetCfg:
     @dataclass
     class Buffers:
         # Pointer to the raw data settings
-        qc_metrics: int | float = "${dataset.raw_data.buffer_qc_metrics}"
+        qc_metrics: int | float = "${..raw_data.buffer_qc_metrics}"
 
         # Buffer for the final processed glacier cube (should be large enough to allow patch sampling)
         cube: Optional[int | float] = None  # if None, will be set automatically in __post_init__
@@ -262,25 +262,25 @@ class BaseDatasetCfg:
     # ==================================================================================================================
 
     # Root directory for all the data which will be processed
-    base_dir: str = "${working_dir}/datasets/${dataset.name}"
+    base_dir: str = "${working_dir}/datasets/${.name}"
 
     # Processed inventory outlines with all the additional derived geometries
-    geoms_fp: str = "${dataset.base_dir}/geoms.gpkg"
+    geoms_fp: str = "${.base_dir}/geoms.gpkg"
 
     # A csv file with the glacier IDs and their corresponding folds under each cross-validation iteration.
-    split_csv: str = "${dataset.base_dir}/cv_splits/map_cv_iter_${run.cv_iter}.csv"
+    split_csv: str = "${.base_dir}/cv_splits/map_cv_iter_${run.cv_iter}.csv"
 
     # Path to a csv with the normalization stats of the current cross-validation iteration
-    norm_stats_csv: str = "${dataset.base_dir}/norm_stats/stats_cv_iter_${run.cv_iter}.csv"
+    norm_stats_csv: str = "${.base_dir}/norm_stats/stats_cv_iter_${run.cv_iter}.csv"
 
     # Root directory for the raw data of the current year
-    base_dir_year: str = "${dataset.base_dir}/${dataset.year}"
+    base_dir_year: str = "${.base_dir}/${.year}"
 
     # Path to the processed glacier cubes (netcdf) after processing; note that this is separated by year
-    cubes_dir: str = "${dataset.base_dir_year}/glacier_cubes"
+    cubes_dir: str = "${.base_dir_year}/glacier_cubes"
 
     # Directory for the patches (if they are exported, otherwise will be later set to None)
-    patches_dir: Optional[str] = "${dataset.base_dir_year}/patches/r_${dataset.patch_radius}_s_${dataset.strides.train}"
+    patches_dir: Optional[str] = "${.base_dir_year}/patches/r_${.patch_radius}_s_${.strides.train}"
 
     def __post_init__(self):
         """
@@ -374,8 +374,8 @@ class S2DatasetCfg(BaseDatasetCfg):
         )
     )
 
-    # Will be set in the YAML config or CLI arguments to LocalRawImagesCfg or S2GEERawImagesCfg
-    raw_data: Any = MISSING
+    # Will be set in the YAML config or CLI arguments to RawImagesCfg or S2GEERawImagesCfg
+    raw_data: RawImagesCfg = MISSING
 
     # The cloud mask will be downloaded automatically so we include it by default in the final QC mask.
     bands_nok_mask: Tuple[str, ...] = field(default_factory=lambda: ('cloud_mask',))
