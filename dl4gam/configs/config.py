@@ -211,6 +211,17 @@ class DL4GAMCfg:
             'dataset': self.dataset,
         }
 
+    @property
+    def step_polygonize_predictions(self) -> dict:
+        return {
+            '_target_': 'dl4gam.workflow.polygonize.main',
+            'checkpoint_base_dir': str(Path(self.run.logger.save_dir).parent),  # drop the timestamp, pick the latest
+            'dataset_name': self.dataset.name,
+            'year': self.dataset.year,
+            'fold': 'test',  # TODO: parametrize this
+            'min_segment_area_km2': 0.0,  # TODO: parametrize this
+        }
+
     # Which step to execute
     current_step: str = MISSING
 

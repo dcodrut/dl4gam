@@ -11,5 +11,5 @@ from .geom import (
     calculate_equal_area_buffer
 )
 from .parallel_utils import run_in_parallel
-from .postprocessing import nn_interp, hypso_interp
+from .raster import nn_interp, hypso_interp, polygonize
 from .sampling_utils import patchify_data, data_cv_split, get_patches_df

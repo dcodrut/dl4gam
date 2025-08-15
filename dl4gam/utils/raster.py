@@ -1,4 +1,41 @@
+import geopandas as gpd
 import numpy as np
+import rasterio.features
+import shapely.geometry
+import shapely.ops
+import xarray as xr
+
+
+def polygonize(da: xr.DataArray, min_segment_area_km2: float = 0.0, connectivity=8):
+    """
+    Polygonize a raster DataArray, returning a GeoDataSeries the (multi)polygons.
+    :param da: DataArray with a binary mask (1 for the area of interest, 0 for the background), in a projected CRS.
+    :param min_segment_area_km2: minimum area of the polygons to keep; polygons smaller than this will be discarded
+    :param connectivity: connectivity for the polygonization (see rasterio.features.shapes documentation)
+    :return: GeoDataSeries with (multi)polygons
+    """
+
+    if da.dtype not in ['uint8', 'bool']:
+        raise ValueError(f"DataArray must be of type 'uint8' or 'bool', got {da.dtype}")
+
+    da = da.astype('uint8')  # rasterio.features.shapes doesn't allow bools
+
+    # Get the shapes and covert them to polygons
+    shapes = list(rasterio.features.shapes(da, transform=da.rio.transform(), connectivity=connectivity))
+    geometries = [shapely.geometry.shape(shape) for shape, value in shapes if value == 1]
+
+    # Filter out geometries smaller than the minimum area
+    geometries = [geom for geom in geometries if geom.area / 1e6 >= min_segment_area_km2]
+
+    # Create multipolygon or empty poly if no shapes found
+    multipoly = shapely.ops.unary_union(geometries) if len(geometries) > 0 else shapely.geometry.Polygon()
+
+    # Create GeoSeries with original CRS and reproject to WGS84
+    gs = gpd.GeoSeries([multipoly], crs=da.rio.crs)
+    gs_wgs84 = gs.to_crs(epsg=4326)
+
+    # Return the (muli)poly only
+    return gs_wgs84.iloc[0]
 
 
 def nn_interp(data, mask_to_fill, mask_ok, num_nn=100):
@@ -13,7 +50,7 @@ def nn_interp(data, mask_to_fill, mask_ok, num_nn=100):
         dists = (x - x_px_ok) ** 2 + (y - y_px_ok) ** 2
 
         # keep only the closest pixels
-        max_dist = np.quantile(dists, q=num_nn/n_ok)
+        max_dist = np.quantile(dists, q=num_nn / n_ok)
         idx = (dists <= max_dist)
         x_px_ok_sel, y_px_ok_sel = x_px_ok[idx], y_px_ok[idx]
 
