@@ -39,6 +39,10 @@ def main(
     else:
         # Get the list of all patches / glacier-wide cubes and group them by glacier
         fp_list = sorted(list(Path(data_dir).rglob('*.nc')))
+
+        if len(fp_list) == 0:
+            raise FileNotFoundError(f"No NetCDF files found in {data_dir}. Please check the directory.")
+
         gl_to_files = {x.parent.name: [] for x in fp_list}
         for fp in fp_list:
             gl_to_files[fp.parent.name].append(fp)

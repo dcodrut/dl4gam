@@ -19,7 +19,7 @@ def main(
         max_cloud_p: float = 1.0,
         min_coverage: float = 0.9,
         score_weights: Optional[tuple] = None,
-        buffer: int = 0,
+        buffer: float = 0,
         bands_name_map: Optional[dict[str, str]] = None,
         bands_nok_mask: Optional[tuple[str]] = None,
         overwrite: bool = False,

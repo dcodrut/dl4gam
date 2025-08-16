@@ -4,22 +4,6 @@ from typing import List, Optional, Any
 
 @dataclass
 class RunCfg:
-    # Directory under the main working directory for the current experiment
-    # Note that we include the common sweeping parameters in the subdirectory but this could be overwritten in the cl
-    base_dir: str = (
-        "${working_dir}/"
-        "experiments/"
-        "${dataset.name}/"
-        "${model.name}/"
-        "cv_iter_${.cv_iter}/"
-        "seed_${.seed}/"
-    )
-
-    num_cv_folds: int = 5  # number of cross-validation folds
-    cv_iter: int = 1  # current cross-validation iteration
-    val_fraction: float = 0.1  # fraction of the training set to use for validation
-    seed: int = 1
-
     @dataclass
     class Data:
         _target_: str = 'dl4gam.lit.data.GlSegDataModule'
@@ -28,7 +12,7 @@ class RunCfg:
         patches_on_disk: bool = "${dataset.export_patches}"
         patches_dir: str = "${dataset.patches_dir}"
         num_patches_train: int = "${dataset.num_patches_train}"
-        seed: int = "${..seed}"
+        seed: int = "${seed}"
         cubes_dir: str = "${dataset.cubes_dir}"
         patch_radius: int = "${dataset.patch_radius}"
         stride_train: int = "${dataset.strides.train}"
@@ -80,10 +64,10 @@ class RunCfg:
     @dataclass
     class Logger:
         _target_: str = 'lightning.pytorch.loggers.TensorBoardLogger'
-        save_dir: str = "${..base_dir}"
+        save_dir: str = "${hydra:runtime.output_dir}/"
         name: str = ''  # keep empty so it doesn't create a subfolder
         default_hp_metric: bool = False  # disable the default hyperparameter metric logging
-        version: str = "${now:%Y-%m-%d_%H-%M-%S}"
+        version: str = ""  # already timestamped by Hydra
 
     @dataclass
     class CheckpointCallback:

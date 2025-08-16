@@ -1,19 +1,77 @@
 defaults:
-  - _self_
   - dl4gam_config      # our main configuration file
-  - dataset: s2_alps_plus
+  - dataset: s2_alps_plus_inv
   - model: unet
   - input: rgbnirswir_dem_dhdt
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
+  - _self_
 
-# Set the working directory and the number of processes (for the steps running in parallel)
+# Set the mandatory parameters or override the defaults;
+# Parameters can be overridden in the CLI but be aware that some of the parameters are used in the paths
+# Those overridden here (except dataset, model, input, cv_iter, seed) won't be used in the paths
 working_dir: ./data/external/dl4gam
+pbar: True
 num_procs: 24
 
+# Mute pyogrio
+external_modules_log_level: {
+  'pyogrio': 'WARN'
+}
+
+# Set the hydra directory for each stage (will be later selected based on the stage)
+run_dir_per_stage:
+  # A default directory in case the stage is not defined
+  default: ${working_dir}/_hydra
+  # Define directories for each stage (some are based on the parent directory of the output file)
+  process_inventory: ${parentdir:${dataset.geoms_fp}}
+  download_raw_data: ${dataset.raw_data.base_dir}
+  rank_images: ${dataset.raw_data.base_dir}
+  download_oggm_data: ${dataset.oggm_data.base_dir}
+  build_dataset: ${dataset.cubes_dir}
+  patchify_dataset: ${dataset.patches_dir}
+  split_data: ${parentdir:${dataset.split_csv}}
+  compute_norm_stats: ${working_dir}/datasets/${dataset.name}/norm_stats
+
+  # For the next stages, we include all the CLI overrides at the end of the path
+  # (in case we later want to sweep over variables which are already not part the path)
+  # We also include a timestamp to avoid overwriting previous runs; at inference time we will use the latest run
+  _model_root: >-
+    ${working_dir}/
+    experiments/
+    dataset=${hydra:runtime.choices.dataset}/
+    model=${hydra:runtime.choices.model}/
+    input=${hydra:runtime.choices.input}/
+    cv_iter=${cv_iter}/
+    seed=${seed}/
+    ${hydra:job.override_dirname}
+  train: ${fpstrip:${._model_root}}/ts=${now:%Y-%m-%d_%H-%M-%S}_job=${hydra:job.num}
+  infer: ${fpstrip:${._model_root}}/
+
 hydra:
+  job:
+    config:
+      override_dirname:
+        # Exclude the keys which we manually added to the path + the unnecessary ones
+        exclude_keys:
+          - stage
+          - dataset.raw_data.gee_project_name
+          - num_procs
+          - hydra.verbose
+          - run.trainer.devices
+          - dataset
+          - model
+          - input
+          - cv_iter
+          - seed
+        item_sep: /  # We create a subdirectory for any additional CLI override
   run:
-    dir: ${working_dir}/logs/${dataset.name}/${current_step}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ${oc.select:run_dir_per_stage.${stage}, ${run_dir_per_stage.default}}
+  sweep:
+    # hydra will drop some logs here, but we're interested only in the subdir which we set to be an absolute path
+    # (otherwise subdir would be under dir)
+    dir: ${working_dir}/_hydra/sweeps/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra:runtime.cwd}/${oc.select:run_dir_per_stage.${stage}, ${run_dir_per_stage.default}}
   job_logging:
     formatters:
       colored:
@@ -32,8 +90,6 @@ hydra:
 
     handlers:
       file:
-        filename: ${hydra:run.dir}/${hydra.job.name}.log
+        filename: ${hydra:runtime.output_dir}/${stage}.log
 
     disable_existing_loggers: false
-    external_modules: [ pyogrio ]
-    external_modules_log_level: WARN

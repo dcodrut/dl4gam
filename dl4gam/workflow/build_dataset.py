@@ -34,7 +34,6 @@ def assign_image(glacier_id: str, raw_images_dir: str | Path, date: Optional[str
     fp_img_list_all = sorted(list(Path(raw_images_dir).rglob('*.tif')))
 
     if len(fp_img_list_all) == 0:
-        log.warning(f"No images found for glacier {glacier_id} in {raw_images_dir}")
         return None
 
     # Map each date to the corresponding image file path
@@ -175,14 +174,6 @@ def main(
         automated_selection=automated_selection,
         ensure_all_glaciers_have_images=ensure_all_glaciers_have_images
     )
-
-    # Check if we have any missing images
-    missing_glacier_ids = set(gdf_sel.entry_id) - set(glacier_ids)
-    if missing_glacier_ids:
-        log.warning(
-            f"The following glaciers do not have any images assigned: {missing_glacier_ids}. "
-            f"Please check the raw data base directory: {raw_data_base_dir}."
-        )
 
     # Read the FP, infer and patch sampling buffers and save them as extra vectors to be converted into binary masks
     # We will save them as list of subsets of GeoDataFrames, one for each selected glacier (for run_in_parallel)

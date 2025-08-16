@@ -536,7 +536,7 @@ class GlSegDataModule(LightningDataModule):
 
     def build_patch_dataset_per_glacier(
             self, fp_rasters, use_augmentation=False, stride=None, add_extremes=False
-    ):
+    ) -> list[GlSegDataset]:
         ds_list = run_in_parallel(
             fun=functools.partial(
                 GlSegDataset,
@@ -594,7 +594,7 @@ class GlSegDataModule(LightningDataModule):
             drop_last=False
         )
 
-    def test_dataloaders_per_glacier(self, fp_rasters: list):
+    def test_dataloaders_per_glacier(self, fp_rasters: list) -> list[DataLoader]:
         """
         Build one dataloader per glacier (patches will be sampled on the fly) such that the predictions can be mosaicked
         together on epoch end.

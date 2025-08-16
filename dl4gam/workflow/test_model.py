@@ -1,5 +1,6 @@
 import logging
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,8 @@ from tqdm import tqdm
 from dl4gam.lit.seg_task import GlSegTask
 
 log = logging.getLogger(__name__)
+
+from dl4gam.configs.config import SMPModelCfg, RunCfg, BaseDatasetCfg
 
 
 def get_best_model_ckpt(checkpoint_base_dir, metric_name='val_loss_epoch', sort_method='min'):
@@ -35,40 +38,45 @@ def get_best_model_ckpt(checkpoint_base_dir, metric_name='val_loss_epoch', sort_
     return ckpt_best
 
 
-def main(**settings):
+def main(
+        run_cfg: RunCfg,
+        model_cfg: SMPModelCfg,
+        dataset_cfg: BaseDatasetCfg,
+        fold: str,
+        checkpoint_base_dir: str | Path,
+):
     # Prepare the checkpoint before anything else
     checkpoint_fp = get_best_model_ckpt(
-        checkpoint_base_dir=settings['checkpoint_base_dir'],
-        metric_name=settings['metric_name'],
-        sort_method=settings['metric_mode']
+        checkpoint_base_dir=checkpoint_base_dir,
+        metric_name=run_cfg.checkpoint_callback.monitor,
+        sort_method=run_cfg.checkpoint_callback.mode
     )
 
     # Data
-    log.info(f"Instantiating the data module: {settings['data']}")
-    dm = instantiate(settings['data'])
+    log.info(f"Instantiating the data module: {run_cfg.data}")
+    dm = instantiate(run_cfg.data)
     dm.train_shuffle = False  # disable shuffling for the training dataloader
 
     # Model
-    log.info(f"Instantiating the model: {settings['model']}")
-    model = instantiate(settings['model'])
+    log.info(f"Instantiating the model: {model_cfg}")
+    model = instantiate(model_cfg)
 
-    # Task
-    device = f"cuda:{settings['trainer']['devices'][0]}" if settings['trainer']['accelerator'] == 'gpu' else 'cpu'
+    # Task & weights loading
+    device = f"cuda:{run_cfg.trainer.devices[0]}" if run_cfg.trainer.accelerator == 'gpu' else 'cpu'
     log.info(f"Loading the checkpoint {checkpoint_fp} on device {device}")
     task = GlSegTask.load_from_checkpoint(
         checkpoint_path=checkpoint_fp,
         map_location=device,
         model=model,
-        **settings['task']
+        **asdict(run_cfg.task)
     )
 
     # Trainer
-    log.info(f"Instantiating the trainer: {settings['trainer']}")
-    trainer = instantiate(settings['trainer'], logger=False)
+    log.info(f"Instantiating the trainer: {run_cfg.trainer}")
+    trainer = instantiate(run_cfg.trainer, logger=False)
 
     # Set the output directory
-    ds = settings['dataset']
-    fold = settings['fold']
+    ds = dataset_cfg  # TODO: allow different dataset than the one used for training
     task.outdir = checkpoint_fp.parent.parent / 'preds' / ds.name / ds.year / fold
     assert fold in ['train', 'val', 'test']
     log.info(f'Testing for fold = {fold}; results will be saved to {task.outdir}')
@@ -88,11 +96,11 @@ def main(**settings):
 
     fp_cubes = list(filter(lambda x: x.parent.name in glacier_ids_final, fp_cubes))
     if len(fp_cubes) != len(glacier_ids_final):
-        raise (ValueError
-               (f"We expect one netCDF file per glacier, "
-                f"but found a mismatch: {len(fp_cubes)} files for {len(glacier_ids_final)} glaciers. "
-                f"Check the split CSV {ds.split_csv} and the netCDF files in {cubes_dir}.")
-               )
+        raise ValueError(
+            f"We expect one netCDF file per glacier, "
+            f"but found a mismatch: {len(fp_cubes)} files for {len(glacier_ids_final)} glaciers. "
+            f"Check the split CSV {ds.split_csv} and the netCDF files in {cubes_dir}."
+        )
 
     dl_list = dm.test_dataloaders_per_glacier(fp_rasters=fp_cubes)
     times = {}  # count the time for each glacier

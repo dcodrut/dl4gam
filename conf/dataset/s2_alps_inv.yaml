@@ -8,6 +8,7 @@ defaults:
 
 name: s2_alps
 outlines_fp: "./data/outlines/paul_et_al_2020/c3s_gi_rgi11_s2_2015_v2.shp"
+min_glacier_area: 0.1 # minimum glacier area in km^2 to be considered from the inventory
 year: inv
 num_patches_train: 7488  # multiple of 16 (batch size)
 

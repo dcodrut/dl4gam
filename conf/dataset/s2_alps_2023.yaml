@@ -3,7 +3,7 @@
 # We provide a time window for downloading the images and the best is chosen automatically.
 
 defaults:
-  - s2_alps_inv_plus  # start with S2 Alps+ dataset to use the same set of glaciers
+  - s2_alps_plus_inv  # start with S2 Alps+ dataset to use the same set of glaciers
 
 year: 2023
 

@@ -1,5 +1,6 @@
 import logging
 import logging.config
+from pathlib import Path
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -7,6 +8,13 @@ from omegaconf import OmegaConf, DictConfig, SCMode
 
 from dl4gam.configs.config import register_configs, DL4GAMCfg
 from dl4gam.utils import parallel_utils
+
+# Small utility to register a resolver for OmegaConf to get the parent directory of a path
+# (depending on the stage, we use it to tell hydra to run in the parent directory of the current file to be produced)
+OmegaConf.register_new_resolver("parentdir", lambda p: str(Path(p).parent))
+
+# Strip all parts of a path to avoid issues with trailing slashes or spaces
+OmegaConf.register_new_resolver("fpstrip", lambda p: str(Path(*[x.strip() for x in Path(p).parts])))
 
 register_configs()
 
@@ -26,31 +34,36 @@ def main(cfg_dict: DictConfig):
     if missing_keys:
         raise RuntimeError(f"Got missing keys in config:\n{missing_keys}")
 
-    # Print all the parameters after all evaluations and substitutions
     log = logging.getLogger(__name__)
-    log.info(f"Final config: \n{OmegaConf.to_yaml(cfg, resolve=True)}")
 
-    # Get the hydra config and set the logging level for external modules
-    hydra_cfg = HydraConfig.get()
-    log.info(
-        f"Setting logging level for external modules "
-        f"({hydra_cfg.job_logging.external_modules}) to {hydra_cfg.job_logging.external_modules_log_level}"
-    )
-    for _ in hydra_cfg.job_logging.external_modules:
-        logging.getLogger(_).setLevel(hydra_cfg.job_logging.external_modules_log_level)
+    # Show the hydra output directory
+    hydra_dir = HydraConfig.get().runtime.output_dir
+    log.info(f"Hydra directory: {hydra_dir}")
+
+    # Set the logging levels for external modules
+    for module_name, log_level in cfg.external_modules_log_level.items():
+        log.info(f"Setting logging level for module '{module_name}' to '{log_level}'")
+        logging.getLogger(module_name).setLevel(log_level)
 
     # Set the number of processes and progress bar for parallel processing
     parallel_utils.set_default_num_procs(cfg.num_procs)
     parallel_utils.set_default_pbar(cfg.pbar)
 
     try:
-        # Get the settings for the current step to execute
-        valid_steps = {attr for attr in dir(cfg) if attr.startswith("step_")}
-        if cfg.current_step not in valid_steps:
-            raise RuntimeError(f"Invalid current_step {cfg.current_step!r}; expected one of {sorted(valid_steps)}")
-        settings_crt_step = getattr(cfg, cfg.current_step)
-        log.info(f"Executing step: {cfg.current_step} with settings: {settings_crt_step}")
-        hydra.utils.instantiate(settings_crt_step, _recursive_=False)
+        log.info(f"Stage to be executed: {cfg.stage}")
+
+        # Get the parameters for the current stage to execute
+        valid_stages = {
+            attr.removeprefix('stage_') for attr in dir(cfg)
+            if attr.startswith('stage_') and callable(getattr(cfg, attr))
+        }
+        if cfg.stage not in valid_stages:
+            raise RuntimeError(f"Invalid stage={cfg.stage}; expected one of {sorted(valid_stages)}")
+
+        # Run the stage function
+        stage_func = getattr(cfg, f"stage_{cfg.stage}")
+        stage_func()
+
     except KeyboardInterrupt:
         log.exception("Keyboard interrupt received, stopping the process.")
     except Exception:
