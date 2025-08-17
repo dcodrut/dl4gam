@@ -8,7 +8,7 @@ import xarray as xr
 from lightning.pytorch import LightningDataModule
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 
-from dl4gam.utils import run_in_parallel, get_patches_df
+from dl4gam.utils import run_in_parallel, sample_patch_centers_from_raster
 
 log = logging.getLogger(__name__)
 
@@ -288,7 +288,7 @@ class GlSegDataset(GlSegPatchDataset):
             self.nc = xr.load_dataset(fp, decode_coords='all')
         else:
             self.nc = xr.open_dataset(fp, decode_coords='all')
-        self.patches_df = get_patches_df(
+        self.patches_df = sample_patch_centers_from_raster(
             self.nc,
             patch_radius=patch_radius,
             stride=stride,

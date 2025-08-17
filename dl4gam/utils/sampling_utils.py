@@ -10,14 +10,14 @@ from tqdm import tqdm
 log = logging.getLogger(__name__)
 
 
-def get_patches_df(
+def sample_patch_centers_from_raster(
         nc: xr.Dataset,
         patch_radius: int,
         stride: int = None,
         add_center: bool = False,
         add_centroid: bool = False,
         add_extremes: bool = False,
-        only_patches_centers_within_buffer: bool = True
+        only_centers_within_buffer: bool = True
 ):
     """
     Given a xarray dataset for one glacier, it returns a pandas dataframe with the pixel coordinates for square patches
@@ -30,7 +30,7 @@ def get_patches_df(
     :param add_center: whether to add one patch centered in the middle of the glacier's box
     :param add_centroid: whether to add one patch centered in the centroid of the glacier
     :param add_extremes: whether to add four patches centered on the margin (in each direction) of the glacier
-    :param only_patches_centers_within_buffer: whether to keep only the patches centered within the sampling mask
+    :param only_centers_within_buffer: whether to keep only the patches centered within the sampling mask
     :return: a pandas dataframe with the pixel coordinates of the patches
     """
 
@@ -40,22 +40,35 @@ def get_patches_df(
     if stride is not None:
         if 'mask_patch_sampling' not in nc.data_vars:
             raise ValueError(
-                f"Expected the netcdf file to contain a 'mask_patch_sampling' variable, but found {list(nc.data_vars)}. "
+                f"Expected the netcdf file to contain a 'mask_patch_sampling' variable, "
+                f"but found {list(nc.data_vars)}. "
             )
         # Get all feasible patch centers s.t. the center pixel is on the provided sampling mask
         sampling_mask = (nc.mask_patch_sampling.data == 1)
         all_y_centers, all_x_centers = np.where(sampling_mask)
 
         # sample the feasible centers uniformly from either the glacier pixels or the whole image
-        if only_patches_centers_within_buffer:
+        if only_centers_within_buffer:
             idx_x = np.asarray([p % stride == 0 for p in all_x_centers])
             idx_y = np.asarray([p % stride == 0 for p in all_y_centers])
             idx = idx_x & idx_y
             x_centers = all_x_centers[idx]
             y_centers = all_y_centers[idx]
         else:
-            x_centers = np.arange(0, nc.dims['x'], stride)
-            y_centers = np.arange(0, nc.dims['y'], stride)
+            nx, ny = nc.sizes['x'], nc.sizes['y']
+            x_centers = np.arange(patch_radius, nx - patch_radius, stride)
+            y_centers = np.arange(patch_radius, ny - patch_radius, stride)
+
+            # Add the end points if they are not already included
+            if x_centers.size == 0 or x_centers[-1] != nx - patch_radius:
+                x_centers = np.append(x_centers, nx - patch_radius)
+            if y_centers.size == 0 or y_centers[-1] != ny - patch_radius:
+                y_centers = np.append(y_centers, ny - patch_radius)
+
+            # Create a grid of centers
+            x_centers, y_centers = np.meshgrid(x_centers, y_centers, indexing='xy')
+            x_centers = x_centers.ravel()
+            y_centers = y_centers.ravel()
     else:
         if not (add_extremes or add_center or add_centroid):
             raise ValueError(
@@ -201,7 +214,7 @@ def patchify_data(
 
     We sample patches uniformly from the `sampling_mask` variable in the netcdf files, which is expected to be
     a binary mask with 1s for the pixels where patches can be sampled and 0s otherwise. Additionally, we keep only the
-    patches whose centers are falling within this mask (`only_patches_centers_within_buffer = True`).
+    patches whose centers are falling within this mask (`only_centers_within_buffer = True`).
 
     :param cubes_dir: directory containing the glacier-wide netcdf files
     :param patch_radius: patch radius (in px)
@@ -231,14 +244,14 @@ def patchify_data(
         nc = xr.open_dataset(g_fp, decode_coords='all', mask_and_scale=False).load()
 
         # get the locations of the sampled patches
-        patches_df = get_patches_df(
+        patches_df = sample_patch_centers_from_raster(
             nc=nc,
             stride=stride,
             patch_radius=patch_radius,
             add_center=False,
             add_centroid=True,
             add_extremes=False,
-            only_patches_centers_within_buffer=True
+            only_centers_within_buffer=True
         )
         # build the patches
         for i in range(len(patches_df)):
