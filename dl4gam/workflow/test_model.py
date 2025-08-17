@@ -15,17 +15,11 @@ log = logging.getLogger(__name__)
 from dl4gam.configs.config import SMPModelCfg, RunCfg, BaseDatasetCfg
 
 
-def get_best_model_ckpt(checkpoint_base_dir, metric_name='val_loss_epoch', sort_method='min'):
-    # First, let's find all the timestamped checkpoint directories
-    checkpoint_dirs = list(Path(checkpoint_base_dir).glob('*/checkpoints'))
-    if not checkpoint_dirs:
-        raise FileNotFoundError(f"No checkpoint directories found in {checkpoint_base_dir}")
-
-    # Sort the directories by modification time and take the most recent one
-    checkpoint_dir = sorted(checkpoint_dirs, key=lambda x: x.stat().st_mtime, reverse=True)[0]
-    log.info(f"Found {len(checkpoint_dirs)} checkpoint directories. Using the most recent one: {checkpoint_dir}")
-
+def get_best_model_ckpt(checkpoint_dir, metric_name='val_loss_epoch', sort_method='min'):
     ckpt_list = sorted(list(checkpoint_dir.glob('*.ckpt')))
+    if len(ckpt_list) == 0:
+        raise FileNotFoundError(f"No checkpoint files found in {checkpoint_dir}")
+
     ens_list = np.array([float(p.stem.split(f'{metric_name}=')[1]) for p in ckpt_list if metric_name in str(p)])
 
     # Get the index of the last best value
@@ -43,11 +37,11 @@ def main(
         model_cfg: SMPModelCfg,
         dataset_cfg: BaseDatasetCfg,
         fold: str,
-        checkpoint_base_dir: str | Path,
+        checkpoint_dir: str | Path,
 ):
     # Prepare the checkpoint before anything else
     checkpoint_fp = get_best_model_ckpt(
-        checkpoint_base_dir=checkpoint_base_dir,
+        checkpoint_dir=checkpoint_dir,
         metric_name=run_cfg.checkpoint_callback.monitor,
         sort_method=run_cfg.checkpoint_callback.mode
     )

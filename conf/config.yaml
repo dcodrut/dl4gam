@@ -14,6 +14,9 @@ working_dir: ./data/external/dl4gam
 pbar: True
 num_procs: 24
 
+# Get the latest run directory from the generated output directory (for inference only)
+run_timestamp: ${latest_run_timestamp:${run_dir_per_stage._model_root_c}}
+
 # Mute pyogrio
 external_modules_log_level: {
   'pyogrio': 'WARN'
@@ -45,8 +48,10 @@ run_dir_per_stage:
     cv_iter=${cv_iter}/
     seed=${seed}/
     ${hydra:job.override_dirname}
-  train: ${fpstrip:${._model_root}}/ts=${now:%Y-%m-%d_%H-%M-%S}_job=${hydra:job.num}
-  infer: ${fpstrip:${._model_root}}/
+  _model_root_c: ${fpstrip:${._model_root}}  # strip the whitespaces introduced by the multiline string
+  train: ${._model_root_c}/run=${now:%Y-%m-%d_%H-%M-%S}_jobnum=${hydra:job.num}
+  infer: ${._model_root_c}/run=${run_timestamp}
+  polygonize: ${.infer}
 
 hydra:
   job:
@@ -64,6 +69,7 @@ hydra:
           - input
           - cv_iter
           - seed
+          - run_timestamp
         item_sep: /  # We create a subdirectory for any additional CLI override
   run:
     dir: ${oc.select:run_dir_per_stage.${stage}, ${run_dir_per_stage.default}}

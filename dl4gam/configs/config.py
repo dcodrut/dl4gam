@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, cast
+from typing import Dict, cast, Optional
 
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING
+from omegaconf import OmegaConf, MISSING
 
 from dl4gam.configs.datasets import (
     LocalRawImagesCfg,
@@ -53,8 +53,12 @@ class DL4GAMCfg:
     cv_iter: int = 1  # current cross-validation iteration
     val_fraction: float = 0.1  # fraction of the training set to use for validation
 
-    # Fold to use at inference time (e.g. 'test' or 'val') (see `stage_inference` method)
+    # Settings used at inference time (see `stage_inference` method)
+    # Fold (e.g. 'test' or 'val')
     fold_inference: str = 'test'
+
+    # Timestamp of the model run to use for inference; by default, we use the latest one but can be set by CLI
+    run_timestamp: Optional[str] = MISSING  # we will then look for subdirs: run=run_timestamp
 
     # Set this > 0 to discard small segments in the polygonization step
     # (after extracting the segments from the binarized predictions)
@@ -64,7 +68,7 @@ class DL4GAMCfg:
     external_modules_log_level: Dict[str, str] = field(default_factory=dict)
 
     # Paths to the hydra directories for each step of the workflow (will be automatically created)
-    run_dir_per_stage: Dict[str, str] = field(default_factory=dict)
+    run_dir_per_stage: Optional[Dict[str, str]] = field(default_factory=dict)
 
     def __post_init__(self):
         # In case we sample patches on the fly & different sample every epoch, we implement this by altering the
@@ -214,13 +218,13 @@ class DL4GAMCfg:
             model_cfg=self.model,
             dataset_cfg=self.dataset,
             fold=self.fold_inference,
-            checkpoint_base_dir=Path(self.run.logger.save_dir),  # TODO: get the most recent one
+            checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints'
         )
 
     def stage_polygonize(self):
         from dl4gam.workflow.polygonize import main
         main(
-            checkpoint_base_dir=Path(self.run.logger.save_dir),  # TODO: get the most recent one
+            checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints',
             dataset_name=self.dataset.name,
             year=self.dataset.year,
             fold=self.fold_inference,
@@ -242,3 +246,24 @@ def register_configs():
     cs.store(group='model', name='smp_base', node=SMPModelCfg)
     cs.store(group='input', name='input_base', node=InputCfg)
     cs.store(name='dl4gam_config', node=DL4GAMCfg)
+
+
+# Register resolvers with OmegaConf
+def register_resolvers():
+    # Get the parent directory of a given path
+    OmegaConf.register_new_resolver("parentdir", lambda p: str(Path(p).parent))
+
+    # Strip whitespace from a given path
+    OmegaConf.register_new_resolver("fpstrip", lambda p: str(Path(*[x.strip() for x in Path(p).parts])))
+
+    # Get the latest run timestamp from a given directory
+    def get_latest_run_timestamp(base_dir: str) -> Optional[str]:
+        runs = sorted(Path(base_dir).glob('run=*jobnum=*'))
+        if not runs:
+            raise FileNotFoundError(
+                f"No runs found in {base_dir}. Please check the directory. "
+                f"You can also set the `run_timestamp` parameter manually in the CLI or config file."
+            )
+        return str(runs[-1].name).replace('run=', '')
+
+    OmegaConf.register_new_resolver("latest_run_timestamp", lambda base_dir: get_latest_run_timestamp(base_dir))

@@ -38,21 +38,12 @@ def load_and_polygonize(fp: str | Path, preds_version: str = 'pred_b', min_segme
 
 
 def main(
-        checkpoint_base_dir: str | Path,
+        checkpoint_dir: str | Path,
         dataset_name: str,
         year: str | int,
         fold: str,
         min_segment_area_km2: float = 0.0,
 ):
-    # First, let's find all the timestamped checkpoint directories
-    checkpoint_dirs = list(Path(checkpoint_base_dir).glob('*/checkpoints'))
-    if not checkpoint_dirs:
-        raise FileNotFoundError(f"No checkpoint directories found in {checkpoint_base_dir}")
-
-    # Sort the directories by modification time and take the most recent one
-    checkpoint_dir = sorted(checkpoint_dirs, key=lambda x: x.stat().st_mtime, reverse=True)[0]
-    log.info(f"Found {len(checkpoint_dirs)} checkpoint directories. Using the most recent one: {checkpoint_dir}")
-
     # Get the predictions directory
     model_dir = checkpoint_dir.parent
     preds_dir = model_dir / 'preds' / dataset_name / str(year) / fold
