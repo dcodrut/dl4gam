@@ -212,11 +212,15 @@ def buffer_non_overlapping(
     buffered_geoms = libpysal.cg.voronoi_frames(
         gdf,
         clip=limit,
+        segment=grid_size,
         grid_size=grid_size,
         return_input=False,
         as_gdf=False,
     ).geometry.buffer(0)
 
+    # Workaround the issue of buffers overlapping with the original geometries
+    # (make sure we don't have overlaps with the original geometries, then add them back)
+    buffered_geoms = buffered_geoms.difference(gdf.union_all()).union(gdf).buffer(0)
     return buffered_geoms
 
 

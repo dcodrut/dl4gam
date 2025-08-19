@@ -83,7 +83,7 @@ def compute_buffers(
     # Before computing the buffers, let's simplify the geometries to reduce the processing time & storage size
     _gdf = gdf.copy()
     if tol is not None:
-        log.info(f"Simplifying the geometries with tolerance {tol} m")
+        log.info(f"Simplifying the geometries with tolerance {tol:.2f} m")
         _gdf['geometry'] = _gdf.geometry.simplify(tolerance=tol, preserve_topology=True).buffer(0)
 
     gdfs_out = {}
@@ -113,13 +113,16 @@ def compute_buffers(
 
     # 5. The geometry within which false positives will be calculated
     log.info(f"Computing the non-overlapping buffers for false positives with sizes {buffers.fp}")
-    geoms_fp_min = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[0], grid_size=tol)
+
+    # If the FP buffer is the same as the infer buffer, we can use the same geometry
+    if buffers.fp[0] == buffers.infer:
+        geoms_fp_min = geoms_infer.copy()
+    else:
+        geoms_fp_min = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[0], grid_size=tol)
     geoms_fp_max = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[1], grid_size=tol)
 
-    # Make sure the infer buffer includes the current glacier, whereas the FP buffers do not
-    # (in case of approximations done by libpysal or due to our simplification)
-    geoms_infer = geoms_infer.union(gdf.geometry)
-    geoms_fp = geoms_fp_max.difference(geoms_fp_min).difference(gdf.geometry)
+    # Take the difference between the two geometries to get the FP buffer
+    geoms_fp = geoms_fp_max.difference(geoms_fp_min)
     gdfs_out['buffer_infer'] = geoms_infer
     gdfs_out['buffer_fp'] = geoms_fp
 
@@ -234,7 +237,7 @@ def main(
         buffers.fp = (buffers.fp[0], lim_max)
 
     log.info("Preparing the buffered outlines (using all the glaciers)")
-    gdfs_buffers = compute_buffers(gdf=gdf, buffers=buffers, tol=gsd / 2)
+    gdfs_buffers = compute_buffers(gdf=gdf, buffers=buffers, tol=gsd / 2.5)
 
     # Store the selected glacier outlines separately
     gdfs_out = {
