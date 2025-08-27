@@ -378,7 +378,7 @@ class S2DatasetCfg(BaseDatasetCfg):
         default_factory=lambda: BaseDatasetCfg.Buffers(
             patch_sampling=50,
             infer=20,
-            fp=(20, 'auto')
+            fp=(0, 'auto')
         )
     )
 

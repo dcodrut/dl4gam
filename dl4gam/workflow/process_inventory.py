@@ -109,7 +109,10 @@ def compute_buffers(
     # The next geometries require non-overlapping buffers:
     # 4. The geometry within which the inference will be performed
     log.info(f"Computing the non-overlapping buffers for inference with size {buffers.infer} m")
-    geoms_infer = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.infer, grid_size=tol)
+    if buffers.infer > 0:
+        geoms_infer = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.infer, grid_size=tol)
+    else:
+        geoms_infer = gdf.geometry.buffer(0)  # just a copy of the original geometries
 
     # 5. The geometry within which false positives will be calculated
     log.info(f"Computing the non-overlapping buffers for false positives with sizes {buffers.fp}")
@@ -117,6 +120,8 @@ def compute_buffers(
     # If the FP buffer is the same as the infer buffer, we can use the same geometry
     if buffers.fp[0] == buffers.infer:
         geoms_fp_min = geoms_infer.copy()
+    elif buffers.fp[0] == 0:
+        geoms_fp_min = gdf.geometry.buffer(0)  # just a copy of the original geometries
     else:
         geoms_fp_min = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[0], grid_size=tol)
     geoms_fp_max = utils.buffer_non_overlapping(_gdf, buffer_distance=buffers.fp[1], grid_size=tol)
