@@ -164,7 +164,7 @@ class BaseDatasetCfg:
     year: str = MISSING
 
     # Path to the glacier outlines (vector-file format)
-    outlines_fp: str = MISSING
+    outlines_fp: Optional[str] = MISSING
 
     # Minimum glacier area to consider a glacier in the dataset (in km^2)
     min_glacier_area: float = MISSING
