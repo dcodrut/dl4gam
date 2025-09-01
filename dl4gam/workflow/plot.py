@@ -220,6 +220,7 @@ def main(
         dataset_cfg: BaseDatasetCfg,
         fold: Optional[str] = None,
         checkpoint_dir: Optional[str | Path] = None,
+        bands_train_input: Optional[Tuple[str, ...]] = None,
 ):
     """
     Plot the images and, optionally, the predicted glacier outlines and statistics.
@@ -233,6 +234,7 @@ def main(
     :param dataset_cfg: Configuration object for the dataset, which contains paths to the glacier outlines and cubes.
     :param checkpoint_dir: Directory where the model predictions are stored. If None, only the images will be plotted.
     :param fold: Fold name for the predictions (e.g., 'train', 'valid', 'test').
+    :param bands_train_input: Bands used during training (we will show only subsets of these bands in the plots).
     :return: None
     """
 
@@ -269,7 +271,12 @@ def main(
     log.info(f"Plotting to {plot_dir}")
 
     # Set up which bands to use for the plots
-    _bands = list(ds.raw_data.bands_rename.values()) if ds.raw_data.bands_rename is not None else ds.raw_data.bands
+    if bands_train_input is None:
+        # Choose the bands to show based on the dataset configuration
+        _bands = list(ds.raw_data.bands_rename.values()) if ds.raw_data.bands_rename is not None else ds.raw_data.bands
+    else:
+        # Use only subsets of the bands used during training
+        _bands = list(bands_train_input)
     bands_img_1 = ('R', 'G', 'B')
     if {'SWIR', 'NIR', 'R'}.issubset(_bands):
         bands_img_2 = ('SWIR', 'NIR', 'R')
@@ -277,7 +284,10 @@ def main(
         bands_img_2 = ('NIR', 'R', 'G')
     else:
         bands_img_2 = bands_img_1
-    log.info(f"Using bands {bands_img_1} for the first panel and {bands_img_2} for the second one")
+    if bands_img_1 != bands_img_2:
+        log.info(f"Using bands {bands_img_1} for the first panel and {bands_img_2} for the second one")
+    else:
+        log.info(f"Using bands {bands_img_1} for both the first and second panel")
 
     # Get the range of the dhdt if available
     plot_dhdt = 'dhdt' in ds.extra_rasters

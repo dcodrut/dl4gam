@@ -251,6 +251,7 @@ class DL4GAMCfg:
             dataset_cfg=self.dataset,
             fold=self.fold_inference,
             checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints',
+            bands_train_input=self.input.bands_input,
         )
 
     # Which stage of the pipeline to execute currently (to be set by the user)
