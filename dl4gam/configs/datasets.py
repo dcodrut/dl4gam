@@ -158,6 +158,9 @@ class BaseDatasetCfg:
     # (should be dependent on the glacier outlines & glaciers covered, kept constant across the years)
     name: str = MISSING
 
+    # Source name, e.g. 'Copernicus Sentinel-2', 'PlanetScope', etc., for plotting purposes
+    source_name: str = MISSING
+
     # A label used to create a subdir where the data is stored
     # We will use 'inv' to denote the data that match the glacier outlines, which can originate from multiple years
     # If the data is from a single year, we will use the year as a label (e.g. '2023')
@@ -363,6 +366,8 @@ class S2DatasetCfg(BaseDatasetCfg):
     (year='inv') or for a specific year (e.g. '2023'). For the latter, the dates will be automatically selected based
     on e.g. the cloud coverage and NDSI (depending on the `raw_data` settings).
     """
+
+    source_name: str = "Copernicus Sentinel-2"
 
     # Sentinel-2 typical GSD
     gsd: float = 10.0
