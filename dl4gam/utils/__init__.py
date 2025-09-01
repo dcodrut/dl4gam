@@ -1,5 +1,6 @@
 from .data_prep import prep_glacier_dataset, extract_date_from_fn
 from .data_stats import compute_normalization_stats, aggregate_normalization_stats, rank_images
+from .eval_metrics import compute_stats
 from .gee import download_best_images
 from .geom import (
     get_interior_centroid,

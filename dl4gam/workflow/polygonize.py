@@ -72,7 +72,7 @@ def main(
     geod = pyproj.Geod(ellps="WGS84")
     gdf['area_km2'] = gdf.geometry.apply(lambda geom: abs(geod.geometry_area_perimeter(geom)[0]) / 1e6)
 
-    fp_out = model_dir / 'preds_geoms' / dataset_name / str(year) / fold / 'preds_polygons.gpkg'
+    fp_out = preds_dir / 'preds_polygons.gpkg'
     fp_out.parent.mkdir(exist_ok=True, parents=True)
     gdf.to_file(str(fp_out))
     log.info(f"Polygonized predictions saved to {fp_out}")

@@ -231,6 +231,14 @@ class DL4GAMCfg:
             min_segment_area_km2=self.min_segment_area_km2,
         )
 
+    def stage_eval(self):
+        from dl4gam.workflow.eval import main
+        main(
+            dataset_cfg=self.dataset,
+            fold=self.fold_inference,
+            checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints',
+        )
+
     # Which stage of the pipeline to execute currently (to be set by the user)
     stage: str = MISSING
 

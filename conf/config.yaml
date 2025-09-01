@@ -52,6 +52,7 @@ run_dir_per_stage:
   train: ${._model_root_c}/run=${now:%Y-%m-%d_%H-%M-%S}_jobnum=${hydra:job.num}
   infer: ${._model_root_c}/run=${run_timestamp}
   polygonize: ${.infer}
+  eval: ${.infer}
 
 hydra:
   job:
