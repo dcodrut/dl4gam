@@ -11,6 +11,7 @@ from dl4gam.configs.datasets import (
     S2GEERawImagesCfg,
     BaseDatasetCfg,
     S2DatasetCfg,
+    PSDatasetCfg
 )
 from dl4gam.configs.models import SMPModelCfg, InputCfg
 from dl4gam.configs.training import RunCfg
@@ -263,6 +264,7 @@ def register_configs():
     cs = ConfigStore.instance()
     cs.store(group='dataset', name='base', node=BaseDatasetCfg)
     cs.store(group='dataset', name='s2_base', node=S2DatasetCfg)
+    cs.store(group='dataset', name='ps_base', node=PSDatasetCfg)
     cs.store(group='dataset/raw_data', name='local', node=LocalRawImagesCfg)
     cs.store(group="dataset/raw_data", name='gee_base', node=GEERawImagesCfg)
     cs.store(group="dataset/raw_data", name='gee_s2', node=S2GEERawImagesCfg)

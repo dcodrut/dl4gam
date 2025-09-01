@@ -395,3 +395,41 @@ class S2DatasetCfg(BaseDatasetCfg):
 
     # The cloud mask will be downloaded automatically so we include it by default in the final QC mask.
     bands_nok_mask: Tuple[str, ...] = field(default_factory=lambda: ('cloud_mask',))
+
+
+# ======================================================================================================================
+# PlanetScope dataset config (for now, local data only)
+# ======================================================================================================================
+@dataclass
+class PSDatasetCfg(BaseDatasetCfg):
+    """Base configuration for PlanetScope datasets."""
+    source_name: str = "PlanetScope"
+
+    # Original PlanetScope GSD is 3.7-4.1 meters depending on the constellation but the data is usually resampled to 3m
+    gsd: float = 3.0
+
+    # Patch / sampling defaults (override in YAML as needed)
+    export_patches: bool = False
+    sample_patches_each_epoch: bool = False
+
+    # Match S2 default (128 @ 10m) scaled to 3m: int(128 * 10 / 3) = 426, but rounded to 416 to be divisible by 32
+    # (in case we train with SMP, this is required for most architectures)
+    patch_radius: int = 416
+
+    # Match S2 default stride (32 @ 10m) scaled to 3m: int(32 * 10 / 3) = 106
+    strides: BaseDatasetCfg.Strides = field(default_factory=lambda: BaseDatasetCfg.Strides(train=106))
+
+    # These are in meters so we keep the same as for Sentinel-2
+    buffers: BaseDatasetCfg.Buffers = field(
+        default_factory=lambda: BaseDatasetCfg.Buffers(
+            patch_sampling=50,
+            infer=20,
+            fp=(0, 'auto')
+        )
+    )
+
+    # We don't provide support for automatic downloading of PlanetScope data so this has to be local
+    raw_data: LocalRawImagesCfg = MISSING
+
+    # Note that these two masks are not super reliable, so we probably won't use them in training
+    bands_nok_mask: Optional[Tuple[str, ...]] = field(default_factory=lambda: ('cloud', 'shadow'))
