@@ -290,6 +290,9 @@ class BaseDatasetCfg:
     # Path to the root of the processed glacier cubes (netcdf) after processing; this will be separated by year
     cubes_dir: str = "${.base_dir}/glacier_cubes/year=${.year}"
 
+    # Directory where to plot the images (+DEM) with the inventory outlines overlaid
+    plots_dir: str = "${.base_dir}/plots/year=${.year}"
+
     # Directory for the patches (in case they are exported to disk)
     patches_dir: Optional[str] = "${.base_dir}/patches/year=${.year}/r_${.patch_radius}_s_${.strides.train}"
 

@@ -239,6 +239,20 @@ class DL4GAMCfg:
             checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints',
         )
 
+    def stage_plot_dataset(self):
+        from dl4gam.workflow.plot import main
+        main(
+            dataset_cfg=self.dataset,
+        )
+
+    def stage_plot_dataset_with_preds(self):
+        from dl4gam.workflow.plot import main
+        main(
+            dataset_cfg=self.dataset,
+            fold=self.fold_inference,
+            checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints',
+        )
+
     # Which stage of the pipeline to execute currently (to be set by the user)
     stage: str = MISSING
 

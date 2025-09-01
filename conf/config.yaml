@@ -53,6 +53,8 @@ run_dir_per_stage:
   infer: ${._model_root_c}/run=${run_timestamp}
   polygonize: ${.infer}
   eval: ${.infer}
+  plot_dataset: ${dataset.plots_dir}
+  plot_dataset_with_preds: ${.infer}
 
 hydra:
   job:
