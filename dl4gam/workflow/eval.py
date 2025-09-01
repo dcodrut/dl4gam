@@ -40,6 +40,12 @@ def main(
 
         gdfs_ref[name] = gdf
 
+    # Discard the predictions outside our ROI (i.e. buffer_infer + buffer_fp)
+    # (in case they were not cropped properly during polygonization)
+    pred_roi = gdfs_ref['infer_allowed'].union(gdfs_ref['neg'])
+    gdf_pred = gdf_pred.intersection(pred_roi).buffer(0)
+    log.info(f"Discarded predictions outside the ROI (= buffer_infer + buffer_fp)")
+
     # Save all the geometries in a single file to make it easier to visualize them together
     gdfs_out = gdfs_ref
     gdfs_out['pred'] = gdf_pred.reset_index()
