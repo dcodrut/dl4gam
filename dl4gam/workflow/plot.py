@@ -51,6 +51,12 @@ def plot_glacier(
     ds = ds.rio.reproject(dst_crs=ds.rio.crs, shape=(img_h_px, img_w_px), resampling=rasterio.enums.Resampling.bilinear)
     extent = [float(x) for x in [ds.x.min(), ds.x.max(), ds.y.min(), ds.y.max()]]
 
+    # After interpolation, the mask values might be non-integers => round them
+    # (we don't convert to int to keep the NaNs)
+    for v in ds.data_vars:
+        if v.startswith('mask_'):
+            ds[v] = ds[v].round()
+
     # Prepare the figure
     fig_w = fig_w_px / dpi
     h_title_px = img_w_px * 0.2
@@ -61,8 +67,14 @@ def plot_glacier(
     ax = axes[0]
     band_names = ds.band_data.long_name
     img = ds.band_data.isel(band=[band_names.index(b) for b in bands_img_1]).transpose('y', 'x', 'band').values
-    img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast)
-    ax.imshow(img, extent=extent, interpolation='none')
+    img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast, scale_to_01=True)
+
+    # In case we show the predictions, make the image darker for the regions outside our prediction ROI
+    if gdf_pred is not None:
+        mask_pred_roi = (ds.mask_infer.values == 1) | (ds.mask_fp.values == 1)
+        img[~mask_pred_roi] *= 0.4
+
+    ax.imshow(img, extent=extent, interpolation='none', vmin=0, vmax=1)
 
     # Plot the glacier outline
     entry_id = fp_raster.parent.name
@@ -131,10 +143,11 @@ def plot_glacier(
     ax = axes[1]
     img = ds.band_data.isel(band=[band_names.index(b) for b in bands_img_2]).transpose('y', 'x', 'band').values
     img = contrast_stretch(img=img, q_lim_clip=q_lim_contrast)
-    ax.imshow(img, extent=extent, interpolation='none')
+    ax.imshow(img, extent=extent, interpolation='none', vmin=0, vmax=1)
     ax.set_title(
-        f"left: {'-'.join(bands_img_1)}, below: {'-'.join(bands_img_2)}\n"
-        f"Source: {source_name}",
+        f"$left$: {'-'.join(bands_img_1)}{' (darken outside prediction ROI)' if gdf_pred is not None else ''}\n"
+        f"$below$: {'-'.join(bands_img_2)}\n"
+        f"$Source$: {source_name}",
         fontsize=fontsize
     )
 
@@ -149,7 +162,6 @@ def plot_glacier(
         vmax_abs = max(abs(np.nanmin(img)), abs(np.nanmax(img)))
         _cmap = cmap.Colormap('vik_r').to_mpl()
         p = ax.imshow(img, extent=extent, interpolation='none', cmap=_cmap, vmin=-vmax_abs, vmax=vmax_abs)
-        ax.set_facecolor('gray')  # for the missing data
     title = ''
     if plot_dhdt:
         cbar = fig.colorbar(p, ax=axes[3], label='dh/dt (m $\\cdot y^{-1}$)', fraction=0.9)
@@ -189,6 +201,7 @@ def plot_glacier(
         ax.set_yticks([])
         if i > 2:
             ax.axis('off')
+        ax.set_facecolor('gray')  # for the missing data
 
     # add a figure title with the glacier ID and the location
     fig.suptitle(

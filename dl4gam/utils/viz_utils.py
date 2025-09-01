@@ -15,6 +15,9 @@ def contrast_stretch(img, q_lim_clip=0.025, scale_to_01=True):
     if len(img.shape) == 2:
         img = img[:, :, None]
 
+    if scale_to_01:
+        img = img.astype(np.float32)
+
     for k in range(img.shape[-1]):
         # compute the limits
         _min = np.nanquantile(img[:, :, k], q_lim_clip)
