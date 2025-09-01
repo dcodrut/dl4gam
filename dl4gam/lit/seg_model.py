@@ -23,6 +23,9 @@ class SegModel(torch.nn.Module, ABC):
         self.use_dhdt = input_settings['dhdt']
         self.use_velocities = input_settings['velocity']
 
+        # Flatten the additional architecture-specific parameters
+        self.params.update(self.params.pop('others'))
+
         # compute the number of input channels based on what variables are used
         num_ch = len(self.bands)
         num_ch += 1 * self.use_dem
@@ -33,9 +36,6 @@ class SegModel(torch.nn.Module, ABC):
         if self.dem_features:
             num_ch += len(self.dem_features)
         self.params['in_channels'] = num_ch
-
-        # set the number of output channels
-        self.params['classes'] = 1
 
         log.info(f'Building SegModel ({self.name}) with {self.params}')
         self.seg_model = self.build_model(self.name, self.params)

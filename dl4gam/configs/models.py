@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 
 from omegaconf import MISSING
 
@@ -43,14 +43,17 @@ class SMPModelCfg:
     @dataclass
     class ModelArgs:
         """
-        Hyperparameters for the segmentation-model architecture. Default from Diaconu et al. 2025 - DL4GAM.
+        Hyperparameters for the segmentation-model architecture.
+        Note than `in_channels` will be set automatically based on the input settings.
         """
         encoder_name: str = MISSING
         encoder_weights: Optional[str] = MISSING
         encoder_depth: int = MISSING
         activation: str = 'sigmoid'
-        decoder_use_batchnorm: bool = False
-        decoder_attention_type: Optional[str] = None
+        classes: int = 1  # we assume binary segmentation by default
+
+        # Possible additional args (depend on the architecture)
+        others: Dict[str, Any] = field(default_factory=dict)
 
     # Architecture-specific hyperparameters
     params: ModelArgs = field(default_factory=ModelArgs)

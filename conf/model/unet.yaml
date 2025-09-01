@@ -1,4 +1,4 @@
-# U-Net model only with
+# U-Net model with defaults from Diaconu et al. 2025 - DL4GAM.
 
 defaults:
   - smp_base
@@ -12,3 +12,6 @@ params: # See `dl4gam.configs.models.SMPModelCfg` for other parameters
   encoder_name: resnet34
   encoder_weights: imagenet
   encoder_depth: 5
+  others:
+    decoder_use_batchnorm: False
+    decoder_attention_type: null
