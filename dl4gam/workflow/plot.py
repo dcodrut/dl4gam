@@ -150,6 +150,8 @@ def plot_glacier(
         _cmap = cmap.Colormap('vik_r').to_mpl()
         p = ax.imshow(img, extent=extent, interpolation='none', cmap=_cmap, vmin=-vmax_abs, vmax=vmax_abs)
         ax.set_facecolor('gray')  # for the missing data
+    title = ''
+    if plot_dhdt:
         cbar = fig.colorbar(p, ax=axes[3], label='dh/dt (m $\\cdot y^{-1}$)', fraction=0.9)
         cbar.ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
         title = (
