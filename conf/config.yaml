@@ -68,6 +68,7 @@ hydra:
           - hydra.verbose
           - run.trainer.devices
           - dataset
+          - dataset.root_dir
           - model
           - input
           - cv_iter

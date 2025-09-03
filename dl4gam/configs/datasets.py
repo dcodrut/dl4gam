@@ -276,7 +276,8 @@ class BaseDatasetCfg:
     # ==================================================================================================================
 
     # Root directory for all the data which will be processed
-    base_dir: str = "${working_dir}/datasets/${.name}"
+    root_dir: str = "${working_dir}/datasets"
+    base_dir: str = "${.root_dir}/${.name}"
 
     # Processed inventory outlines with all the additional derived geometries
     geoms_fp: str = "${.base_dir}/inventory/geoms.gpkg"
