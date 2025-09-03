@@ -31,7 +31,7 @@ def main(cfg_dict: DictConfig):
     # Once hydra is initialized, we can delete the run_timestamp and run_dir_per_stage field from the config
     # (to avoid failed instantiation as a consequence of missing the run_timestamp field for stages that don't use it)
     del cfg_dict.run_timestamp
-    del cfg_dict.run_dir_per_stage
+    del cfg_dict.internal
 
     # Covert the DictConfig to our internal dataclass structure; check if there are any missing fields
     cfg: DL4GAMCfg = OmegaConf.to_container(

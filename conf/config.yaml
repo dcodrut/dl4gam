@@ -15,46 +15,48 @@ pbar: True
 num_procs: 24
 
 # Get the latest run directory from the generated output directory (for inference only)
-run_timestamp: ${latest_run_timestamp:${run_dir_per_stage._model_root_c}}
+run_timestamp: ${latest_run_timestamp:${internal.run_dir_per_stage._model_root_c}}
 
 # Mute pyogrio
 external_modules_log_level: {
   'pyogrio': 'WARN'
 }
 
-# Set the hydra directory for each stage (will be later selected based on the stage)
-run_dir_per_stage:
-  # A default directory in case the stage is not defined
-  default: ${working_dir}/_hydra
-  # Define directories for each stage (some are based on the parent directory of the output file)
-  process_inventory: ${parentdir:${dataset.geoms_fp}}
-  download_raw_data: ${dataset.raw_data.base_dir}
-  rank_images: ${dataset.raw_data.base_dir}
-  download_oggm_data: ${dataset.oggm_data.base_dir}
-  build_dataset: ${dataset.cubes_dir}
-  patchify_dataset: ${dataset.patches_dir}
-  split_data: ${parentdir:${dataset.split_csv}}
-  compute_norm_stats: ${working_dir}/datasets/${dataset.name}/norm_stats
+# Some internal settings
+internal:
+  # Set the hydra directory for each stage (will be later selected based on the stage)
+  run_dir_per_stage:
+    # A default directory in case the stage is not defined
+    default: ${working_dir}/_hydra
+    # Define directories for each stage (some are based on the parent directory of the output file)
+    process_inventory: ${parentdir:${dataset.geoms_fp}}
+    download_raw_data: ${dataset.raw_data.base_dir}
+    rank_images: ${dataset.raw_data.base_dir}
+    download_oggm_data: ${dataset.oggm_data.base_dir}
+    build_dataset: ${dataset.cubes_dir}
+    patchify_dataset: ${dataset.patches_dir}
+    split_data: ${parentdir:${dataset.split_csv}}
+    compute_norm_stats: ${working_dir}/datasets/${dataset.name}/norm_stats
 
-  # For the next stages, we include all the CLI overrides at the end of the path
-  # (in case we later want to sweep over variables which are already not part the path)
-  # We also include a timestamp to avoid overwriting previous runs; at inference time we will use the latest run
-  _model_root: >-
-    ${working_dir}/
-    experiments/
-    dataset=${hydra:runtime.choices.dataset}/
-    model=${hydra:runtime.choices.model}/
-    input=${hydra:runtime.choices.input}/
-    cv_iter=${cv_iter}/
-    seed=${seed}/
-    ${hydra:job.override_dirname}
-  _model_root_c: ${fpstrip:${._model_root}}  # strip the whitespaces introduced by the multiline string
-  train: ${._model_root_c}/run=${now:%Y-%m-%d_%H-%M-%S}_jobnum=${hydra:job.num}
-  infer: ${._model_root_c}/run=${run_timestamp}
-  polygonize: ${.infer}
-  eval: ${.infer}
-  plot_dataset: ${dataset.plots_dir}
-  plot_dataset_with_preds: ${.infer}
+    # For the next stages, we include all the CLI overrides at the end of the path
+    # (in case we later want to sweep over variables which are already not part the path)
+    # We also include a timestamp to avoid overwriting previous runs; at inference time we will use the latest run
+    _model_root: >-
+      ${working_dir}/
+      experiments/
+      dataset=${hydra:runtime.choices.dataset}/
+      model=${hydra:runtime.choices.model}/
+      input=${hydra:runtime.choices.input}/
+      cv_iter=${cv_iter}/
+      seed=${seed}/
+      ${hydra:job.override_dirname}
+    _model_root_c: ${fpstrip:${._model_root}}  # strip the whitespaces introduced by the multiline string
+    train: ${._model_root_c}/run=${now:%Y-%m-%d_%H-%M-%S}_jobnum=${hydra:job.num}
+    infer: ${._model_root_c}/run=${run_timestamp}
+    polygonize: ${.infer}
+    eval: ${.infer}
+    plot_dataset: ${dataset.plots_dir}
+    plot_dataset_with_preds: ${.infer}
 
 hydra:
   job:
@@ -76,12 +78,12 @@ hydra:
           - run_timestamp
         item_sep: /  # We create a subdirectory for any additional CLI override
   run:
-    dir: ${oc.select:run_dir_per_stage.${stage}, ${run_dir_per_stage.default}}
+    dir: ${oc.select:internal.run_dir_per_stage.${stage}, ${internal.run_dir_per_stage.default}}
   sweep:
     # hydra will drop some logs here, but we're interested only in the subdir which we set to be an absolute path
     # (otherwise subdir would be under dir)
     dir: ${working_dir}/_hydra/sweeps/${now:%Y-%m-%d_%H-%M-%S}
-    subdir: ${hydra:runtime.cwd}/${oc.select:run_dir_per_stage.${stage}, ${run_dir_per_stage.default}}
+    subdir: ${hydra:runtime.cwd}/${oc.select:internal.run_dir_per_stage.${stage}, ${internal.run_dir_per_stage.default}}
   job_logging:
     formatters:
       colored:

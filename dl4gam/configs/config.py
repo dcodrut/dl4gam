@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, cast, Optional
+from typing import Dict, cast, Optional, Any
 
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf, MISSING
@@ -68,8 +68,7 @@ class DL4GAMCfg:
     # Custom logging settings, if we want to control (e.g. mute) existing loggers (i.e. coming from external libraries)
     external_modules_log_level: Dict[str, str] = field(default_factory=dict)
 
-    # Paths to the hydra directories for each step of the workflow (will be automatically created)
-    run_dir_per_stage: Optional[Dict[str, str]] = field(default_factory=dict)
+    internal: Optional[Dict[str, Any]] = field(default_factory=dict)  # for any internal use in config.yaml
 
     def __post_init__(self):
         # In case we sample patches on the fly & different sample every epoch, we implement this by altering the
