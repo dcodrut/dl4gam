@@ -135,6 +135,12 @@ class GEERawImagesCfg(RawImagesCfg):
     # Whether to consider only the latest processed tile per acquisition day (in case of multiple reprocessed versions)
     latest_tile_only: bool = True
 
+    # Parameters to be passed to geedim (which we use for downloading)
+    # See https://geedim.readthedocs.io/en/stable/reference/api.html#geedim.mask.MaskedImage.download
+    geedim_kwargs: Dict[str, Any] = field(default_factory=lambda: {
+        'dtype': 'int16',  # suitable for Sentinel-2 data (scaled to [0, 10000])
+    })
+
     def __post_init__(self):
         """ Validate the configuration and check if the required settings are set. """
         # Check if we need the cloud mask

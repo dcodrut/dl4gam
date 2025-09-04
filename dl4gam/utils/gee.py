@@ -22,6 +22,8 @@ class EntryAdapter(logging.LoggerAdapter):
         return f"(entry_id = {self.extra['entry_id']}) {msg}", kwargs
 
 
+gee_max_pixels = 1e9  # default max pixels for GEE operations
+
 def query_images(
         img_collection_name: str,
         geom: gpd.GeoSeries,
@@ -137,7 +139,8 @@ def query_images(
             reducer=ee.Reducer.sum().unweighted(),
             geometry=geom_gee,
             scale=min_scale,
-            maxPixels=1e9
+            maxPixels=gee_max_pixels,
+            bestEffort=False
         ).get('mask_ok')
         area_ok = ee.Number(sum_ones).multiply(ee.Number(min_scale).pow(2))
 
@@ -157,7 +160,7 @@ def query_images(
     imgs_full = (
         imgs
         .filter(ee.Filter.gte('coverage', 0.98))
-        .sort('tile_code', True)
+        .sort('tile', True)
         .sort('processing_time', False)  # keep the latest since it's fully covering the ROI
         .distinct('date')
     )
@@ -313,7 +316,8 @@ def compute_image_cloud_percentage(img: ee.Image, geom: gpd.GeoSeries):
         reducer=ee.Reducer.mean().unweighted(),
         geometry=geom_gee,
         scale=cloud_mask.projection().nominalScale(),
-        maxPixels=1e9
+        maxPixels=gee_max_pixels,
+        bestEffort=False
     ).get('cloud_mask')
 
     return img.set({QCMetric.CLOUD_P: avg_cloud_p})
@@ -347,7 +351,8 @@ def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict)
         reducer=ee.Reducer.sum().unweighted(),
         geometry=geom_gee,
         scale=scale,
-        maxPixels=1e9
+        maxPixels=gee_max_pixels,
+        bestEffort=False
     ).get('cloud_mask')
 
     # This will be computed if there are any cloud-free pixels
@@ -357,7 +362,8 @@ def compute_image_ndsi(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dict)
         reducer=ee.Reducer.mean().unweighted(),
         geometry=geom_gee,
         scale=scale,
-        maxPixels=1e9
+        maxPixels=gee_max_pixels,
+        bestEffort=False
     ).get('NDSI')
 
     # If there are no cloud-free pixels, avg_ndsi makes no sense
@@ -398,7 +404,8 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
         reducer=ee.Reducer.sum().unweighted(),
         geometry=geom_gee,
         scale=scale,
-        maxPixels=1e9
+        maxPixels=gee_max_pixels,
+        bestEffort=False
     ).get('cloud_mask')
 
     # The following will be computed if there are any cloud-free pixels
@@ -415,7 +422,8 @@ def compute_image_albedo(img: ee.Image, geom: gpd.GeoSeries, bands_name_map: dic
         reducer=ee.Reducer.mean().unweighted(),
         geometry=geom_gee,
         scale=scale,
-        maxPixels=1e9
+        maxPixels=gee_max_pixels,
+        bestEffort=False
     ).get('albedo')
 
     # If there are no cloud-free pixels, avg_albedo makes no sense
@@ -463,10 +471,9 @@ def download_image(
         fp: str | Path,
         img: ee.Image,
         geom: gpd.GeoSeries,
-        gsd: Optional[float] = None,
         skip_existing: bool = True,
         try_reading: bool = True,
-        num_threads: int = None  # default is None, which uses the default from geedim.download.BaseImage.download
+        geedim_kwargs: Optional[dict] = None,
 ):
     """
     Downloads a single image from Google Earth Engine using the geedim library.
@@ -474,12 +481,9 @@ def download_image(
     :param fp: file path where the image will be saved (as a string or Path object).
     :param img: ee.Image object to download (can be a single image or a mosaic).
     :param geom: gpd.GeoSeries with a single geometry defining the region of interest (ROI) for downloading the image.
-    :param gsd: ground sample distance (pixel size in meters) for the downloaded image.
-        If None, GEE will decide the scale.
     :param skip_existing: if True, skips downloading if the file already exists; if False, always downloads.
     :param try_reading: if True, attempts to read the existing file to check if it is valid before skipping download.
-    :param num_threads: number of threads to use for downloading the image;
-        if None, uses the default from geedim.download.BaseImage.download.
+    :param geedim_kwargs: additional keyword arguments to pass to geedim.download.BaseImage.download()
     :return: None
     """
 
@@ -514,11 +518,9 @@ def download_image(
     fp.parent.mkdir(parents=True, exist_ok=True)
     img.download(
         filename=fp,
-        dtype='int16',
         overwrite=True,
         region=geom_gee,
-        scale=gsd,
-        num_threads=num_threads
+        **(geedim_kwargs or {})
     )
 
 
@@ -545,7 +547,8 @@ def download_best_images(
         geom_albedo: Optional[gpd.GeoSeries] = None,
         num_procs_download: int = 1,
         skip_existing: bool = True,
-        try_reading: bool = True
+        try_reading: bool = True,
+        geedim_kwargs: Optional[dict] = None,
 ):
     """
     Queries and downloads the best images from a Google Earth Engine image collection based on specified criteria.
@@ -584,6 +587,7 @@ def download_best_images(
     :param num_procs_download: number of processes to use for downloading the images in parallel.
     :param skip_existing: if True, skips downloading if the file already exists; if False, always downloads.
     :param try_reading: if True, attempts to read the existing file to check if it is valid before skipping download.
+    :param geedim_kwargs: additional keyword arguments to pass to geedim.download.BaseImage.download()
     :return: None
     """
 
@@ -697,7 +701,7 @@ def download_best_images(
     _log.info(f"Found {len(df_meta)} images in the collection {img_collection_name} with the specified criteria.")
 
     # Drop the original metadata columns (we already have them in `metadata_tiles`)
-    df_meta = df_meta[['date', 'processing_time', 'id', 'system:index', 'tiles'] + metrics + ['metadata_tiles']]
+    df_meta = df_meta[['date', 'id', 'system:index', 'tiles'] + metrics + ['metadata_tiles']]
 
     # Print and export the statistics to a CSV file
     cols2show = ['id', 'date'] + metrics
@@ -740,6 +744,25 @@ def download_best_images(
         )
         num_days_to_keep = len(df_meta)
 
+    # Check if geedim_kwargs is provided and overwrite num_threads if needed
+    if geedim_kwargs is not None:
+        if 'num_threads' in geedim_kwargs:
+            _log.warning(
+                "'num_threads' argument in geedim_kwargs will be overwritten to 1 to avoid issues with GEE API limits."
+            )
+    else:
+        geedim_kwargs = {}
+    geedim_kwargs['num_threads'] = 1
+
+    # If the GSD we're working with is already set, overwrite it in geedim_kwargs to avoid conflicts
+    if gsd is not None:
+        if 'scale' in geedim_kwargs:
+            _log.warning(
+                f"'scale' argument in geedim_kwargs will be overwritten to the provided GSD value = {gsd}"
+                "to avoid conflicts."
+            )
+        geedim_kwargs['scale'] = gsd
+
     # Download the best images in parallel
     ordered_ids = df_meta['id'].tolist()[:num_days_to_keep]
     fp_out_list = [Path(out_dir) / f"{img_id}.tif" for img_id in ordered_ids]
@@ -748,12 +771,11 @@ def download_best_images(
         img=[ee.Image(imgs_all.filter(ee.Filter.eq('id', img_id)).first()) for img_id in ordered_ids],
         fp=fp_out_list,
         geom=geom,
-        gsd=gsd,
         skip_existing=skip_existing,
         try_reading=try_reading,
         num_procs=num_procs_download,
         pbar=(len(ordered_ids) > 1),  # show progress bar only if more than one image is downloaded
-        num_threads=1  # this goes to geedim.download; use only one thread per image to avoid issues with GEE API limits
+        geedim_kwargs=geedim_kwargs
     )
 
 
@@ -761,7 +783,8 @@ if __name__ == "__main__":
     # Example usage
 
     # Initialize Earth Engine and prepare the ImageCollection
-    ee.Initialize(project='your-project-id')
+    # ee.Initialize(project='your-project-id')
+    ee.Initialize(project='sat-data-downloader')
 
     # Setup console logging
     logging.basicConfig(level=logging.INFO)
@@ -825,5 +848,6 @@ if __name__ == "__main__":
         geom_ndsi=_geom_ndsi,
         num_procs_download=1,
         skip_existing=True,
-        try_reading=True
+        try_reading=True,
+        geedim_kwargs={'dtype': 'int16'}  # save as int16 to reduce file size (enough for Sentinel-2)
     )
