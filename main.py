@@ -28,6 +28,17 @@ def main(cfg_dict: DictConfig):
     log = logging.getLogger(__name__)
     log.info(f"Current output directory: {output_dir}")
 
+    # Log some ray info if initialized
+    try:
+        import ray
+        if ray.is_initialized():
+            log.info(f"Ray cluster total resources: {ray.cluster_resources()}")
+            log.info(f"Ray cluster available resources: {ray.available_resources()}")
+            log.info(f"Ray worker assigned resources: {ray.get_runtime_context().get_assigned_resources()}")
+            log.info(f"Ray worker accelerator ids: {ray.get_runtime_context().get_accelerator_ids()}")
+    except ImportError:
+        pass
+
     # Once hydra is initialized, we can delete the run_timestamp and run_dir_per_stage field from the config
     # (to avoid failed instantiation as a consequence of missing the run_timestamp field for stages that don't use it)
     del cfg_dict.run_timestamp
