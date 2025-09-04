@@ -30,7 +30,15 @@ def _fn_star(kwargs):
     return fun(**kwargs_others)
 
 
-def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_step=None, **kwargs):
+def run_in_parallel(
+        fun,
+        num_procs=None,
+        pbar=None,
+        pbar_desc=None,
+        gc_collect_step=None,
+        continue_on_error=False,
+        **kwargs
+):
     """Wraps the function `fun` to run it in parallel using multiple processes.
 
     The function can take multiple arguments, some of which can be lists of the same length.
@@ -43,6 +51,8 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_s
     :param pbar: whether to show a progress bar; if None, the default global value will be used if set
     :param pbar_desc: the description for the progress bar; if None, it will be set to the function name and num_procs
     :param gc_collect_step: if provided, the garbage collector will be called every `gc_collect_step` iterations
+    :param continue_on_error: if True, the function will continue running even if some calls fail; the results for
+        the failed calls will be None; if False, the function will raise an exception on the first error encountered
     :param kwargs: the keyword arguments to pass to the function
     :return: a list of results from the function calls, in the same order as the input arguments
     """
@@ -100,7 +110,10 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_s
                             all_res[i_task] = future.result()  # place the result in the correct index
                         except Exception as e:
                             log.error(f"Error occurred while processing the input: {kw}")
-                            raise e
+                            if continue_on_error:
+                                all_res[i_task] = None
+                            else:
+                                raise e
 
                         pbar.update()
 
@@ -120,7 +133,14 @@ def run_in_parallel(fun, num_procs=None, pbar=None, pbar_desc=None, gc_collect_s
         all_res = []
         with tqdm(total=arg_lens[0], desc=pbar_desc, disable=not pbar) as pbar:
             for crt_args in kwargs_flatten:
-                res = _fn_star(crt_args)
+                try:
+                    res = _fn_star(crt_args)
+                except Exception as e:
+                    log.error(f"Error occurred while processing the input: {crt_args}")
+                    if continue_on_error:
+                        res = None
+                    else:
+                        raise e
                 all_res.append(res)
                 pbar.update()
 
