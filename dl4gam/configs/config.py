@@ -221,6 +221,10 @@ class DL4GAMCfg:
             checkpoint_dir=Path(self.run.logger.save_dir) / 'checkpoints'
         )
 
+    def stage_train_then_infer(self):
+        self.stage_train()
+        self.stage_infer()
+
     def stage_polygonize(self):
         from dl4gam.workflow.polygonize import main
         main(

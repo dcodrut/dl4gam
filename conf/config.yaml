@@ -53,6 +53,7 @@ internal:
     _model_root_c: ${fpstrip:${._model_root}}  # strip the whitespaces introduced by the multiline string
     train: ${._model_root_c}/run=${now:%Y-%m-%d_%H-%M-%S}_jobnum=${hydra:job.num}
     infer: ${._model_root_c}/run=${run_timestamp}
+    train_then_infer: ${.train}
     polygonize: ${.infer}
     eval: ${.infer}
     plot_dataset: ${dataset.plots_dir}
@@ -76,6 +77,8 @@ hydra:
           - cv_iter
           - seed
           - run_timestamp
+          - run.data.num_workers
+          - run.data.test_batch_size  # shouldn't affect the results
         item_sep: /  # We create a subdirectory for any additional CLI override
   run:
     dir: ${oc.select:internal.run_dir_per_stage.${stage}, ${internal.run_dir_per_stage.default}}
